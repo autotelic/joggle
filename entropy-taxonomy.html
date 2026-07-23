@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entropy Taxonomy: Full-Stack TypeScript</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', Menlo, monospace; background: #0d1117; color: #c9d1d9; padding: 40px; line-height: 1.4; }
+  h1 { font-size: 20px; color: #58a6ff; margin-bottom: 6px; }
+  h2 { font-size: 15px; color: #f78166; margin: 36px 0 14px 0; border-bottom: 1px solid #21262d; padding-bottom: 8px; }
+  h3 { font-size: 13px; color: #79c0ff; margin: 20px 0 10px 0; }
+  .subtitle { color: #8b949e; font-size: 12px; margin-bottom: 36px; }
+
+  .diagram-container { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; margin-bottom: 28px; overflow-x: auto; }
+  .diagram-label { font-size: 10px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+
+  svg { display: block; margin: 0 auto; }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 11px; }
+  th { text-align: left; color: #58a6ff; padding: 8px 10px; border-bottom: 1px solid #30363d; font-weight: 600; }
+  td { padding: 8px 10px; border-bottom: 1px solid #21262d; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  .note { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-size: 11px; color: #8b949e; }
+  .note strong { color: #c9d1d9; }
+</style>
+</head>
+<body>
+
+<h1>Entropy Taxonomy</h1>
+<div class="subtitle">Full-stack TypeScript &middot; React &middot; Astro &middot; TSX &middot; What duplicates where</div>
+
+<!-- ========== BIG PICTURE ========== -->
+<h2>1. The Seven Entropy Domains</h2>
+<div class="diagram-container">
+<div class="diagram-label">Every layer of a full-stack TS app has its own duplication mechanisms</div>
+
+<svg viewBox="0 0 800 500" width="100%" height="auto">
+  <defs>
+    <linearGradient id="gFE" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f85149" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#f85149" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="gBE" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#79c0ff" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#79c0ff" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="gSH" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3fb950" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#3fb950" stop-opacity="0.02"/>
+    </linearGradient>
+    <marker id="a" markerWidth="5" markerHeight="5" refX="5" refY="2.5" orient="auto">
+      <path d="M0,0 L5,2.5 L0,5 Z" fill="#30363d"/>
+    </marker>
+  </defs>
+
+  <!-- Client boundary -->
+  <rect x="260" y="10" width="520" height="230" rx="10" fill="url(#gFE)" stroke="#f85149" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="270" y="32" fill="#f85149" font-size="10" font-weight="bold">CLIENT (Browser)</text>
+
+  <!-- Server boundary -->
+  <rect x="260" y="255" width="520" height="230" rx="10" fill="url(#gBE)" stroke="#79c0ff" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="270" y="277" fill="#79c0ff" font-size="10" font-weight="bold">SERVER</text>
+
+  <!-- Shared boundary -->
+  <rect x="10" y="160" width="230" height="325" rx="10" fill="url(#gSH)" stroke="#3fb950" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="20" y="182" fill="#3fb950" font-size="10" font-weight="bold">SHARED (types, utils, schemas)</text>
+
+  <!-- DOMAINS -->
+
+  <!-- Domain 1: Component Tree -->
+  <rect x="280" y="42" width="235" height="85" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="296" y="62" fill="#f778ba" font-size="11" font-weight="bold">1. COMPONENT TREE</text>
+  <text x="296" y="78" fill="#c9d1d9" font-size="9">JSX element structure</text>
+  <text x="296" y="93" fill="#c9d1d9" font-size="9">Component composition</text>
+  <text x="296" y="108" fill="#c9d1d9" font-size="9">Prop drilling chains</text>
+  <text x="296" y="126" fill="#8b949e" font-size="8">.tsx .jsx .astro</text>
+
+  <!-- Domain 2: Styling -->
+  <rect x="530" y="42" width="235" height="85" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="546" y="62" fill="#f778ba" font-size="11" font-weight="bold">2. STYLING</text>
+  <text x="546" y="78" fill="#c9d1d9" font-size="9">CSS modules / Tailwind classes</text>
+  <text x="546" y="93" fill="#c9d1d9" font-size="9">Style objects / clsx/spreads</text>
+  <text x="546" y="108" fill="#c9d1d9" font-size="9">Theme tokens / design system</text>
+  <text x="546" y="126" fill="#8b949e" font-size="8">.module.css .css inline style props</text>
+
+  <!-- Domain 3: State + Effects -->
+  <rect x="280" y="140" width="235" height="85" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="296" y="160" fill="#f778ba" font-size="11" font-weight="bold">3. STATE &amp; EFFECTS</text>
+  <text x="296" y="176" fill="#c9d1d9" font-size="9">useState / useReducer config</text>
+  <text x="296" y="191" fill="#c9d1d9" font-size="9">useEffect / fetch patterns</text>
+  <text x="296" y="206" fill="#c9d1d9" font-size="9">Context provider structure</text>
+  <text x="296" y="224" fill="#8b949e" font-size="8">hooks, signals, stores</text>
+
+  <!-- Domain 4: Forms -->
+  <rect x="530" y="140" width="235" height="85" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="546" y="160" fill="#f778ba" font-size="11" font-weight="bold">4. FORMS &amp; VALIDATION</text>
+  <text x="546" y="176" fill="#c9d1d9" font-size="9">Form field structure</text>
+  <text x="546" y="191" fill="#c9d1d9" font-size="9">Validation schemas (Zod/Valibot)</text>
+  <text x="546" y="206" fill="#c9d1d9" font-size="9">Submission / error patterns</text>
+  <text x="546" y="224" fill="#8b949e" font-size="8">react-hook-form, conform, Zod</text>
+
+  <!-- Domain 5: Types -->
+  <rect x="30" y="194" width="190" height="90" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="46" y="214" fill="#3fb950" font-size="11" font-weight="bold">5. TYPES</text>
+  <text x="46" y="232" fill="#c9d1d9" font-size="9">Duplicate interfaces</text>
+  <text x="46" y="247" fill="#c9d1d9" font-size="9">Overlapping unions</text>
+  <text x="46" y="262" fill="#c9d1d9" font-size="9">Unnecessary aliases</text>
+  <text x="46" y="280" fill="#8b949e" font-size="8">.d.ts .ts shared/</text>
+
+  <!-- Domain 6: API -->
+  <rect x="280" y="265" width="235" height="90" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="296" y="285" fill="#79c0ff" font-size="11" font-weight="bold">6. API &amp; ROUTES</text>
+  <text x="296" y="303" fill="#c9d1d9" font-size="9">Route handler structure</text>
+  <text x="296" y="318" fill="#c9d1d9" font-size="9">Server action patterns</text>
+  <text x="296" y="333" fill="#c9d1d9" font-size="9">Response shape / error shape</text>
+  <text x="296" y="351" fill="#8b949e" font-size="8">route.ts action.ts middleware</text>
+
+  <!-- Domain 7: Data -->
+  <rect x="530" y="265" width="235" height="90" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="546" y="285" fill="#79c0ff" font-size="11" font-weight="bold">7. DATA &amp; STORAGE</text>
+  <text x="546" y="303" fill="#c9d1d9" font-size="9">ORM model definitions</text>
+  <text x="546" y="318" fill="#c9d1d9" font-size="9">Query/mutation patterns</text>
+  <text x="546" y="333" fill="#c9d1d9" font-size="9">Data transform pipelines</text>
+  <text x="546" y="351" fill="#8b949e" font-size="8">Prisma Drizzle tRPC GraphQL</text>
+
+  <!-- Cross cutting arrows -->
+  <line x1="260" y1="85" x2="255" y2="240" stroke="#30363d" stroke-width="0.5" stroke-dasharray="2,3"/>
+  <text x="250" y="175" fill="#8b949e" font-size="7" writing-mode="vertical-rl">types flow across boundary</text>
+
+  <text x="400" y="500" text-anchor="middle" fill="#8b949e" font-size="10">Each domain has its own AST nodes, its own normalization rules, its own fingerprint strategy</text>
+</svg>
+</div>
+
+<!-- ========== DECISION MATRIX ========== -->
+<h2>2. What the Plugin Needs to Handle — Node Type × Detection Strategy</h2>
+<div class="diagram-container">
+
+<table>
+  <tr>
+    <th>AST Node(s)</th>
+    <th>Where It Appears</th>
+    <th>What to Fingerprint</th>
+    <th>Normalization</th>
+  </tr>
+
+  <tr>
+    <td><strong>FunctionDeclaration</strong><br><strong>ArrowFunctionExpression</strong><br><strong>FunctionExpression</strong></td>
+    <td>Backend utils, hooks, data transforms</td>
+    <td>params + returnType + body</td>
+    <td>identifier → $N, literal → lit, skip comments</td>
+  </tr>
+
+  <tr>
+    <td><strong>TSInterfaceDeclaration</strong><br><strong>TSTypeAliasDeclaration</strong></td>
+    <td>Shared types, DTOs, component props</td>
+    <td>members (keys + types)</td>
+    <td>key names → $N, resolve type refs to primitives</td>
+  </tr>
+
+  <tr>
+    <td><strong>TSUnionType</strong></td>
+    <td>Discriminated unions, status enums</td>
+    <td>member set intersection</td>
+    <td>Sort members, detect overlaps across types</td>
+  </tr>
+
+  <tr>
+    <td><strong>JSXElement</strong><br><strong>JSXFragment</strong></td>
+    <td>React/Astro component markup</td>
+    <td>tag name + children structure + attributes</td>
+    <td>text content → $TXT, attribute values → $ATTR, className list → sorted set</td>
+  </tr>
+
+  <tr>
+    <td><strong>ObjectExpression</strong></td>
+    <td>Style objects, config objects, option bags</td>
+    <td>property keys + value shape</td>
+    <td>key names → $N, literal values → typed placeholder</td>
+  </tr>
+
+  <tr>
+    <td><strong>CallExpression</strong></td>
+    <td>useState, useEffect, useQuery, fetch calls</td>
+    <td>callee name + args structure</td>
+    <td>arg literals → typed placeholder, fn args → $N</td>
+  </tr>
+
+  <tr>
+    <td><strong>TemplateLiteral</strong></td>
+    <td>URL builders, SQL queries, CSS-in-JS</td>
+    <td>quasi structure + expression types</td>
+    <td>quasi strings → $STR, expression slots → typed placeholder</td>
+  </tr>
+
+  <tr>
+    <td><strong>JSXAttribute</strong></td>
+    <td>Component props, event handlers</td>
+    <td>name + value type</td>
+    <td>value → typed placeholder</td>
+  </tr>
+
+  <tr>
+    <td><strong>ClassDeclaration</strong><br><strong>MethodDefinition</strong></td>
+    <td>Services, controllers, models</td>
+    <td>class methods + properties</td>
+    <td>Method names → $N, body fingerprint as function</td>
+  </tr>
+
+  <tr>
+    <td><strong>ExportNamedDeclaration</strong><br><strong>ExportDefaultDeclaration</strong></td>
+    <td>Route files, barrel exports</td>
+    <td>Export shape (what's exported)</td>
+    <td>Compare export sets across files — same exports = possible merger</td>
+  </tr>
+
+  <tr>
+    <td><strong>IfStatement</strong><br><strong>ConditionalExpression</strong><strong>SwitchStatement</strong></td>
+    <td>Error handling, feature flags, routing</td>
+    <td>Condition structure + branch bodies</td>
+    <td>Test expressions → typed placeholder, branch bodies → fingerprint</td>
+  </tr>
+
+  <tr>
+    <td><strong>TryStatement</strong><br><strong>ThrowStatement</strong></td>
+    <td>Error boundaries, API handlers</td>
+    <td>Catch handler structure</td>
+    <td>Error type → placeholder, handler body → fingerprint</td>
+  </tr>
+</table>
+</div>
+
+<!-- ========== CONFIG ========== -->
+<h2>3. Configuration Surface — What to Configure Per-Domain</h2>
+<div class="diagram-container">
+<div class="diagram-label">The rule needs knobs. Different teams have different entropy tolerances.</div>
+
+<svg viewBox="0 0 800 340" width="100%" height="auto">
+  <!-- Rule options panel -->
+  <rect x="30" y="20" width="740" height="300" rx="8" fill="#1c2128" stroke="#30363d"/>
+  <text x="400" y="48" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="bold">RULE CONFIGURATION (oxlintrc.json)</text>
+
+  <!-- Left column: domains -->
+  <text x="70" y="80" fill="#f78166" font-size="11" font-weight="bold">Domains</text>
+  <text x="70" y="100" fill="#c9d1d9" font-size="10">functions</text>
+  <text x="70" y="118" fill="#c9d1d9" font-size="10">interfaces</text>
+  <text x="70" y="136" fill="#c9d1d9" font-size="10">type aliases</text>
+  <text x="70" y="154" fill="#c9d1d9" font-size="10">jsx elements</text>
+  <text x="70" y="172" fill="#c9d1d9" font-size="10">object literals</text>
+  <text x="70" y="190" fill="#c9d1d9" font-size="10">hook calls</text>
+  <text x="70" y="208" fill="#c9d1d9" font-size="10">class structures</text>
+  <text x="70" y="226" fill="#c9d1d9" font-size="10">union types</text>
+  <text x="70" y="244" fill="#c9d1d9" font-size="10">template literals</text>
+  <text x="70" y="262" fill="#c9d1d9" font-size="10">forms / schemas</text>
+  <text x="70" y="280" fill="#c9d1d9" font-size="10">exports</text>
+
+  <!-- Middle column: match strategy -->
+  <text x="320" y="80" fill="#f78166" font-size="11" font-weight="bold">Strategy</text>
+  <text x="320" y="100" fill="#8b949e" font-size="10">exact</text>
+  <text x="320" y="118" fill="#8b949e" font-size="10">exact</text>
+  <text x="320" y="136" fill="#8b949e" font-size="10">exact + resolved</text>
+  <text x="320" y="154" fill="#8b949e" font-size="10">fuzzy (children)</text>
+  <text x="320" y="172" fill="#8b949e" font-size="10">exact</text>
+  <text x="320" y="190" fill="#8b949e" font-size="10">callee-signature</text>
+  <text x="320" y="208" fill="#8b949e" font-size="10">exact</text>
+  <text x="320" y="226" fill="#8b949e" font-size="10">member-overlap</text>
+  <text x="320" y="244" fill="#8b949e" font-size="10">exact</text>
+  <text x="320" y="262" fill="#8b949e" font-size="10">field-shape</text>
+  <text x="320" y="280" fill="#8b949e" font-size="10">exact</text>
+
+  <!-- Right column: thresholds / depth -->
+  <text x="520" y="80" fill="#f78166" font-size="11" font-weight="bold">Thresholds</text>
+  <text x="520" y="100" fill="#8b949e" font-size="10">minBodySize: 3  statements</text>
+  <text x="520" y="118" fill="#8b949e" font-size="10">minMembers: 2</text>
+  <text x="520" y="136" fill="#8b949e" font-size="10">minMembers: 1</text>
+  <text x="520" y="154" fill="#8b949e" font-size="10">minDepth: 3  nesting</text>
+  <text x="520" y="172" fill="#8b949e" font-size="10">minProperties: 3</text>
+  <text x="520" y="190" fill="#8b949e" font-size="10">minArgs: 0</text>
+  <text x="520" y="208" fill="#8b949e" font-size="10">minMethods: 2</text>
+  <text x="520" y="226" fill="#8b949e" font-size="10">overlapPct: 0.5</text>
+  <text x="520" y="244" fill="#8b949e" font-size="10">minExpressions: 2</text>
+  <text x="520" y="262" fill="#8b949e" font-size="10">minFields: 3</text>
+  <text x="520" y="280" fill="#8b949e" font-size="10">minExports: 3</text>
+</svg>
+</div>
+
+<!-- ========== EDGE CASES ========== -->
+<h2>4. Edge Cases to Account For</h2>
+<div class="diagram-container">
+
+<!-- Cross-boundary entropy -->
+<h3>Cross-boundary duplicates</h3>
+<svg viewBox="0 0 800 170" width="100%" height="auto">
+  <!-- Case 1: Type ↔ Schema -->
+  <rect x="30" y="15" width="350" height="60" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="205" y="35" text-anchor="middle" fill="#f778ba" font-size="10" font-weight="bold">Type ↔ Schema shadowing</text>
+  <text x="205" y="52" text-anchor="middle" fill="#c9d1d9" font-size="9">interface User { id, name, email }</text>
+  <text x="205" y="67" text-anchor="middle" fill="#c9d1d9" font-size="9">z.object({ id: z.num, name: z.str, ... })</text>
+  <text x="205" y="82" text-anchor="middle" fill="#8b949e" font-size="8">Same shape in TS type AND Zod schema</text>
+
+  <!-- Case 2: API ↔ DB -->
+  <rect x="420" y="15" width="350" height="60" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="595" y="35" text-anchor="middle" fill="#f778ba" font-size="10" font-weight="bold">API shape ↔ DB shape shadowing</text>
+  <text x="595" y="52" text-anchor="middle" fill="#c9d1d9" font-size="9">GET /api/users → { id, name, email }</text>
+  <text x="595" y="67" text-anchor="middle" fill="#c9d1d9" font-size="9">model User { id Int, name String, ... }</text>
+  <text x="595" y="82" text-anchor="middle" fill="#8b949e" font-size="8">Drizzle column defs mirror TS response types</text>
+
+  <!-- Case 3: React ↔ React -->
+  <rect x="30" y="90" width="350" height="60" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="205" y="110" text-anchor="middle" fill="#f778ba" font-size="10" font-weight="bold">Component shape duplication</text>
+  <text x="205" y="127" text-anchor="middle" fill="#c9d1d9" font-size="9">&lt;Card&gt;&lt;h2&gt;$0&lt;/h2&gt;&lt;p&gt;$1&lt;/p&gt;&lt;/Card&gt;</text>
+  <text x="205" y="142" text-anchor="middle" fill="#c9d1d9" font-size="9">&lt;Panel&gt;&lt;heading&gt;$0&lt;/heading&gt;&lt;body&gt;$1&lt;/body&gt;&lt;/Panel&gt;</text>
+  <text x="205" y="157" text-anchor="middle" fill="#8b949e" font-size="8">Same structure, different component names</text>
+
+  <!-- Case 4: Astro ↔ React -->
+  <rect x="420" y="90" width="350" height="60" rx="6" fill="#1c2128" stroke="#30363d"/>
+  <text x="595" y="110" text-anchor="middle" fill="#f778ba" font-size="10" font-weight="bold">Cross-framework duplication</text>
+  <text x="595" y="127" text-anchor="middle" fill="#c9d1d9" font-size="9">Astro: &lt;Layout&gt;...&lt;/Layout&gt;</text>
+  <text x="595" y="142" text-anchor="middle" fill="#c9d1d9" font-size="9">React: &lt;Layout&gt;...&lt;/Layout&gt;</text>
+  <text x="595" y="157" text-anchor="middle" fill="#8b949e" font-size="8">Same layout structure in .astro AND .tsx</text>
+</svg>
+
+<!-- What NOT to flag -->
+<h3>False positives to avoid</h3>
+<svg viewBox="0 0 800 130" width="100%" height="auto">
+  <rect x="30" y="15" width="230" height="100" rx="6" fill="#3fb950" fill-opacity="0.06" stroke="#30363d"/>
+  <text x="145" y="38" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="bold">Generated code</text>
+  <text x="145" y="56" text-anchor="middle" fill="#8b949e" font-size="9">Prisma client, tRPC routers,</text>
+  <text x="145" y="72" text-anchor="middle" fill="#8b949e" font-size="9">GraphQL codegen, gRPC stubs.</text>
+  <text x="145" y="90" text-anchor="middle" fill="#8b949e" font-size="9">Skip glob: **/generated/**</text>
+  <text x="145" y="108" text-anchor="middle" fill="#3fb950" font-size="8">skipGenerated: true</text>
+
+  <rect x="285" y="15" width="230" height="100" rx="6" fill="#3fb950" fill-opacity="0.06" stroke="#30363d"/>
+  <text x="400" y="38" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="bold">Test duplication</text>
+  <text x="400" y="56" text-anchor="middle" fill="#8b949e" font-size="9">Tests are supposed to be</text>
+  <text x="400" y="72" text-anchor="middle" fill="#8b949e" font-size="9">structured and repetitive.</text>
+  <text x="400" y="90" text-anchor="middle" fill="#8b949e" font-size="9">Skip glob: **/*.test.*</text>
+  <text x="400" y="108" text-anchor="middle" fill="#3fb950" font-size="8">skipTests: true</text>
+
+  <rect x="540" y="15" width="230" height="100" rx="6" fill="#3fb950" fill-opacity="0.06" stroke="#30363d"/>
+  <text x="655" y="38" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="bold">Intentional WET code</text>
+  <text x="655" y="56" text-anchor="middle" fill="#8b949e" font-size="9">Route files with similar</text>
+  <text x="655" y="72" text-anchor="middle" fill="#8b949e" font-size="9">structure, config files.</text>
+  <text x="655" y="90" text-anchor="middle" fill="#8b949e" font-size="9">Use inline disable comments.</text>
+  <text x="655" y="108" text-anchor="middle" fill="#3fb950" font-size="8">// entropy-disable</text>
+</svg>
+</div>
+
+<!-- ========== PRIORITY ORDER ========== -->
+<h2>5. Implementation Priority</h2>
+<div class="diagram-container">
+<div class="diagram-label">What to build in what order, based on entropy-per-effort</div>
+
+<table>
+  <tr><th>#</th><th>Feature</th><th>Impact</th><th>Effort</th><th>Why first?</th></tr>
+  <tr>
+    <td><strong>1</strong></td>
+    <td><strong>Functions:</strong> body + signature fingerprinting (already have it)</td>
+    <td>High</td>
+    <td>Done</td>
+    <td>Most common duplication: two functions that do the same thing</td>
+  </tr>
+  <tr>
+    <td><strong>2</strong></td>
+    <td><strong>Interfaces &amp; Type Aliases:</strong> member fingerprinting, alias resolution</td>
+    <td>Very High</td>
+    <td>Medium</td>
+    <td>Type duplication is the silent entropy killer. Interface User = Interface Person with different names. Alias resolution catches the "UserId = string, CustomerRef = string" problem.</td>
+  </tr>
+  <tr>
+    <td><strong>3</strong></td>
+    <td><strong>JSX Elements:</strong> structure fingerprinting with text/attr normalization</td>
+    <td>High</td>
+    <td>Medium</td>
+    <td>Same card / same form / same list in multiple components. The frontend version of function duplication.</td>
+  </tr>
+  <tr>
+    <td><strong>4</strong></td>
+    <td><strong>Object Literals:</strong> config object shape fingerprinting</td>
+    <td>Medium</td>
+    <td>Low</td>
+    <td>Style objects, option bags, query configs. Small code, high leverage.</td>
+  </tr>
+  <tr>
+    <td><strong>5</strong></td>
+    <td><strong>Hook Calls:</strong> callee + args fingerprinting</td>
+    <td>Medium</td>
+    <td>Low</td>
+    <td>Same useState/useEffect/useQuery patterns with different variable names but identical structure.</td>
+  </tr>
+  <tr>
+    <td><strong>6</strong></td>
+    <td><strong>Union overlaps:</strong> member-set intersection</td>
+    <td>Medium</td>
+    <td>Medium</td>
+    <td>Status enums, discriminated unions that could be merged.</td>
+  </tr>
+  <tr>
+    <td><strong>7</strong></td>
+    <td><strong>Cross-file aggregation:</strong> CLI that collects fingerprints across files</td>
+    <td>Very High</td>
+    <td>Medium</td>
+    <td>This is where the real entropy lies — same helper in utils/a.ts and utils/b.ts.</td>
+  </tr>
+  <tr>
+    <td><strong>8</strong></td>
+    <td><strong>Class structure:</strong> method + property fingerprinting</td>
+    <td>Low</td>
+    <td>Low</td>
+    <td>Services/controllers with same shape. Lower priority if not OOP-heavy.</td>
+  </tr>
+  <tr>
+    <td><strong>9</strong></td>
+    <td><strong>Template Literal:</strong> SQL/CSS/URL fingerprinting</td>
+    <td>Low</td>
+    <td>Low</td>
+    <td>Niche but meaningful in certain codebases.</td>
+  </tr>
+</table>
+</div>
+
+<!-- ========== PHILOSOPHY ========== -->
+<div class="note">
+  <strong>The central design tension:</strong> You're building a tool that tells developers "your code is too similar." But similarity isn't always bad — route files, test files, and config files look similar by design. The art is in distinguishing <em>accidental</em> duplication (should collapse) from <em>intentional</em> repetition (should stay). The configuration surface and the `skipGlobs`/`skipTests`/`skipGenerated` options are where this distinction lives.
+</div>
+
+</body>
+</html>

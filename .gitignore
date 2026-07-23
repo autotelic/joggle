@@ -1,2 +1,10 @@
 node_modules/
 dist/
+entropy-machine/target/
+repos/
+repos/
+
+
+# Added by cargo
+
+/target
