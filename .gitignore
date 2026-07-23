@@ -2,6 +2,7 @@ node_modules/
 dist/
 entropy-machine/target/
 repos/
+entropy-machine/entropy-types
 repos/
 
 
