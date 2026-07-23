@@ -1,0 +1,31 @@
+{
+  "name": "mess",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "pnpm build && oxlint -c oxlintrc.json test/",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/togmund/mess.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/togmund/mess/issues"
+  },
+  "homepage": "https://github.com/togmund/mess#readme",
+  "dependencies": {
+    "@oxlint/plugins": "^1.75.0",
+    "oxlint": "^1.75.0",
+    "typescript": "^7.0.2"
+  }
+}
