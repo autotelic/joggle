@@ -16,10 +16,13 @@ cd entropy-machine && cargo build --release
 ./target/release/entropy-machine --all src/
 
 # Run individual passes
-./target/release/entropy-machine --ncd src/        # distribution + NCD
-./target/release/entropy-machine --types src/      # type resolution + collisions
-./target/release/entropy-machine --compress src/   # raw source, className, comments
-./target/release/entropy-machine --converge src/   # progressive convergence
+./target/release/entropy-machine --ncd src/          # distribution + NCD
+./target/release/entropy-machine --types src/        # type resolution + collisions
+./target/release/entropy-machine --compress src/     # raw source, className, comments
+./target/release/entropy-machine --converge src/     # progressive convergence
+./target/release/entropy-machine --composition src/  # tripartite composition linter
+./target/release/entropy-machine --deep-modules src/ # Ousterhout deep module metrics
+./target/release/entropy-machine --ddd src/          # DDD boundary analysis
 
 # Tune sensitivity
 ./target/release/entropy-machine --all --ncd-threshold 0.2 src/
@@ -28,13 +31,16 @@ cd entropy-machine && cargo build --release
 ## What It Detects
 
 | Pass | Flag | What It Finds |
-|---|---|---|
+|---|---|---|---|
 | **Distribution** | `--ncd` | Namespace entropy table with ratio per directory. `ui` at 0.43? Template territory. `db` at 0.70 with `<arrow>` repeated 6×? That's real. |
 | **NCD** | `--ncd` | gzip normalized fingerprints pairwise. `handleError` copy-pasted into 4 payment dialogs at NCD=0.064. Raw source body comparison — Armstrong's actual mechanism. |
 | **Type Resolution** | `--types` | Spawns a Go type checker. Structural type identity, same-name collisions, declared-vs-resolved divergence, identity passthrough ratio. `addTodo` returns `void` in the provider but `Todo` in the DB — caught. |
 | **Compression Targets** | `--compress` | Raw source NCD, className string dedup, identifier naming entropy, comment duplication. `"mx-auto w-full max-w-sm"` in 10 files — token candidate. |
 | **Convergence** | `--converge` | Simulate collapse → remap callers → re-detect emergent duplicates. 52 exact matches collapsed → 1 new fuzzy match revealed. |
-| **Entropy Score** | `--ncd` | `unique / total` fingerprints → single 0–1 number. 0.98 for Jig, 0.84 for the composition starter. |
+| **Entropy Score** | `----ncd` | `unique / total` fingerprints → single 0–1 number. 0.98 for Jig, 0.84 for the composition starter. |
+| **Composition** | `--composition` | Tripartite composition enforcement: dot-notation exports, `{ state, actions, meta }` provider shape, one-file-per-block, prop drilling, missing provider guards. |
+| **Deep Modules** | `--deep-modules` | Ousterhout deep module score (impl_lines / exports), information hiding leaks, temporal coupling, exception sprawl, classitis, general/special-purpose classification, strategic comment density. |
+| **DDD** | `--ddd` | Aggregate root boundary violations, bounded context clustering, ubiquitous language drift, entity vs value object vs domain event classification. |
 
 ## Architecture
 
@@ -48,7 +54,10 @@ entropy-machine/
 │   ├── shower.rs       # Distribution table + namespace stats
 │   ├── compress.rs     # Raw source, className, naming, comment analysis
 │   ├── suggest.rs      # Suggestion engine (collapse/extract/missing-type)
-│   └── types.rs        # tsgolint subprocess integration
+│   ├── types.rs        # tsgolint subprocess integration
+│   ├── composition.rs  # Tripartite composition pattern linter
+│   ├── deep.rs         # Ousterhout deep module metrics
+│   └── ddd.rs          # DDD boundary analysis
 ├── entropy-types       # Go binary (not committed — build from repos/tsgolint)
 └── Cargo.toml
 ```
