@@ -1,6 +1,0 @@
-{
-  "jsPlugins": [{ "name": "entropy", "specifier": "./dist/index" }],
-  "rules": {
-    "entropy/entropy-machine": "warn"
-  }
-}

@@ -1,118 +1,77 @@
 # entropy-machine
 
-An entropy reduction tool for TypeScript codebases. Built on Joe Armstrong's idea: walk the AST up and down, find structural duplication, collapse it until the codebase converges.
+> "I know what I would do — I'd write an entropy calculation machine which would look at code and say 'ooh that's the same as that, you could just use that.' And you'd walk the entropy machine up and down, and when you'd finished you'd have a codebase with lower entropy."
+>
+> — Joe Armstrong, *The Mess We're In*
 
-```
-npm install -D entropy-machine
-npx entropy-machine src/
-```
+An entropy reduction tool for TypeScript codebases. Finds structural duplication, type collisions, naming drift, and design token repetition — then shows where the entropy lives so you can decide what to collapse.
 
-## What it does
-
-Runs six analysis passes against your TypeScript source:
-
-| Pass | What | Finds |
-|---|---|---|
-| **Exact match** | AST fingerprinting with identifier normalization | `sum(a,b){return a+b}` = `add(x,y){return x+y}` |
-| **NCD** | gzip normalized fingerprints → fuzzy similarity | `QuoteIcon` ≈ `SwirlyDoodle` at NCD=0.20 |
-| **Distribution** | Namespace entropy table + most-repeated structures | `lib/db/*.ts` has `delay()` in 6 files |
-| **Compression targets** | Raw source NCD, CSS/className dedup, naming entropy, comment duplication | `font-display text-3xl...` in 9 files |
-| **Convergence** | Simulate collapse → remap callers → re-detect emergent matches | Collapsing `add→sum` reveals that `calculateTotal` = `computePrice` |
-| **Entropy score** | `unique_fingerprints / total_entities` → single 0-1 number | 0.98 for Jig, 0.84 for composition-pattern-starter |
-
-## Quick start
+## Quick Start
 
 ```bash
 # Build
 cd entropy-machine && cargo build --release
 
-# Run all analyses
+# Run all analyses against your codebase
 ./target/release/entropy-machine --all src/
 
-# Run specific passes
-./target/release/entropy-machine --ncd src/        # NCD + distribution
-./target/release/entropy-machine --compress src/   # Compression targets only
-./target/release/entropy-machine --converge src/   # Progressive convergence
+# Run individual passes
+./target/release/entropy-machine --ncd src/        # distribution + NCD
+./target/release/entropy-machine --types src/      # type resolution + collisions
+./target/release/entropy-machine --compress src/   # raw source, className, comments
+./target/release/entropy-machine --converge src/   # progressive convergence
 
 # Tune sensitivity
 ./target/release/entropy-machine --all --ncd-threshold 0.2 src/
 ```
 
+## What It Detects
+
+| Pass | Flag | What It Finds |
+|---|---|---|
+| **Distribution** | `--ncd` | Namespace entropy table with ratio per directory. `ui` at 0.43? Template territory. `db` at 0.70 with `<arrow>` repeated 6×? That's real. |
+| **NCD** | `--ncd` | gzip normalized fingerprints pairwise. `handleError` copy-pasted into 4 payment dialogs at NCD=0.064. Raw source body comparison — Armstrong's actual mechanism. |
+| **Type Resolution** | `--types` | Spawns a Go type checker. Structural type identity, same-name collisions, declared-vs-resolved divergence, identity passthrough ratio. `addTodo` returns `void` in the provider but `Todo` in the DB — caught. |
+| **Compression Targets** | `--compress` | Raw source NCD, className string dedup, identifier naming entropy, comment duplication. `"mx-auto w-full max-w-sm"` in 10 files — token candidate. |
+| **Convergence** | `--converge` | Simulate collapse → remap callers → re-detect emergent duplicates. 52 exact matches collapsed → 1 new fuzzy match revealed. |
+| **Entropy Score** | `--ncd` | `unique / total` fingerprints → single 0–1 number. 0.98 for Jig, 0.84 for the composition starter. |
+
 ## Architecture
 
 ```
-                    extract.rs  ──► fingerprint strings (normalized AST)
-                         │
-                    ncd.rs     ──► pairwise gzip comparison
-                         │
-                    graph.rs   ──► call/type/JSX dependency graph
-                    ┌────┼────┐
-                    │    │    │
-              shower.rs │  compress.rs
-               distrib.  │  raw source NCD
-               entropy    │  className dedup
-               table      │  naming entropy
-                          │  comment duplication
-                    suggest.rs
-               collapse / extract / missing-type
+entropy-machine/
+├── src/
+│   ├── main.rs         # CLI, file processing, analysis dispatch
+│   ├── extract.rs      # AST fingerprint visitor (oxc_ast_visit)
+│   ├── ncd.rs          # Normalized Compression Distance via gzip
+│   ├── graph.rs        # Dependency graph (calls, renders, type refs)
+│   ├── shower.rs       # Distribution table + namespace stats
+│   ├── compress.rs     # Raw source, className, naming, comment analysis
+│   ├── suggest.rs      # Suggestion engine (collapse/extract/missing-type)
+│   └── types.rs        # tsgolint subprocess integration
+├── entropy-types       # Go binary (not committed — build from repos/tsgolint)
+└── Cargo.toml
 ```
 
-Each module composes: `extract` produces normalized fingerprint strings → `ncd` compresses them pairwise → `graph` builds the dependency graph → `shower` visualizes the structural landscape → `compress` finds repetition in non-code targets → `suggest` classifies findings.
+Each module is composable: `extract` produces normalized fingerprints → `ncd` compresses them → `graph` builds the dependency graph → `shower` visualizes the landscape → `compress` finds non-code repetition → `types` adds structural type identity.
 
-## Composition-aware analysis
+## Requirements
 
-The machine doesn't treat all structural matches equally. It distinguishes:
+- Rust 1.95+ (oxc crates track recent Rust)
+- Go 1.26+ (for the type checker subprocess)
+- `repos/tsgolint` cloned with `typescript-go` submodule
 
-| Match | Namespaces | Action |
-|---|---|---|
-| `sum(a,b)` ≈ `add(x,y)` in `lib/` | Same | Collapse into one |
-| `Header.tsx::Header` ≈ `Header.tsx::MobileHeader` | Same | Fuzzy — may share pattern |
-| `Composer.Header` ≈ `Settings.Header` | Different | Cross-namespace — silence (composition pattern) |
+## Building the Type Checker
 
-Namespace detection is automatic from directory structure: `lib/`, `components/`, `features/`, `app/` etc.
-
-## Output format
-
+```bash
+cd repos/tsgolint
+git submodule update --init
+mkdir -p internal/collections
+find typescript-go/internal/collections -type f ! -name '*_test.go' -exec cp {} internal/collections/ \;
+cd typescript-go && git am --3way ../patches/*.patch && cd ..
+go build -o ../entropy-machine/entropy-types ./cmd/tsgolint/
 ```
-═══ Entropy Distribution ═══
-
-  Overall: 334 total, 282 unique → entropy ratio 0.84
-
-  ╭──────────────┬────────┬─────────┬────────┬────────┬───────────────────────╮
-  │ namespace    │  total │  unique │ dup gr │ ratio  │  most repeated        │
-  ├──────────────┼────────┼─────────┼────────┼────────┼───────────────────────┤
-  │ ui           │    123 │      53 │      1 │ 0.431  │ AlertTitle (11×)      │
-  │ db           │     40 │      28 │      4 │ 0.700  │ <arrow> (6×)          │
-  │ settings-dlg │     31 │      29 │      1 │ 0.935  │ SaveButtonProps (2×)  │
-  ╰──────────────┴────────┴─────────┴────────┴────────┴───────────────────────╯
-
-  ── Most Repeated Structures ──
-    11×  in 3 (card.tsx, alert.tsx, dialog.tsx)
-    8×  in 8 (counter.ts, messages.ts, settings.ts, ...) ↕ cross-namespace
-    7×  in 6 (todo-list-context.tsx, composer-context.tsx, ...) ↕ cross-namespace
-```
-
-## The Armstrong vision
-
-Joe Armstrong described an entropy machine that walks up and down the stack looking for the same idea expressed in different forms — JSON body, Erlang term, SQL row, URL query string — and collapses them to a single canonical representation. This tool applies that philosophy to a single-language TypeScript codebase, finding functions, interfaces, JSX components, and object literals that express the same structure across files and namespaces.
-
-The four Armstrong mechanisms implemented:
-
-1. **Compression as similarity detector** — NCD (Normalized Compression Distance) via gzip. Two structurally similar function bodies compress well together regardless of naming.
-2. **Entropy measurement** — Per-file uniqueness ratio. `register/success/page.tsx` (entropy=0.08) is almost entirely duplicated by the failure page.
-3. **Progressive convergence** — Simulate collapse → remap call targets → re-detect emergent duplicates. Each pass reveals new opportunities.
-4. **System-wide walk** — Cross-file, cross-namespace analysis. Not just "this file has duplicates" but "this structure repeats 8 times across these 3 namespaces."
 
 ## Contributing
 
-The Rust binary lives in `entropy-machine/`. An oxlint JS plugin for per-file checks lives in `src/`. Both ship together.
-
-Requirements: Rust 1.95+, Node.js 20+, pnpm.
-
-```bash
-# Rust binary
-cd entropy-machine && cargo build --release
-
-# JS oxlint plugin  
-pnpm install && pnpm run build
-```
+The machine is a single Rust binary that uses oxc for parsing and AST analysis, tsgolint (Go/TypeScript) for type resolution, and rayon for parallelism. All analysis is local — no network calls, no API keys.
