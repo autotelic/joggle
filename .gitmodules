@@ -1,0 +1,3 @@
+[submodule "entropy-machine/tsgolint"]
+	path = entropy-machine/tsgolint
+	url = https://github.com/oxc-project/tsgolint.git

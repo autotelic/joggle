@@ -9,8 +9,12 @@ An entropy reduction tool for TypeScript codebases. Finds structural duplication
 ## Quick Start
 
 ```bash
-# Build
-cd entropy-machine && cargo build --release
+# Clone with submodules
+git clone --recursive <repo-url>
+cd entropy-machine
+
+# Build (Go binary is auto-compiled by build.rs)
+cargo build --release
 
 # Run all analyses against your codebase
 ./target/release/entropy-machine --all src/
@@ -58,7 +62,11 @@ entropy-machine/
 │   ├── composition.rs  # Tripartite composition pattern linter
 │   ├── deep.rs         # Ousterhout deep module metrics
 │   └── ddd.rs          # DDD boundary analysis
-├── entropy-types       # Go binary (not committed — build from repos/tsgolint)
+├── tsgolint/           # Git submodule — Go type checker (github.com/oxc-project/tsgolint)
+│   └── typescript-go/  # Nested submodule — Microsoft's TypeScript Go port
+├── patches/
+│   └── 0001-entropy-analysis.patch  # Entropy fingerprinting applied at build time
+├── build.rs            # Auto-builds the Go binary during cargo build
 └── Cargo.toml
 ```
 
@@ -67,19 +75,30 @@ Each module is composable: `extract` produces normalized fingerprints → `ncd` 
 ## Requirements
 
 - Rust 1.95+ (oxc crates track recent Rust)
-- Go 1.26+ (for the type checker subprocess)
-- `repos/tsgolint` cloned with `typescript-go` submodule
+- Go 1.26+ (for building the type checker)
+- Git (submodules are auto-initialized by build.rs)
 
-## Building the Type Checker
+The Go type checker is built from [oxc-project/tsgolint](https://github.com/oxc-project/tsgolint) (a fork of typescript-eslint/tsgolint that adds headless mode). An entropy analysis patch is applied on top during `cargo build`. Everything is handled automatically.
+
+## Keeping tsgolint Up to Date
 
 ```bash
-cd repos/tsgolint
-git submodule update --init
-mkdir -p internal/collections
-find typescript-go/internal/collections -type f ! -name '*_test.go' -exec cp {} internal/collections/ \;
-cd typescript-go && git am --3way ../patches/*.patch && cd ..
-go build -o ../entropy-machine/entropy-types ./cmd/tsgolint/
+cd entropy-machine/tsgolint
+git fetch origin && git checkout origin/main   # latest oxc-project fork
+cd ../.. && cargo build --release              # rebuilds the Go binary
 ```
+
+If the entropy patch no longer applies cleanly, regenerate it:
+
+```bash
+cd entropy-machine/tsgolint
+git checkout -b entropy origin/main
+git am --3way ../patches/0001-entropy-analysis.patch   # re-apply manually
+# resolve any conflicts, then:
+git format-patch -1 --stdout > ../patches/0001-entropy-analysis.patch
+```
+
+To pull in changes from upstream typescript-eslint/tsgolint, watch the [oxc-project fork](https://github.com/oxc-project/tsgolint) — it syncs from upstream periodically.
 
 ## Contributing
 
