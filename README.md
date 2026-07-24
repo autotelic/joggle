@@ -1,8 +1,8 @@
 # entropy-machine
 
-> "I know what I would do — I'd write an entropy calculation machine which would look at code and say 'ooh that's the same as that, you could just use that.' And you'd walk the entropy machine up and down, and when you'd finished you'd have a codebase with lower entropy."
+> "I want to build the entropy reverser — a big sausage machine where you put all programs into it and you turn the handle and a smaller number of programs come out."
 >
-> — Joe Armstrong, *The Mess We're In*
+> — Joe Armstrong, *The Mess We're In*, 2014
 
 An entropy reduction tool for TypeScript codebases. Finds structural duplication, type collisions, naming drift, and design token repetition — then shows where the entropy lives so you can decide what to collapse.
 
