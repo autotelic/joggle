@@ -29,6 +29,19 @@ export interface Unit {
   readonly shape: string
   readonly tokens: ReadonlyArray<string>
   readonly shapeHash: string
+  /** Type-position names this declaration mentions, before resolution. */
+  readonly typeRefs: ReadonlyArray<string>
+  /**
+   * The same names after following this file's imports to where each is
+   * declared. Two declarations whose shape matches but whose resolved types
+   * differ are not the same thing, however alike they read.
+   *
+   * Filled in a second pass, once the whole file set is known: a type name only
+   * means something when we know where it came from.
+   */
+  typeSignature: string
+  /** The comment directly above the declaration, if there is one. */
+  readonly doc: string | undefined
 }
 
 export interface SourceFile {
@@ -69,11 +82,12 @@ interface IdentifierSite {
   readonly end: number
   readonly name: string
   /**
-   * Property keys and member-access properties are part of what a declaration
-   * *means*; local binding names are not. Keeping the former and erasing the
-   * latter is the difference between "the same shape" and "the same thing".
+   * Property keys, member-access properties and type references are part of what
+   * a declaration *means*; local binding names are not. Keeping the former and
+   * erasing the latter is the difference between "the same shape" and "the same
+   * thing".
    */
-  readonly keep: boolean
+  readonly kind: "binding" | "property" | "type"
 }
 
 /**
@@ -138,7 +152,8 @@ const identifierOffsets = (root: unknown): ReadonlyArray<number> => {
  */
 const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
   const found: Array<{ start: number; end: number; name: string }> = []
-  const keep = new Set<number>()
+  const properties = new Set<number>()
+  const types = new Set<number>()
   const typeRoots: Array<unknown> = []
   const typeParameters = new Set<string>()
   const stack: Array<unknown> = [root]
@@ -155,7 +170,7 @@ const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
         for (const field of ["key", "property", "id"]) {
           const child = node[field]
           if (isRecord(child) && child["type"] === "Identifier" && typeof child["start"] === "number") {
-            keep.add(child["start"])
+            properties.add(child["start"])
           }
         }
       }
@@ -182,11 +197,14 @@ const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
     for (const offset of identifierOffsets(typeRoot)) {
       const site = found.find((candidate) => candidate.start === offset)
       if (site === undefined || typeParameters.has(site.name)) continue
-      keep.add(offset)
+      types.add(offset)
     }
   }
 
-  return found.map((site) => ({ ...site, keep: keep.has(site.start) }))
+  return found.map((site) => ({
+    ...site,
+    kind: properties.has(site.start) ? "property" : types.has(site.start) ? "type" : "binding",
+  }))
 }
 
 interface Span {
@@ -219,7 +237,7 @@ const normalize = (
     }
   }
   for (const identifier of identifiers) {
-    if (identifier.keep) continue
+    if (identifier.kind !== "binding") continue
     if (identifier.start < span.start) continue
     if (identifier.start + identifier.name.length > span.end) continue
     if (text.slice(identifier.start, identifier.start + identifier.name.length) !== identifier.name) continue
@@ -435,10 +453,23 @@ const parseSourceFile = (file: string, text: string): SourceFile => {
   const parsed = parseSync(file, text, { sourceType: "module", lang: langOf(file) })
   const program: unknown = parsed.program
   const identifiers = collectIdentifiers(program)
-  const comments: ReadonlyArray<Span> = parsed.comments.map((comment) => ({
+  const comments = parsed.comments.map((comment) => ({
     start: comment.start,
     end: comment.end,
+    value: comment.value,
   }))
+  // The comment immediately above a declaration: docs/names.md argues it is the
+  // single spot an agent is guaranteed to read, so which copy carries one is
+  // evidence about which copy to keep.
+  const docFor = (from: number): string | undefined => {
+    let best: { start: number; end: number; value: string } | undefined
+    for (const comment of comments) {
+      if (comment.end > from) continue
+      if (text.slice(comment.end, from).trim() !== "") continue
+      if (best === undefined || comment.end > best.end) best = comment
+    }
+    return best?.value.replace(/^\s*\*+\s?/gm, "").trim() || undefined
+  }
   const starts = lineStartsOf(text)
 
   const units: Array<Unit> = []
@@ -459,6 +490,20 @@ const parseSourceFile = (file: string, text: string): SourceFile => {
         shape,
         tokens: tokenize(shape),
         shapeHash: hash(shape),
+        typeRefs: [
+          ...new Set(
+            identifiers
+              .filter(
+                (identifier) =>
+                  identifier.kind === "type" &&
+                  identifier.start >= site.start &&
+                  identifier.end <= site.end,
+              )
+              .map((identifier) => identifier.name),
+          ),
+        ],
+        typeSignature: "",
+        doc: docFor(site.start),
       })
     }
   }
@@ -559,6 +604,26 @@ export const loadWorkspace = (
       // hosts such as GitHub Actions can annotate the right file.
       parsed.push(parseSourceFile(path.relative(root, absolute), text))
     }
+    const graph = buildImportGraph(parsed, path)
+    // Resolution happens here, not at parse time, because it needs the whole
+    // file set: a type name only means something once we know where it came from.
+    const resolveRef = (file: string, name: string): string => {
+      for (const edge of graph.importersOf.get(file) ?? []) {
+        if (edge.from === file && edge.names.includes(name)) return `${edge.to}#${name}`
+      }
+      for (const edge of graph.edges) {
+        if (edge.from === file && edge.resolved && edge.names.includes(name)) return `${edge.to}#${name}`
+      }
+      return `${file}#${name}`
+    }
+    parsed.forEach((file) => {
+      file.units.forEach((unit) => {
+        unit.typeSignature = unit.typeRefs
+          .map((name) => resolveRef(file.path, name))
+          .sort()
+          .join("|")
+      })
+    })
     const units = parsed.flatMap((file) => file.units)
     const byName = new Map<string, Array<Unit>>()
     for (const unit of units) {
@@ -566,5 +631,5 @@ export const loadWorkspace = (
       if (existing === undefined) byName.set(unit.name, [unit])
       else existing.push(unit)
     }
-    return { root, files: parsed, units, byName, imports: buildImportGraph(parsed, path) }
+    return { root, files: parsed, units, byName, imports: graph }
   })

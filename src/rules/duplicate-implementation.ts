@@ -12,8 +12,9 @@ const spec: ClusterRule = {
   onUnavailable: "report",
   subject: (cluster) => {
     const names = [...new Set(cluster.members.map((member) => member.name))]
-    const what = names.length === 1 ? `\`${names[0] ?? "?"}\`` : `${cluster.members.length} declarations`
-    return `${what} is declared ${cluster.members.length} times`
+    return names.length === 1
+      ? `\`${names[0] ?? "?"}\` is declared ${cluster.members.length} times`
+      : `${cluster.members.length} declarations share one shape`
   },
 }
 
@@ -24,7 +25,9 @@ const spec: ClusterRule = {
 const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
   const groups = new Map<string, Array<Unit>>()
   for (const unit of workspace.units) {
-    const key = `${unit.kind}:${unit.shapeHash}`
+    // Resolved types are part of the key: two helpers that read identically but
+    // reference different declared types are not the same helper.
+    const key = `${unit.kind}:${unit.shapeHash}:${unit.typeSignature}`
     const existing = groups.get(key)
     if (existing === undefined) groups.set(key, [unit])
     else existing.push(unit)

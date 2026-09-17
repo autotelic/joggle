@@ -55,7 +55,7 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
 
     expect(report.files).toBe(2)
     expect(report.rules).toBe(3)
-    expect(report.diagnostics.length).toBe(2)
+    expect(report.diagnostics.length).toBe(1)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/duplicate-meaning",
       "joggle/naming-drift",
@@ -82,6 +82,6 @@ it.effect("a rule filter runs exactly one rule and skips nothing", () =>
     )
     expect(report.rules).toBe(1)
     expect(report.skipped.length).toBe(0)
-    expect(report.diagnostics.length).toBe(2)
+    expect(report.diagnostics.length).toBe(1)
   }),
 )
