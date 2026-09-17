@@ -19,12 +19,25 @@ export const tsgoStub = Layer.succeed(
   }),
 )
 
+const stubStats = {
+  requests: 1,
+  replayed: 0,
+  calls: 0,
+  unavailable: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+}
+
 export const judgeStub = (answers: Readonly<Record<string, Answer>>) =>
   Layer.succeed(
     JudgeService,
     JudgeService.of({
       ask: () => Effect.succeed({ answers, replayed: false }),
-      stats: Effect.succeed({ requests: 1, replayed: 0, calls: 0, unavailable: 0 }),
+      // Every candidate gets the same stubbed verdict, batched or not: the
+      // stubs are about policy, and batching must not change the policy.
+      askMany: (requests) =>
+        Effect.succeed(requests.map(() => ({ answers, replayed: false }))),
+      stats: Effect.succeed(stubStats),
     }),
   )
 
@@ -33,7 +46,8 @@ export const judgeFailing = (reason: string) =>
     JudgeService,
     JudgeService.of({
       ask: () => Effect.fail(new JudgeUnavailable({ reason })),
-      stats: Effect.succeed({ requests: 1, replayed: 0, calls: 0, unavailable: 0 }),
+      askMany: () => Effect.fail(new JudgeUnavailable({ reason })),
+      stats: Effect.succeed(stubStats),
     }),
   )
 

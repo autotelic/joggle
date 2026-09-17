@@ -2,7 +2,7 @@ import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { makeCluster, nameList, type Cluster } from "../cluster.ts"
 import { budgetNote, choiceOf, defineRule, noulOf, outcome } from "../rule.ts"
-import { assessCluster, type ClusterRule } from "./cluster-verdict.ts"
+import { assessClusters, type ClusterRule } from "./cluster-verdict.ts"
 import type { Answer } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -35,7 +35,7 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
         type: "noul",
         instructions: {
           question: "Do `left.symbol` and `right.symbol` denote the same concept?",
-          compare: ["`left.words`", "`right.words`"],
+          compare: ["{candidate}left.words", "{candidate}right.words"],
           focus:
             "Compare what each name means word by word. Two names for one concept are a spelling problem; two names for two different things are not, however similar they read.",
         },
@@ -48,9 +48,9 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
         type: "choice",
         instructions: {
           question: "What should happen to these two names?",
-          compare: ["`left.symbol`", "`right.symbol`"],
+          compare: ["{candidate}left.symbol", "{candidate}right.symbol"],
           focus:
-            "`left.words` and `right.words` are what each name means; `same_words` is true when only the spelling differs.",
+            "{candidate}left.words and {candidate}right.words are what each name means; {candidate}same_words is true when only the spelling differs.",
         },
         criteria: {
           same_use_left: `One concept, two spellings. Standardize on \`${left?.name ?? "left"}\`.`,
@@ -222,10 +222,7 @@ export const namingDrift = defineRule({
     const clusters = find(workspace)
     if (clusters.length === 0) return outcome([])
     const budget = policy.namingDrift.maxClusters
-    const outcomes = yield* Effect.forEach(clusters.slice(0, budget), assessCluster(spec, workspace.imports), {
-      concurrency: 4,
-    })
-    const findings = outcomes.flatMap((entry) => (Option.isSome(entry) ? [entry.value] : []))
+    const findings = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))
     const unjudged = clusters.slice(budget)
     return outcome(
       findings,

@@ -30,10 +30,44 @@ export const policy = {
 
   judge: {
     baseUrl: "https://api.typesafe.ai",
-    /** In-memory judgement cache capacity. */
-    capacity: 4096,
     /** How long a successful judgement stays fresh, in days. */
     timeToLiveDays: 30,
+    /**
+     * Candidates per request. ONE, and the measurement is why.
+     *
+     * The parallel-questions cookbook reports batching 13 questions onto one
+     * shared document as 12.2x cheaper and 10x faster with no change in answers,
+     * and it says exactly when that applies: "the document dominates every
+     * request, so N single-question calls pay for it N times... The bigger the
+     * document, the closer the saving gets to a full Nx."
+     *
+     * Our candidates are not one shared document. They are different clusters
+     * with different evidence, so there is nothing to amortise -- the saving is
+     * the per-request boilerplate and nothing else. Measured on 80 identical
+     * requests judged both ways:
+     *
+     *   unbatched   80 calls   101,903 input tokens
+     *   batched      5 calls    82,091 input tokens   (19%, not 12x)
+     *   identical verdicts: 37/80 = 46%
+     *
+     * And the disagreements were systematic rather than noisy: redundancy
+     * scores fell by 0.05-0.10 across the board, and `member_0` started winning
+     * the canonical choice far more often. That is context rot and position
+     * bias, exactly what the primitives page warns about when it says to give
+     * each question only the context it needs.
+     *
+     * So batching is OFF by default and the speed comes from concurrency, which
+     * is the other pattern the docs prescribe -- the re-ranking cookbook fires
+     * 1,200 independent calls through a thread pool and calls it cheap. The
+     * batching machinery stays because it is the right lever for a state that IS
+     * shared, such as a naming family judged one member per question.
+     */
+    batchCandidates: 1,
+    /** Independent requests in flight at once. */
+    requestConcurrency: 16,
+    /** Token budget for one request when batching is used. Around 32,000 is the
+     *  API limit, shared between state and questions. */
+    batchTokens: 20000,
   },
 
   /**

@@ -3,7 +3,7 @@ import { policy } from "../policy.ts"
 import { components, makeCluster, type Cluster } from "../cluster.ts"
 import { budgetNote, defineRule, outcome } from "../rule.ts"
 import { allPairs, type ScoredPair } from "../similarity.ts"
-import { assessCluster, collapseQuestionnaire, type ClusterRule } from "./cluster-verdict.ts"
+import { assessClusters, collapseQuestionnaire, type ClusterRule } from "./cluster-verdict.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 import { nameList } from "../cluster.ts"
 
@@ -90,10 +90,7 @@ export const duplicateMeaning = defineRule({
     const clusters = find(workspace)
     if (clusters.length === 0) return outcome([])
     const budget = policy.duplicateMeaning.maxClusters
-    const outcomes = yield* Effect.forEach(clusters.slice(0, budget), assessCluster(spec, workspace.imports), {
-      concurrency: 4,
-    })
-    const findings = outcomes.flatMap((entry) => (Option.isSome(entry) ? [entry.value] : []))
+    const findings = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))
     const largest = clusters
       .slice(budget)
       .sort((a, b) => b.members.length - a.members.length)

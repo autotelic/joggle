@@ -42,8 +42,11 @@ export interface Report {
   readonly judge: {
     readonly requests: number
     readonly replayed: number
+    /** Wire calls. Fewer than requests means batching worked. */
     readonly calls: number
     readonly unavailable: number
+    readonly inputTokens: number
+    readonly outputTokens: number
   }
   readonly elapsedMs: number
 }
@@ -130,7 +133,7 @@ const problemSummary = (report: Report): string => {
 const provenance = (report: Report): string => {
   const { judged } = counts(report)
   if (report.diagnostics.length === 0 && report.judge.requests === 0) return ""
-  const { requests, calls, replayed, unavailable } = report.judge
+  const { requests, calls, replayed, unavailable, inputTokens } = report.judge
   const u = unavailable > 0 ? `, ${unavailable} unavailable` : ""
   const phases = report.timings
     .filter((timing) => timing.ms >= 50)
@@ -138,7 +141,8 @@ const provenance = (report: Report): string => {
     .map((timing) => `${timing.phase} ${Math.round(timing.ms / 100) / 10}s`)
     .join(", ")
   const where = phases === "" ? "" : ` (${phases})`
-  return `Finished in ${Math.round(report.elapsedMs / 100) / 10}s on ${plural(report.files, "file")} using ${plural(report.rules, "rule")}${where}. ${judged} of ${report.diagnostics.length} findings verified by a judgement; ${requests} judgements, ${calls} API calls, ${replayed} replayed${u}.`
+  const tokens = `${inputTokens.toLocaleString("en-US")} input tokens`
+  return `Finished in ${Math.round(report.elapsedMs / 100) / 10}s on ${plural(report.files, "file")} using ${plural(report.rules, "rule")}${where}. ${judged} of ${report.diagnostics.length} findings verified by a judgement; ${requests} judgements in ${calls} API calls, ${replayed} replayed${u}, ${tokens}.`
 }
 
 const notes = (report: Report): ReadonlyArray<string> => [

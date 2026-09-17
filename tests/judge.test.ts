@@ -1,6 +1,11 @@
 import { expect, it } from "@effect/vitest"
 import { Effect, FileSystem, Option } from "effect"
-import { cacheKeyFor, layer as judgeLayer, Service as JudgeService } from "../src/judge.ts"
+import {
+  cacheKeyFor,
+  layer as judgeLayer,
+  packRequests,
+  Service as JudgeService,
+} from "../src/judge.ts"
 import { policy } from "../src/policy.ts"
 import { JudgeUnavailable } from "../src/schema.ts"
 import { nodeLayer } from "./support.ts"
@@ -54,6 +59,20 @@ it.effect("offline without a cached judgement fails with a typed error", () =>
     expect(error).toBeInstanceOf(JudgeUnavailable)
   }).pipe(Effect.provide(nodeLayer)),
 )
+
+it("packs requests under the token budget and the candidate limit", () => {
+  const miss = (size: number, index: number) => ({
+    key: `k${index}`,
+    request: { evidence: { blob: "x".repeat(size) }, questions: {} },
+  })
+  const misses = [miss(400, 0), miss(400, 1), miss(400, 2)]
+  expect(packRequests(misses, 1).length).toBe(3)
+  expect(packRequests(misses, 2).length).toBe(2)
+  // The token budget caps it however many candidates are allowed.
+  expect(packRequests(misses, 100).length).toBe(1)
+  const huge = [miss(200000, 0), miss(200000, 1)]
+  expect(packRequests(huge, 100).length).toBe(2)
+})
 
 it.effect("the cache key carries the question version and the model", () =>
   Effect.sync(() => {

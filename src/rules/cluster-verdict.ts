@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
-import { Service as Judge, type JudgeResult } from "../judge.ts"
+import { Service as Judge, type JudgeRequest, type JudgeResult } from "../judge.ts"
 import { choiceOf, finding, noulOf } from "../rule.ts"
 import type { Answer, Diagnostic, Question, Severity } from "../schema.ts"
 import { namesOf, type Cluster } from "../cluster.ts"
@@ -25,6 +25,10 @@ export interface ClusterVerdict {
  * different bodies, and the model -- correctly -- said no. Across 1,864 name
  * candidates that produced six findings. The rule was never starved of budget;
  * it was asked the wrong question, and the answer was right.
+ *
+ * Question text refers to the candidate as `{candidate}`. That marker is what
+ * lets one request hold many candidates: the judge rewrites it to
+ * `candidates[3].` and the questions stay unambiguous.
  */
 export interface Questionnaire {
   /** Merged into the request state alongside `declarations`. */
@@ -36,9 +40,7 @@ export interface Questionnaire {
    * response cannot be claimed as a judgement, and for a fact-based rule it means
    * the finding is reported unverified rather than quietly dropped.
    */
-  readonly read: (
-    answers: Readonly<Record<string, Answer>>,
-  ) => ClusterVerdict | undefined
+  readonly read: (answers: Readonly<Record<string, Answer>>) => ClusterVerdict | undefined
 }
 
 export interface ClusterRule {
@@ -94,7 +96,8 @@ const describedNote = (cluster: Cluster, described: ReadonlyArray<Unit>): string
 export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => {
   const criteria: Record<string, string> = {}
   described.forEach((member, index) => {
-    criteria[`member_${index}`] = `Keep \`member_${index}\`: \`${member.name}\`, ${member.kind}, in ${member.file}.`
+    criteria[`member_${index}`] =
+      `Keep member_${index}: ${member.name}, ${member.kind}, in ${member.file}.`
   })
   const note = describedNote(cluster, described)
   return {
@@ -115,7 +118,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         type: "choice",
         instructions: {
           question: "What should happen to these declarations?",
-          compare: ["`declarations`"],
+          compare: ["{candidate}declarations"],
           focus: cluster.identical
             ? `They are syntactically identical, including property names and types.${note}`
             : `They are up to ${Math.round(cluster.overlap * 100)}% structurally similar but not identical.${note}`,
@@ -147,11 +150,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
       const canonical = choiceOf(answers, "canonical")
       const index =
         canonical === undefined ? 0 : Number.parseInt(canonical.choice.replace("member_", ""), 10)
-      return {
-        keep: Number.isNaN(index) ? 0 : index,
-        confidence: verdict.confidence,
-        score,
-      }
+      return { keep: Number.isNaN(index) ? 0 : index, confidence: verdict.confidence, score }
     },
   }
 }
@@ -195,59 +194,120 @@ const dependents = (imports: ImportGraph, unit: Unit): string => {
       : `no file imports \`${unit.name}\` by name`
   }
   const shown = files.slice(0, policy.evidence.maxListedPaths).join(", ")
-  const more = files.length > policy.evidence.maxListedPaths ? ` and ${files.length - policy.evidence.maxListedPaths} more` : ""
+  const more =
+    files.length > policy.evidence.maxListedPaths
+      ? ` and ${files.length - policy.evidence.maxListedPaths} more`
+      : ""
   return `${files.length} file${files.length === 1 ? "" : "s"} import \`${unit.name}\`: ${shown}${more}`
 }
 
-export const assessCluster = (rule: ClusterRule, imports: ImportGraph) =>
-  Effect.fn(`joggle/${rule.ruleId}.assess`)(function* (cluster: Cluster) {
-    const described = describedMembers(cluster)
-    const questionnaire = rule.questionnaire(cluster, described)
-    const judge = yield* Judge
-    const request = judge.ask({
+/** One cluster's request, plus how to read its share of the answer. */
+export interface ClusterPlan {
+  readonly cluster: Cluster
+  readonly request: JudgeRequest
+  readonly read: (answers: Readonly<Record<string, Answer>>) => ClusterVerdict | undefined
+}
+
+export const planCluster = (rule: ClusterRule, cluster: Cluster): ClusterPlan | undefined => {
+  const described = describedMembers(cluster)
+  if (described.length === 0) return undefined
+  const questionnaire = rule.questionnaire(cluster, described)
+  return {
+    cluster,
+    request: {
       evidence: { ...baseEvidence(cluster, described), ...questionnaire.state },
       questions: questionnaire.questions,
+    },
+    read: questionnaire.read,
+  }
+}
+
+/** Turn a verdict into a finding, or into silence. Pure, so it is testable alone. */
+export const findingFor = (
+  rule: ClusterRule,
+  imports: ImportGraph,
+  cluster: Cluster,
+  verdict: ClusterVerdict | undefined,
+): Option.Option<Diagnostic> => {
+  if (verdict === undefined) {
+    const fallback = rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster) : undefined
+    return fallback === undefined ? Option.none<Diagnostic>() : Option.some(fallback)
+  }
+  if (verdict.keep === undefined) return Option.none<Diagnostic>()
+
+  const keep = cluster.members[verdict.keep] ?? cluster.members[0]
+  if (keep === undefined) return Option.none<Diagnostic>()
+  const drops = cluster.members.filter((member) => member !== keep)
+  const first = drops[0]
+  if (first === undefined) return Option.none<Diagnostic>()
+
+  const names = namesOf(cluster)
+  const extra =
+    names.length > 1 ? ` (also named ${names.filter((name) => name !== keep.name).join(", ")})` : ""
+  return Option.some(
+    finding({
+      ruleId: rule.ruleId,
+      severity: rule.severity,
+      message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
+      help: `Delete or import instead of redeclaring: ${memberList(drops)}. ${dependents(imports, keep)}.`,
+      location: first.location,
+      confidence: verdict.confidence,
+      score: verdict.score,
+      judged: true,
+    }),
+  )
+}
+
+/**
+ * Ask about many clusters and turn the answers into findings.
+ *
+ * One wire call covers as many clusters as the token budget allows, which is the
+ * pattern the parallel-questions cookbook measures at 12.2x cheaper and 10x
+ * faster: the state dominates every request, so N single-candidate calls pay for
+ * it N times while a batched call pays once. The cache stays per cluster, so
+ * adding or removing a question still invalidates only what it must.
+ */
+export const assessClusters = (
+  rule: ClusterRule,
+  imports: ImportGraph,
+  clusters: ReadonlyArray<Cluster>,
+): Effect.Effect<ReadonlyArray<Diagnostic>, import("../schema.ts").JudgeError, Judge> =>
+  Effect.gen(function* () {
+    const plans = clusters
+      .map((cluster) => planCluster(rule, cluster))
+      .filter((plan): plan is ClusterPlan => plan !== undefined)
+    if (plans.length === 0) return []
+    const judge = yield* Judge
+    const requests = plans.map((plan) => plan.request)
+
+    // One call for the whole batch, so availability is decided once for the rule
+    // rather than once per cluster. A fact-based rule degrades to unverified
+    // findings; a guess-based rule stays silent and the engine reports it as
+    // skipped.
+    const asked =
+      rule.onUnavailable === "report"
+        ? yield* judge.askMany(requests).pipe(
+            Effect.map((results) => Option.some<ReadonlyArray<JudgeResult>>(results)),
+            Effect.catch(() => Effect.succeed(Option.none<ReadonlyArray<JudgeResult>>())),
+          )
+        : yield* judge
+            .askMany(requests)
+            .pipe(Effect.map((results) => Option.some<ReadonlyArray<JudgeResult>>(results)))
+
+    const diagnostics: Array<Diagnostic> = []
+    if (Option.isNone(asked)) {
+      for (const plan of plans) {
+        const fallback = unverifiedFinding(rule, plan.cluster)
+        if (fallback !== undefined) diagnostics.push(fallback)
+      }
+      return diagnostics
+    }
+    const results = asked.value
+    plans.forEach((plan, index) => {
+      const result = results[index]
+      const verdict = result === undefined ? undefined : plan.read(result.answers)
+      const diagnostic = findingFor(rule, imports, plan.cluster, verdict)
+      if (Option.isSome(diagnostic)) diagnostics.push(diagnostic.value)
     })
-
-    const answer = rule.onUnavailable === "propagate"
-      ? // Let the failure through so the engine records the rule as skipped.
-        (yield* request).answers
-      : yield* request.pipe(
-          Effect.map((result) => result.answers),
-          Effect.catch(() => Effect.succeed(undefined)),
-        )
-
-    if (answer === undefined) {
-      const fallback = unverifiedFinding(rule, cluster)
-      return fallback === undefined ? Option.none<Diagnostic>() : Option.some(fallback)
-    }
-
-    const verdict = questionnaire.read(answer)
-    if (verdict === undefined) {
-      const fallback = rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster) : undefined
-      return fallback === undefined ? Option.none<Diagnostic>() : Option.some(fallback)
-    }
-    if (verdict.keep === undefined) return Option.none<Diagnostic>()
-
-    const keep = cluster.members[verdict.keep] ?? cluster.members[0]
-    if (keep === undefined) return Option.none<Diagnostic>()
-    const drops = cluster.members.filter((member) => member !== keep)
-    const first = drops[0]
-    if (first === undefined) return Option.none<Diagnostic>()
-
-    const names = namesOf(cluster)
-    const extra =
-      names.length > 1 ? ` (also named ${names.filter((name) => name !== keep.name).join(", ")})` : ""
-    return Option.some(
-      finding({
-        ruleId: rule.ruleId,
-        severity: rule.severity,
-        message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
-        help: `Delete or import instead of redeclaring: ${memberList(drops)}. ${dependents(imports, keep)}.`,
-        location: first.location,
-        confidence: verdict.confidence,
-        score: verdict.score,
-        judged: true,
-      }),
-    )
+    return diagnostics
   })

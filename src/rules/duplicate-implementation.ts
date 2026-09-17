@@ -2,7 +2,7 @@ import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { makeCluster, type Cluster } from "../cluster.ts"
 import { budgetNote, defineRule, outcome } from "../rule.ts"
-import { assessCluster, collapseQuestionnaire, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
+import { assessClusters, collapseQuestionnaire, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const spec: ClusterRule = {
@@ -59,10 +59,7 @@ export const duplicateImplementation = defineRule({
     const clusters = find(workspace)
     if (clusters.length === 0) return outcome([])
     const budget = policy.duplicateImplementation.maxClusters
-    const outcomes = yield* Effect.forEach(clusters.slice(0, budget), assessCluster(spec, workspace.imports), {
-      concurrency: 8,
-    })
-    const reported = outcomes.flatMap((entry) => (Option.isSome(entry) ? [entry.value] : []))
+    const reported = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))
     // Over budget: the fact is still reported, unjudged and labelled as such.
     const overflow = clusters
       .slice(budget)
