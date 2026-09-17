@@ -231,6 +231,14 @@ export interface Options {
   /** Directory the replayed judgement cache lives in. */
   readonly cacheDir: string
   /**
+   * The repository's architecture in its own words, from joggle.config.json.
+   *
+   * Sent with every judgement, because the question "does this fit here?" has no
+   * answer without it. It is part of the cache key too: a judgement made under
+   * one declared architecture is not the same judgement under another.
+   */
+  readonly evidenceContext?: string | undefined
+  /**
    * Candidates per request. Overridable so a run can be compared batched
    * against unbatched: batching is a cost lever, and a cost lever that changes
    * the answers is not a lever.
@@ -294,7 +302,12 @@ export const layer = (
         apiKey: string,
         batch: ReadonlyArray<Miss>,
       ) {
-        const state = { candidates: batch.map((miss) => miss.request.evidence) }
+        const state = {
+          candidates: batch.map((miss) => miss.request.evidence),
+          ...(options.evidenceContext === undefined
+            ? {}
+            : { repository: options.evidenceContext }),
+        }
         const questions: Record<string, Question> = {}
         batch.forEach((miss, position) => {
           const prefix = `candidates[${position}].`

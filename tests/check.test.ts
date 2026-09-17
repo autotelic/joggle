@@ -20,6 +20,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       changed: false,
       baselinePath: undefined,
       updateBaselinePath: undefined,
+      config: {},
     }).pipe(
       Effect.provide(judgeLayer({ cacheDir, offline: true, apiKey: Option.none() })),
       Effect.provide(tsgoStub),
@@ -58,6 +59,7 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
       changed: false,
       baselinePath: undefined,
       updateBaselinePath: undefined,
+      config: {},
     }).pipe(
       Effect.provide(judgeLayer({ cacheDir, offline: false, apiKey: Option.none() })),
       Effect.provide(tsgoStub),
@@ -95,6 +97,7 @@ it.effect("a rule filter runs exactly one rule and skips nothing", () =>
       changed: false,
       baselinePath: undefined,
       updateBaselinePath: undefined,
+      config: {},
     }).pipe(
       Effect.provide(judgeLayer({ cacheDir, offline: true, apiKey: Option.none() })),
       Effect.provide(tsgoStub),

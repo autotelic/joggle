@@ -5,6 +5,7 @@ import { NodeServices } from "@effect/platform-node"
 import { runCheck } from "./check.ts"
 import { layer as judgeLayer } from "./judge.ts"
 import { runCacheDirFor } from "./state.ts"
+import { loadConfig } from "./config.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
 import { allRules } from "./rules/index.ts"
@@ -33,6 +34,7 @@ const check = Command.make(
     updateBaseline: Flag.String("update-baseline").pipe(Flag.optional),
     cacheDir: Flag.String("cache-dir").pipe(Flag.optional),
     cwd: Flag.String("cwd").pipe(Flag.optional),
+    config: Flag.String("config").pipe(Flag.optional),
   },
   (config) =>
     Effect.gen(function* () {
@@ -49,7 +51,17 @@ const check = Command.make(
               .map((id) => id.trim())
               .filter((id) => id.length > 0)
 
+      // Relative to the analysed root, so a config travels with the repository it
+      // describes rather than with the shell that invoked the tool.
+      const settings = yield* loadConfig(
+        path.resolve(
+          cwd,
+          Option.getOrUndefined(config.config) ?? "joggle.config.json",
+        ),
+      )
+
       const report = yield* runCheck({
+        config: settings,
         cwd,
         paths: config.paths,
         rules,
@@ -66,7 +78,14 @@ const check = Command.make(
         baselinePath: Option.getOrUndefined(config.baseline),
         updateBaselinePath: Option.getOrUndefined(config.updateBaseline),
       }).pipe(
-        Effect.provide(judgeLayer({ cacheDir, offline: config.offline, apiKey })),
+        Effect.provide(
+          judgeLayer({
+            cacheDir,
+            offline: config.offline,
+            apiKey,
+            evidenceContext: settings.evidence?.repository,
+          }),
+        ),
         Effect.provide(tsgoLayer(cwd)),
       )
 

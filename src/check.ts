@@ -6,6 +6,7 @@ import { finding } from "./rule.ts"
 import { allRules } from "./rules/index.ts"
 import { rankDiagnostics, type Report, type Skipped } from "./report.ts"
 import { everyFile, type Scope } from "./rule.ts"
+import { isEnabled, isIgnored, severityFor, type JoggleConfig } from "./config.ts"
 import { Baseline, StoredRun, type Diagnostic, type JudgeError, type JudgeTotals } from "./schema.ts"
 import { Service as Tsgo } from "./tsgo.ts"
 import { discoverFiles, loadWorkspace } from "./workspace.ts"
@@ -36,6 +37,8 @@ export interface Options {
    * run writes nothing into the repository it is analysing.
    */
   readonly runCacheDir?: string | undefined
+  /** Rules, severities and exceptions, from joggle.config.json. */
+  readonly config: JoggleConfig
   /** Replay the stored run when nothing the output depends on has changed. */
   readonly replayUnchanged: boolean
   /**
@@ -239,10 +242,11 @@ const writeBaseline = (
  */
 export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   const started = Date.now()
-  const selected =
+  const selected = (
     options.rules === undefined
       ? allRules
       : allRules.filter((rule) => options.rules?.includes(rule.id) === true)
+  ).filter((rule) => isEnabled(options.config, rule.id, rule.severity))
 
   const judge = yield* Judge
   const fs = yield* FileSystem.FileSystem
@@ -414,10 +418,19 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     diagnostics.push(...typecheckFindings(typeErrors))
   }
 
+  // The config decides how loudly a rule speaks and what is excepted. Both are
+  // applied here rather than inside the rules, so a rule cannot opt out of being
+  // configured.
+  const configured = diagnostics
+    .map((entry) => ({ entry, severity: severityFor(options.config, entry.ruleId, entry.severity) }))
+    .filter((item): item is { entry: Diagnostic; severity: import("./schema.ts").Severity } => item.severity !== "off")
+    .map((item) => ({ ...item.entry, severity: item.severity }))
+    .filter((entry) => !isIgnored(options.config, entry.ruleId, entry.location.file))
+
   const judgeTotals: JudgeTotals = yield* judge.stats
   const elapsedMs = Date.now() - started
   const report: Report = {
-    diagnostics: rankDiagnostics(diagnostics),
+    diagnostics: rankDiagnostics(configured),
     files: workspace.files.length,
     rules: effective.length,
     skipped,

@@ -1,0 +1,22 @@
+{
+  "$schema": "./schema/config.json",
+  "rules": {
+    "joggle/bundle-dot-notation": "warn",
+    "joggle/bundle-tripartite-value": "warn",
+    "joggle/bundle-one-file-per-block": "warn",
+    "joggle/bundle-context-hook": "warn",
+    "joggle/page-needs-composition": "warn",
+    "joggle/naming-drift": "off",
+    "joggle/duplicate-meaning": "off"
+  },
+  "ignore": [
+    {
+      "rule": "joggle/bundle-*",
+      "path": "tests/fixtures/**",
+      "reason": "fixtures are deliberately broken"
+    }
+  ],
+  "evidence": {
+    "repository": "joggle analyses other repositories and reports diagnostics; it does not render. There is no React here, so the composition-pattern rules are only meaningful when run against a codebase that does render."
+  }
+}
