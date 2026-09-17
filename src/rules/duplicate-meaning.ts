@@ -2,7 +2,7 @@ import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { components, makeCluster, type Cluster } from "../cluster.ts"
 import { budgetNote, defineRule, outcome } from "../rule.ts"
-import { allPairs } from "../similarity.ts"
+import { allPairs, type ScoredPair } from "../similarity.ts"
 import { assessCluster, collapseQuestionnaire, type ClusterRule } from "./cluster-verdict.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 import { nameList } from "../cluster.ts"
@@ -18,14 +18,8 @@ const spec: ClusterRule = {
     `${cluster.members.length} declarations that may be one thing: ${nameList(cluster)}`,
 }
 
-interface Pair {
-  readonly left: number
-  readonly right: number
-  readonly score: number
-}
-
 /** Only declarations of the same kind, in different files, can be one thing. */
-const sameShape = (units: ReadonlyArray<Unit>, pair: Pair): boolean => {
+const sameShape = (units: ReadonlyArray<Unit>, pair: ScoredPair): boolean => {
   const one = units[pair.left]
   const two = units[pair.right]
   if (one === undefined || two === undefined) return false
@@ -56,7 +50,7 @@ const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
     minSimilarity,
   )
 
-  const pairs: Array<Pair> = candidates.filter(
+  const pairs: Array<ScoredPair> = candidates.filter(
     (pair) => pair.score <= maxSimilarity && sameShape(units, pair),
   )
 
