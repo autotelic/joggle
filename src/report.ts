@@ -1,4 +1,4 @@
-import type { Diagnostic, Severity } from "./schema.ts"
+import type { Diagnostic, Note, Severity } from "./schema.ts"
 
 /**
  * Output formats, modelled on oxlint's, because oxlint already decided what a
@@ -18,10 +18,9 @@ import type { Diagnostic, Severity } from "./schema.ts"
  */
 export type Format = "text" | "stylish" | "unix" | "json" | "github"
 
-export interface Skipped {
-  readonly ruleId: string
-  readonly reason: string
-}
+/** A skip or a bound: a rule id and a reason. Defined in schema so a stored run
+ *  can be decoded with it. */
+export type Skipped = Note
 
 export interface Report {
   readonly diagnostics: ReadonlyArray<Diagnostic>
@@ -49,6 +48,8 @@ export interface Report {
     readonly outputTokens: number
   }
   readonly elapsedMs: number
+  /** True when this run replayed a stored report because nothing changed. */
+  readonly replayed: boolean
 }
 
 const rank: Record<Severity, number> = { error: 0, warn: 1, info: 2 }
@@ -131,6 +132,9 @@ const problemSummary = (report: Report): string => {
 
 /** joggle-specific tail: how much of this was actually decided, and by what. */
 const provenance = (report: Report): string => {
+  if (report.replayed) {
+    return `Replayed the previous run: nothing it depends on changed across ${plural(report.files, "file")}. No analysis, no judgements, no tokens.`
+  }
   const { judged } = counts(report)
   if (report.diagnostics.length === 0 && report.judge.requests === 0) return ""
   const { requests, calls, replayed, unavailable, inputTokens } = report.judge
@@ -242,6 +246,8 @@ const json = (report: Report): string =>
         skipped: report.skipped,
         notes: report.notes,
         judge: report.judge,
+        replayed: report.replayed,
+        timings: report.timings,
         elapsedMs: report.elapsedMs,
       },
     },

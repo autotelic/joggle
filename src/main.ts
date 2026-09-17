@@ -4,6 +4,7 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeServices } from "@effect/platform-node"
 import { runCheck } from "./check.ts"
 import { layer as judgeLayer } from "./judge.ts"
+import { runCacheDirFor } from "./state.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
 import { allRules } from "./rules/index.ts"
@@ -26,6 +27,10 @@ const check = Command.make(
     typecheck: Flag.Boolean("typecheck").pipe(Flag.withDefault(false)),
     offline: Flag.Boolean("offline").pipe(Flag.withDefault(false)),
     noTsgo: Flag.Boolean("no-tsgo").pipe(Flag.withDefault(false)),
+    noReplay: Flag.Boolean("no-replay").pipe(Flag.withDefault(false)),
+    changed: Flag.Boolean("changed").pipe(Flag.withDefault(false)),
+    baseline: Flag.String("baseline").pipe(Flag.optional),
+    updateBaseline: Flag.String("update-baseline").pipe(Flag.optional),
     cacheDir: Flag.String("cache-dir").pipe(Flag.optional),
     cwd: Flag.String("cwd").pipe(Flag.optional),
   },
@@ -51,6 +56,15 @@ const check = Command.make(
         typecheck: config.typecheck,
         useTsgo: !config.noTsgo,
         cacheDirExplicit: Option.isSome(config.cacheDir),
+        cacheDir,
+        // The run cache is machine-local on purpose: it is a performance
+        // artifact, and a run should not write a report into a repository it is
+        // only visiting.
+        runCacheDir: runCacheDirFor(cwd),
+        replayUnchanged: !config.noReplay,
+        changed: config.changed,
+        baselinePath: Option.getOrUndefined(config.baseline),
+        updateBaselinePath: Option.getOrUndefined(config.updateBaseline),
       }).pipe(
         Effect.provide(judgeLayer({ cacheDir, offline: config.offline, apiKey })),
         Effect.provide(tsgoLayer(cwd)),

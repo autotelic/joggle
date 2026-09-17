@@ -28,6 +28,15 @@ export const policy = {
    */
   questionVersion: "2026-09-02",
 
+  /**
+   * Bump this when rule LOGIC changes. Question versioning covers the wording of
+   * a question; it cannot cover a candidate filter, a clustering rule or a
+   * threshold, and those change the output while leaving every question byte
+   * identical. The unchanged-run short-circuit keys on this, so failing to bump
+   * it means a stale report is replayed after the rules have moved.
+   */
+  analysisVersion: "2026-09-03",
+
   judge: {
     baseUrl: "https://api.typesafe.ai",
     /** How long a successful judgement stays fresh, in days. */

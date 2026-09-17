@@ -10,6 +10,7 @@ coverage/
 # with no API key. Nothing else in .joggle/ is tracked.
 .joggle/*
 !.joggle/judgements.json
+!.joggle/baseline.json
 
 # Local secrets — never commit these.
 .env

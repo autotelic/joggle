@@ -20,6 +20,7 @@ const report = (diagnostics: ReadonlyArray<Diagnostic>): Report => ({
   timings: [{ phase: "workspace", ms: 1200 }],
   judge: { requests: 1, replayed: 0, calls: 1, unavailable: 0, inputTokens: 900, outputTokens: 40 },
   elapsedMs: 5,
+  replayed: false,
 })
 
 it("sorts by file, then position, then severity", () => {

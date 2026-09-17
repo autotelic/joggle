@@ -14,6 +14,7 @@ import * as HttpClient from "effect/unstable/http/HttpClient"
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse"
 import { policy } from "./policy.ts"
+import { safeJson } from "./state.ts"
 import { isRecord } from "./workspace.ts"
 import {
   JudgeCacheFile,
@@ -135,14 +136,6 @@ export const cacheKeyFor = (request: JudgeRequest): string =>
     evidence: request.evidence,
     questions: request.questions,
   })
-
-const safeJson = (text: string): unknown => {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return undefined
-  }
-}
 
 const orEmpty = <A, E, R>(effect: Effect.Effect<A, E, R>, fallback: A): Effect.Effect<A, never, R> =>
   Effect.orElseSucceed(effect, () => fallback)

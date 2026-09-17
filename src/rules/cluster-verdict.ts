@@ -162,6 +162,15 @@ const memberList = (units: ReadonlyArray<Unit>): string => {
   return rest > 0 ? `${listed} and ${rest} more` : listed
 }
 
+/**
+ * A stable name for a finding, for comparing one run against the next.
+ *
+ * Membership and the kept symbol, never line numbers: code moves constantly and
+ * a baseline that reports every edit as new is a baseline nobody reads.
+ */
+const identityOf = (ruleId: string, cluster: Cluster, keep: Unit): string =>
+  [ruleId, keep.name, ...[...new Set(cluster.members.map((m) => m.file))].sort()].join("\u0000")
+
 /** No judgement available: report the fact, say so, and never guess a canonical. */
 export const unverifiedFinding = (rule: ClusterRule, cluster: Cluster): Diagnostic | undefined => {
   const keep = cluster.members[0]
@@ -174,6 +183,7 @@ export const unverifiedFinding = (rule: ClusterRule, cluster: Cluster): Diagnost
     message: `${rule.subject(cluster)}.`,
     help: `Keep \`${keep.name}\` (${keep.file}:${keep.location.line}) and import it elsewhere. Not verified: no judgement was available. Duplicates: ${memberList(drops)}.`,
     location: first.location,
+    identity: identityOf(rule.ruleId, cluster, keep),
     judged: false,
   })
 }
@@ -251,6 +261,7 @@ export const findingFor = (
       message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
       help: `Delete or import instead of redeclaring: ${memberList(drops)}. ${dependents(imports, keep)}.`,
       location: first.location,
+      identity: identityOf(rule.ruleId, cluster, keep),
       confidence: verdict.confidence,
       score: verdict.score,
       judged: true,

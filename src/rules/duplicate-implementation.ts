@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { makeCluster, type Cluster } from "../cluster.ts"
-import { budgetNote, defineRule, outcome } from "../rule.ts"
+import { budgetNote, defineRule, inScope, outcome, type Scope } from "../rule.ts"
 import { assessClusters, collapseQuestionnaire, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -24,7 +24,7 @@ const spec: ClusterRule = {
  * same resolved type identity. Broad on purpose -- over-production is the
  * judge's problem, a missed copy is not.
  */
-const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
+const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
   const groups = new Map<string, Array<Unit>>()
   for (const unit of workspace.units) {
     // Resolved types are part of the key: two helpers that read identically but
@@ -38,6 +38,9 @@ const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
   const clusters: Array<Cluster> = []
   for (const group of groups.values()) {
     if (new Set(group.map((unit) => unit.file)).size < 2) continue
+    // A new duplicate always has at least one changed member: nothing else can
+    // have created it, so a group nobody touched cannot produce a new finding.
+    if (!group.some((unit) => inScope(scope, unit.file))) continue
     clusters.push(makeCluster(group, true, 1))
   }
   return clusters
@@ -55,8 +58,8 @@ export const duplicateImplementation = defineRule({
   severity: spec.severity,
   description: "One declaration written more than once across files.",
   judged: true,
-  run: Effect.fn("joggle/duplicate-implementation")(function* (workspace) {
-    const clusters = find(workspace)
+  run: Effect.fn("joggle/duplicate-implementation")(function* (workspace, scope) {
+    const clusters = find(workspace, scope)
     if (clusters.length === 0) return outcome([])
     const budget = policy.duplicateImplementation.maxClusters
     const reported = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))

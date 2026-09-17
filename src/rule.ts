@@ -36,13 +36,41 @@ export const outcome = (
   notes: ReadonlyArray<string> = [],
 ): RuleOutcome => ({ diagnostics, notes })
 
+/**
+ * How much of the workspace this run has to look at.
+ *
+ * Scoping is only sound for "what did this change introduce?". A new finding
+ * always has at least one member whose content changed -- a change elsewhere
+ * cannot create a duplicate between two declarations it did not touch -- so
+ * restricting candidate generation to changed declarations loses nothing about
+ * THIS change. It does lose the rest of the report, which is why a scoped run is
+ * a different question and not a faster way to ask the same one.
+ */
+export interface Scope {
+  /**
+   * Files whose content changed since the stored run, plus the files that import
+   * them (a change to a file's exports can move what a dependent's type names
+   * resolve to). Undefined means every file.
+   */
+  readonly changed: ReadonlySet<string> | undefined
+}
+
+export const everyFile: Scope = { changed: undefined }
+
+/** True when this declaration is in scope for the run. */
+export const inScope = (scope: Scope, file: string): boolean =>
+  scope.changed === undefined || scope.changed.has(file)
+
 export interface Rule {
   readonly id: string
   readonly severity: Severity
   readonly description: string
   /** Whether this rule needs the judge. Deterministic rules must run without it. */
   readonly judged: boolean
-  readonly run: (workspace: Workspace) => Effect.Effect<RuleOutcome, JudgeError, JudgeService>
+  readonly run: (
+    workspace: Workspace,
+    scope: Scope,
+  ) => Effect.Effect<RuleOutcome, JudgeError, JudgeService>
 }
 
 export const defineRule = (rule: Rule): Rule => rule
@@ -117,6 +145,8 @@ export const finding = (input: {
   readonly help?: string | undefined
   readonly confidence?: number | undefined
   readonly score?: number | undefined
+  /** A stable name for this finding, for comparing one run against the next. */
+  readonly identity?: string | undefined
 }): Diagnostic => ({
   ruleId: input.ruleId,
   severity: input.severity,
@@ -126,6 +156,7 @@ export const finding = (input: {
   ...(input.help === undefined ? {} : { help: input.help }),
   ...(input.confidence === undefined ? {} : { confidence: input.confidence }),
   ...(input.score === undefined ? {} : { score: input.score }),
+  ...(input.identity === undefined ? {} : { identity: input.identity }),
 })
 
 /**

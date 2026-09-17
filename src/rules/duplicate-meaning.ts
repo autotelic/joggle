@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { components, makeCluster, type Cluster } from "../cluster.ts"
-import { budgetNote, defineRule, outcome } from "../rule.ts"
+import { budgetNote, defineRule, inScope, outcome, type Scope } from "../rule.ts"
 import { allPairs, type ScoredPair } from "../similarity.ts"
 import { assessClusters, collapseQuestionnaire, type ClusterRule } from "./cluster-verdict.ts"
 import type { Unit, Workspace } from "../workspace.ts"
@@ -18,12 +18,20 @@ const spec: ClusterRule = {
     `${cluster.members.length} declarations that may be one thing: ${nameList(cluster)}`,
 }
 
-/** Only declarations of the same kind, in different files, can be one thing. */
-const sameShape = (units: ReadonlyArray<Unit>, pair: ScoredPair): boolean => {
+/**
+ * Only declarations of the same kind, in different files, can be one thing --
+ * and when scoped, at least one side has to be the side that changed.
+ */
+const candidatePair = (
+  units: ReadonlyArray<Unit>,
+  scope: Scope,
+  pair: ScoredPair,
+): boolean => {
   const one = units[pair.left]
   const two = units[pair.right]
   if (one === undefined || two === undefined) return false
-  return one.file !== two.file && one.kind === two.kind
+  if (one.file === two.file || one.kind !== two.kind) return false
+  return inScope(scope, one.file) || inScope(scope, two.file)
 }
 
 /**
@@ -37,7 +45,7 @@ const sameShape = (units: ReadonlyArray<Unit>, pair: ScoredPair): boolean => {
  * could clear the threshold, and the only bound left is on how many clusters
  * are judged.
  */
-const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
+const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
   const { minSimilarity, maxSimilarity, minTokens } = policy.duplicateMeaning
 
   const units = workspace.units
@@ -51,7 +59,7 @@ const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
   )
 
   const pairs: Array<ScoredPair> = candidates.filter(
-    (pair) => pair.score <= maxSimilarity && sameShape(units, pair),
+    (pair) => pair.score <= maxSimilarity && candidatePair(units, scope, pair),
   )
 
   const groups = components(
@@ -86,8 +94,8 @@ export const duplicateMeaning = defineRule({
   severity: spec.severity,
   description: "Near-duplicates where a judgement says one declaration replaces the other.",
   judged: true,
-  run: Effect.fn("joggle/duplicate-meaning")(function* (workspace) {
-    const clusters = find(workspace)
+  run: Effect.fn("joggle/duplicate-meaning")(function* (workspace, scope) {
+    const clusters = find(workspace, scope)
     if (clusters.length === 0) return outcome([])
     const budget = policy.duplicateMeaning.maxClusters
     const findings = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))

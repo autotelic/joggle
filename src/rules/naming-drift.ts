@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { makeCluster, nameList, type Cluster } from "../cluster.ts"
-import { budgetNote, choiceOf, defineRule, noulOf, outcome } from "../rule.ts"
+import { budgetNote, choiceOf, defineRule, inScope, noulOf, outcome, type Scope } from "../rule.ts"
 import { assessClusters, type ClusterRule } from "./cluster-verdict.ts"
 import type { Answer } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
@@ -148,7 +148,7 @@ const sharedWords = (left: string, right: string): number => {
  * enumerated, ordered so a budget keeps the strongest, and whatever the budget
  * does not reach is named in the report.
  */
-const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
+const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
   const { minScore, minSharedWords } = policy.namingDrift
   const units = workspace.units
   const byHead = new Map<string, Array<number>>()
@@ -175,6 +175,8 @@ const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
         if (one.file === two.file) continue
         if (one.kind !== two.kind) continue
         if (sharedWords(one.name, two.name) < minSharedWords) continue
+        // A new pair of spellings has to include the spelling that changed.
+        if (!inScope(scope, one.file) && !inScope(scope, two.file)) continue
         const score = nameScore(one.name, two.name)
         if (score < minScore) continue
 
@@ -218,8 +220,8 @@ export const namingDrift = defineRule({
   severity: spec.severity,
   description: "Two spellings of one concept across files.",
   judged: true,
-  run: Effect.fn("joggle/naming-drift")(function* (workspace) {
-    const clusters = find(workspace)
+  run: Effect.fn("joggle/naming-drift")(function* (workspace, scope) {
+    const clusters = find(workspace, scope)
     if (clusters.length === 0) return outcome([])
     const budget = policy.namingDrift.maxClusters
     const findings = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))

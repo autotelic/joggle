@@ -281,6 +281,97 @@ final shape:
 Deliberately *not* next: widening AST coverage to class and object-literal
 methods. That is more surface on a weaker signal. It comes after types.
 
+
+## Three artifacts, three lifecycles
+
+joggle's state is three files, because there are three things with three
+different lifetimes. Putting them in one place was a design mistake: two of them
+belong to the repository and one belongs to the machine.
+
+| artifact | lives in | committed | what it is |
+| --- | --- | --- | --- |
+| `judgements.json` | `<root>/.joggle/` | **yes** | every verdict, keyed by candidate. CI replays it with no API key. |
+| `baseline.json` | `<root>/.joggle/` | **yes** | the findings already accepted: the ratchet. |
+| `last-run.json` | `<machine cache>/joggle/<root>/` | no | a manifest and the last report. A performance artifact. |
+
+The first two are decisions a person should be able to read in a diff, and they
+are per-repository because the evidence is keyed on root-relative paths. The
+third is the largest, churns on every edit, and is worthless to anyone else — so
+it lives in `$XDG_CACHE_HOME` (or `~/Library/Caches` on macOS), keyed by the
+analysed root. One machine cache serves every repository, and pointing joggle at
+somebody else's checkout writes nothing into it.
+
+### Running against a diff
+
+```sh
+joggle check --update-baseline          # on main: record what is accepted
+joggle check --baseline .joggle/baseline.json   # on a branch: only what is new
+joggle check                            # nothing changed: the previous run
+```
+
+The baseline is by identity, not by line: rule, kept symbol and cluster
+membership. Code moves constantly, and a baseline that reports every edit as a
+new finding is a baseline nobody reads. A rename or a new member does change the
+identity, which is correct — the finding is a different finding then.
+
+### Why an unchanged run costs nothing
+
+`last-run.json` carries a manifest: a hash of `policy.analysisVersion`, the
+question version, the model, the rule set, the analysed root, and the content of
+every file. If it matches, the run ends after reading the files and before
+parsing them. On a 1,870-file codebase:
+
+```
+cold, judgements cached    0 calls, 0 tokens, 3,718ms
+again                      0 calls, 0 tokens,   325ms   (replayed)
+```
+
+The 325ms is file reads and hashing, which is what makes the check honest: it is
+content, not mtimes. Add one file that duplicates nothing and the run is a full
+analysis with zero calls; add the second copy and a new cluster exists, so
+exactly that candidate is judged:
+
+```
+first copy of a new duplicate   0 calls,   0 tokens
+second copy                     1 call,  846 tokens
+nothing changed                 0 calls,   0 tokens, replayed
+```
+
+**`policy.analysisVersion` is the one thing that must be kept honest by hand.**
+A candidate filter or a clustering rule can change every finding while leaving
+every question byte-identical, and the manifest is what decides whether a stale
+report gets replayed. Bump it when the rules move.
+
+
+### Answering "what did this change introduce?"
+
+```sh
+joggle check --changed     # scope candidate generation to the changed declarations
+```
+
+This is sound because a change elsewhere cannot create a duplicate between two
+declarations it did not touch: every *new* finding has at least one changed
+member. Dependents come into scope only when a file's **exports** moved, because
+only then can their type names resolve to something else.
+
+What it does not do is report removals, and it is not a full report — so a
+scoped run leaves the stored run alone rather than becoming the next comparison
+base.
+
+Measured on 1,870 files:
+
+| | calls | tokens | wall clock |
+| --- | --- | --- | --- |
+| nothing changed | 0 | 0 | **488ms** (replayed) |
+| body edit to a widely-imported file | 0 | 0 | 4,737ms |
+| comment inside a duplicated declaration | 1 | 1,571 | 5,284ms |
+| same edit seen again | 0 | 0 | ~0 (cached verdict) |
+| a full analysis | 0 | 0 | ~15s |
+
+The 4.7s is file reads and hashing — correctness needs content, not mtimes. What
+remains after that is parsing every file; an incremental fact cache keyed on
+content hash would remove it. The candidate generation is already scoped.
+
 ## Not here yet
 
 The honest list: **no type awareness** (see above -- it is the next layer), no

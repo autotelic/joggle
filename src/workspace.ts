@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto"
 import { Effect, FileSystem, Path } from "effect"
 import { parseSync } from "oxc-parser"
 import { policy } from "./policy.ts"
 import { buildImportGraph, importsIn, type ImportGraph, type ParsedImport } from "./imports.ts"
+import { shortHash } from "./state.ts"
 import { shinglesOf } from "./similarity.ts"
 import { WorkspaceError, type SourceLocation } from "./schema.ts"
 
@@ -271,8 +271,6 @@ export const tokenize = (shape: string): ReadonlyArray<string> => {
 
 
 
-const hash = (value: string): string => createHash("sha1").update(value).digest("hex").slice(0, 16)
-
 const lineStartsOf = (text: string): ReadonlyArray<number> => {
   const bytes = Buffer.from(text, "utf8")
   const starts: Array<number> = [0]
@@ -474,7 +472,7 @@ const parseSourceFile = (file: string, text: string): SourceFile => {
         shape,
         tokens,
         shingles: shinglesOf(tokens),
-        shapeHash: hash(shape),
+        shapeHash: shortHash(shape),
         typeRefs: [
           ...new Set(
             identifiers
@@ -569,22 +567,44 @@ const resolveInputs = (
     return files
   })
 
+/**
+ * The files this run will look at, before any of them are read.
+ *
+ * Separated from `loadWorkspace` so a caller can hash the inputs and decide
+ * whether the analysis is worth doing at all: an unchanged repository should
+ * cost a read, not a parse.
+ */
+export const discoverFiles = (
+  root: string,
+  inputs: ReadonlyArray<string>,
+  discovered?: ReadonlyArray<string>,
+): Effect.Effect<ReadonlyArray<string>, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
+  discovered !== undefined
+    ? Effect.succeed(discovered)
+    : resolveInputs(root, inputs.length > 0 ? inputs : ["."])
+
 export const loadWorkspace = (
   root: string,
   inputs: ReadonlyArray<string>,
   discovered?: ReadonlyArray<string>,
+  /** Source text already read by the caller, keyed by absolute path. */
+  contents?: ReadonlyMap<string, string>,
 ): Effect.Effect<Workspace, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
-    const files = discovered ?? (yield* resolveInputs(root, inputs.length > 0 ? inputs : ["."]))
+    const files =
+      discovered ?? (yield* resolveInputs(root, inputs.length > 0 ? inputs : ["."]))
     const parsed: Array<SourceFile> = []
     for (const absolute of files) {
-      const text = yield* fs.readFileString(absolute).pipe(
-        Effect.mapError(
-          (cause) => new WorkspaceError({ path: absolute, operation: "readFileString", cause }),
-        ),
-      )
+      const preloaded = contents?.get(absolute)
+      const text =
+        preloaded ??
+        (yield* fs.readFileString(absolute).pipe(
+          Effect.mapError(
+            (cause) => new WorkspaceError({ path: absolute, operation: "readFileString", cause }),
+          ),
+        ))
       // Diagnostics carry paths relative to the root, so output is stable and
       // hosts such as GitHub Actions can annotate the right file.
       parsed.push(parseSourceFile(path.relative(root, absolute), text))

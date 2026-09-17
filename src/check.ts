@@ -1,11 +1,15 @@
-import { Effect } from "effect"
+import { Effect, FileSystem, Option, Path, Schema } from "effect"
+import { safeJson, shortHash } from "./state.ts"
 import { Service as Judge } from "./judge.ts"
+import { policy } from "./policy.ts"
 import { finding } from "./rule.ts"
 import { allRules } from "./rules/index.ts"
 import { rankDiagnostics, type Report, type Skipped } from "./report.ts"
-import type { Diagnostic, JudgeError } from "./schema.ts"
+import { everyFile, type Scope } from "./rule.ts"
+import { Baseline, StoredRun, type Diagnostic, type JudgeError, type JudgeTotals } from "./schema.ts"
 import { Service as Tsgo } from "./tsgo.ts"
-import { loadWorkspace } from "./workspace.ts"
+import { discoverFiles, loadWorkspace } from "./workspace.ts"
+import type { ImportGraph } from "./imports.ts"
 
 export interface Options {
   readonly cwd: string
@@ -24,6 +28,26 @@ export interface Options {
    * repository's source into this one's committed cache.
    */
   readonly cacheDirExplicit: boolean
+  /** Where the committed artifacts live: judgements and the baseline. */
+  readonly cacheDir: string
+  /**
+   * Where the ephemeral run cache lives. Defaults to the committed cache
+   * directory, but the caller normally points it at the machine cache so that a
+   * run writes nothing into the repository it is analysing.
+   */
+  readonly runCacheDir?: string | undefined
+  /** Replay the stored run when nothing the output depends on has changed. */
+  readonly replayUnchanged: boolean
+  /**
+   * Answer "what did this change introduce" instead of "what is wrong with the
+   * repository". Candidate generation is restricted to declarations that moved,
+   * and the stored run is left alone because a scoped run is not a full run.
+   */
+  readonly changed: boolean
+  /** Report only findings that are not already accepted in this baseline. */
+  readonly baselinePath: string | undefined
+  /** Write the current findings as the accepted baseline. */
+  readonly updateBaselinePath: string | undefined
 }
 
 const reasonOf = (error: JudgeError): string => {
@@ -52,6 +76,163 @@ const typecheckFindings = (output: ReadonlyArray<{ readonly file: string; readon
     }),
   )
 
+/* -------------------------------------------------------------------------- */
+/* Run manifest                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Everything the output depends on, as one hash.
+ *
+ * Analysis version, question version, model, the rule set, the root, and the
+ * content of every analysed file. If this is unchanged then the previous report
+ * is the report -- no parsing, no candidate generation, and no tokens.
+ *
+ * Rule LOGIC changes are covered by `policy.analysisVersion` and nothing else:
+ * a filter or a clustering rule can change every finding while leaving every
+ * question byte-identical. Bump it when the rules move.
+ */
+const manifestOf = (
+  root: string,
+  files: ReadonlyArray<string>,
+  contents: ReadonlyMap<string, string>,
+  ruleIds: ReadonlyArray<string>,
+): string =>
+  shortHash(
+    [
+      `analysis=${policy.analysisVersion}`,
+      `questions=${policy.questionVersion}`,
+      `model=${policy.model}`,
+      `root=${root}`,
+      `rules=${[...ruleIds].sort().join(",")}`,
+      `files=${files.length}`,
+      ...files.map((file) => `${file}\u0000${shortHash(contents.get(file) ?? "")}`),
+    ].join("\n"),
+  )
+
+/**
+ * Which files moved since the stored run, or undefined when there is none to
+ * compare against.
+ */
+const changedSince = (
+  stored: StoredRun | undefined,
+  hashOf: ReadonlyMap<string, string>,
+): ReadonlySet<string> | undefined => {
+  if (stored === undefined) return undefined
+  const before = new Map(stored.sources.map((source) => [source.path, source.hash]))
+  const changed = new Set<string>()
+  for (const [file, hash] of hashOf) {
+    if (before.get(file) !== hash) changed.add(file)
+  }
+  for (const file of before.keys()) {
+    if (!hashOf.has(file)) changed.add(file)
+  }
+  return changed
+}
+
+/** Exported declaration names by root-relative path. */
+const exportsOf = (workspace: {
+  readonly units: ReadonlyArray<{ readonly file: string; readonly name: string; readonly exported: boolean }>
+}): ReadonlyMap<string, ReadonlyArray<string>> => {
+  const out = new Map<string, Array<string>>()
+  for (const unit of workspace.units) {
+    if (!unit.exported) continue
+    const names = out.get(unit.file)
+    if (names === undefined) out.set(unit.file, [unit.name])
+    else names.push(unit.name)
+  }
+  return out
+}
+
+/**
+ * A change to a file's EXPORTS can move what a dependent's type names resolve
+ * to, so dependents come into scope -- but only then.
+ *
+ * Closing over importers unconditionally looked harmless and was not: a
+ * body-only edit to one widely-imported file pulled 190 files into scope, which
+ * is most of the analysis back again for a change that could not have affected
+ * any of them.
+ */
+const affectedBy = (
+  changed: ReadonlySet<string>,
+  imports: ImportGraph,
+  before: ReadonlyMap<string, ReadonlyArray<string>>,
+  after: ReadonlyMap<string, ReadonlyArray<string>>,
+): ReadonlySet<string> => {
+  const out = new Set(changed)
+  for (const file of changed) {
+    const was = [...(before.get(file) ?? [])].sort().join(",")
+    const now = [...(after.get(file) ?? [])].sort().join(",")
+    if (was === now) continue
+    for (const edge of imports.importersOf.get(file) ?? []) out.add(edge.from)
+  }
+  return out
+}
+
+const runPath = (path: Path.Path, cacheDir: string): string => path.join(cacheDir, "last-run.json")
+const baselinePath = (path: Path.Path, file: string): string => file
+
+const readStored = (
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  cacheDir: string,
+): Effect.Effect<StoredRun | undefined> =>
+  Effect.gen(function* () {
+    const file = runPath(path, cacheDir)
+    const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
+    if (!exists) return undefined
+    const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
+    if (text.trim() === "") return undefined
+    const decoded = Schema.decodeUnknownOption(StoredRun)(safeJson(text))
+    return Option.isSome(decoded) ? decoded.value : undefined
+  })
+
+const writeStored = (
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  cacheDir: string,
+  run: StoredRun,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* Effect.orElseSucceed(fs.makeDirectory(cacheDir, { recursive: true }), () => undefined)
+    yield* Effect.orElseSucceed(
+      fs.writeFileString(runPath(path, cacheDir), JSON.stringify(run, null, 2)),
+      () => undefined,
+    )
+  })
+
+const readBaseline = (
+  fs: FileSystem.FileSystem,
+  file: string,
+): Effect.Effect<ReadonlySet<string> | undefined> =>
+  Effect.gen(function* () {
+    const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
+    if (!exists) return undefined
+    const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
+    const decoded = Schema.decodeUnknownOption(Baseline)(safeJson(text))
+    return Option.isSome(decoded) ? new Set(decoded.value.identities) : undefined
+  })
+
+const writeBaseline = (
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  file: string,
+  identities: ReadonlyArray<string>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const parent = path.dirname(file)
+    yield* Effect.orElseSucceed(fs.makeDirectory(parent, { recursive: true }), () => undefined)
+    const body = JSON.stringify(
+      { version: policy.version, identities: [...identities].sort() },
+      null,
+      2,
+    )
+    yield* Effect.orElseSucceed(fs.writeFileString(file, body), () => undefined)
+  })
+
+/* -------------------------------------------------------------------------- */
+/* The run                                                                     */
+/* -------------------------------------------------------------------------- */
+
 /**
  * One pass over the workspace: deterministic candidates, then judgement for
  * the rules that ask for it, then a single sorted report.
@@ -64,6 +245,8 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       : allRules.filter((rule) => options.rules?.includes(rule.id) === true)
 
   const judge = yield* Judge
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
 
   const discovered =
     options.paths.length === 0 && options.useTsgo
@@ -73,8 +256,81 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
         })
       : undefined
 
+  const discoverStarted = Date.now()
+  const files = yield* discoverFiles(options.cwd, options.paths, discovered)
+
+  // Read once. The manifest needs the content, and a miss hands the same text to
+  // the parser rather than reading the tree twice.
+  const contents = new Map<string, string>()
+  for (const absolute of files) {
+    const text = yield* Effect.orElseSucceed(fs.readFileString(absolute), () => undefined)
+    if (text !== undefined) contents.set(absolute, text)
+  }
+  const discoverMs = Date.now() - discoverStarted
+
+  const manifest = manifestOf(
+    options.cwd,
+    files,
+    contents,
+    selected.map((rule) => rule.id),
+  )
+  const hashOf = new Map(
+    files.map((file) => [path.relative(options.cwd, file), shortHash(contents.get(file) ?? "")]),
+  )
+
+  const finish = (report: Report): Effect.Effect<Report> =>
+    Effect.gen(function* () {
+      let diagnostics = report.diagnostics
+      let note: Skipped | undefined
+      if (options.baselinePath !== undefined) {
+        const known = yield* readBaseline(fs, baselinePath(path, options.baselinePath))
+        if (known !== undefined) {
+          const before = diagnostics.length
+          diagnostics = diagnostics.filter(
+            (entry) => entry.identity === undefined || !known.has(entry.identity),
+          )
+          note = {
+            ruleId: "joggle",
+            reason: `${before - diagnostics.length} finding(s) already in the baseline were not reported`,
+          }
+        }
+      }
+      if (options.updateBaselinePath !== undefined) {
+        const identities = report.diagnostics
+          .map((entry) => entry.identity)
+          .filter((identity): identity is string => identity !== undefined)
+        yield* writeBaseline(fs, path, baselinePath(path, options.updateBaselinePath), identities)
+      }
+      return note === undefined ? { ...report, diagnostics } : { ...report, diagnostics, notes: [...report.notes, note] }
+    })
+
+  const runCache = options.runCacheDir ?? options.cacheDir
+
+  const stored = yield* readStored(fs, path, runCache)
+  if (options.replayUnchanged) {
+    if (stored !== undefined && stored.manifest === manifest) {
+      return yield* finish({
+        diagnostics: stored.diagnostics,
+        files: stored.files,
+        rules: stored.rules,
+        skipped: stored.skipped,
+        notes: [
+          {
+            ruleId: "joggle",
+            reason: `replayed the previous run: nothing it depends on changed across ${stored.files} files`,
+          },
+        ],
+        timings: [{ phase: "replay-check", ms: discoverMs }],
+        // This run spent nothing, so it reports nothing spent.
+        judge: { requests: 0, replayed: 0, calls: 0, unavailable: 0, inputTokens: 0, outputTokens: 0 },
+        elapsedMs: Date.now() - started,
+        replayed: true,
+      })
+    }
+  }
+
   const workspaceStarted = Date.now()
-  const workspace = yield* loadWorkspace(options.cwd, options.paths, discovered)
+  const workspace = yield* loadWorkspace(options.cwd, options.paths, files, contents)
   const timings: Array<{ phase: string; ms: number }> = [
     { phase: "workspace", ms: Date.now() - workspaceStarted },
   ]
@@ -110,9 +366,36 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     }
   }
 
+  // Scope after the workspace is loaded: closing over the import graph needs it.
+  let scope: Scope = everyFile
+  if (options.changed) {
+    const changed = changedSince(stored, hashOf)
+    if (changed === undefined) {
+      notes.push({
+        ruleId: "joggle",
+        reason: "scoped run with no stored run to compare against: every file is in scope",
+      })
+    } else {
+      const beforeExports = new Map(
+        (stored?.sources ?? []).map((source) => [source.path, source.exports]),
+      )
+      const affected = affectedBy(
+        changed,
+        workspace.imports,
+        beforeExports,
+        exportsOf(workspace),
+      )
+      scope = { changed: affected }
+      notes.push({
+        ruleId: "joggle",
+        reason: `scoped to ${affected.size} file(s) that moved: this answers what the change introduced, not what is wrong with the repository`,
+      })
+    }
+  }
+
   for (const rule of effective) {
     const ruleStarted = Date.now()
-    const result = yield* rule.run(workspace).pipe(
+    const result = yield* rule.run(workspace, scope).pipe(
       Effect.map((value) => ({ _tag: "ok" as const, value })),
       Effect.catch((error) => Effect.succeed({ _tag: "skipped" as const, error })),
     )
@@ -131,6 +414,8 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     diagnostics.push(...typecheckFindings(typeErrors))
   }
 
+  const judgeTotals: JudgeTotals = yield* judge.stats
+  const elapsedMs = Date.now() - started
   const report: Report = {
     diagnostics: rankDiagnostics(diagnostics),
     files: workspace.files.length,
@@ -138,8 +423,33 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     skipped,
     notes,
     timings,
-    judge: yield* judge.stats,
-    elapsedMs: Date.now() - started,
+    judge: judgeTotals,
+    elapsedMs,
+    replayed: false,
   }
-  return report
+
+  // Stored before the baseline filter, so a later replay reproduces the whole
+  // run and the baseline is applied to it again rather than baked in.
+  // A scoped run is not a full run, so it must not become the baseline that the
+  // next full run is compared against.
+  if (!options.changed) {
+    yield* writeStored(fs, path, runCache, {
+      version: policy.version,
+      manifest,
+      sources: workspace.files.map((file) => ({
+        path: file.path,
+        hash: hashOf.get(file.path) ?? "",
+        exports: [...(exportsOf(workspace).get(file.path) ?? [])].sort(),
+      })),
+      diagnostics: report.diagnostics,
+      files: report.files,
+      rules: report.rules,
+      skipped: report.skipped,
+      notes: report.notes,
+      judge: judgeTotals,
+      elapsedMs,
+    })
+  }
+
+  return yield* finish(report)
 })
