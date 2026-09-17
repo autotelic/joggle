@@ -71,6 +71,14 @@ const describe = (cause: unknown): string => (cause instanceof Error ? cause.mes
 const tagOf = (cause: unknown): string =>
   isRecord(cause) && typeof cause["_tag"] === "string" ? cause["_tag"] : ""
 
+const statusDetail = (status: number): string => {
+  if (status === 401) return "unauthorized — check TYPESAFE_API_KEY"
+  if (status === 422) return "the request failed validation"
+  if (status === 429) return "rate limited"
+  if (status === 529) return "TypeSafe is overloaded; retry later"
+  return "unexpected response status"
+}
+
 const mapJudgeError = (cause: unknown): JudgeError => {
   const tag = tagOf(cause)
   if (tag === "StatusCodeError") {
@@ -176,11 +184,20 @@ export const layer = (
           HttpClientRequest.bearerToken(apiKey),
           HttpClientRequest.acceptJson,
           HttpClientRequest.bodyJson(body),
+          Effect.mapError(mapJudgeError),
         )
+        // Retry transport failures only: an HTTP status is a verdict, not a hiccup.
         const client = (yield* HttpClient.HttpClient).pipe(HttpClient.retryTransient({ times: 3 }))
-        const response = yield* client.execute(httpRequest)
-        const ok = yield* HttpClientResponse.filterStatusOk(response)
-        return yield* HttpClientResponse.schemaBodyJson(SystemOneResponse)(ok)
+        const response = yield* client.execute(httpRequest).pipe(Effect.mapError(mapJudgeError))
+        // Classify the status before decoding: a 401 is not a malformed body.
+        if (response.status < 200 || response.status >= 300) {
+          return yield* Effect.fail(
+            new JudgeRejected({ status: response.status, detail: statusDetail(response.status) }),
+          )
+        }
+        return yield* HttpClientResponse.schemaBodyJson(SystemOneResponse)(response).pipe(
+          Effect.mapError(mapJudgeError),
+        )
       })
 
       const lookup = Effect.fn("Judge.lookup")(function* (key: string) {
@@ -201,7 +218,7 @@ export const layer = (
           Effect.mapError((cause) => new JudgeMalformed({ detail: describe(cause) })),
         )
         yield* Ref.update(stats, (current) => ({ ...current, calls: current.calls + 1 }))
-        const response = yield* callApi(options.apiKey.value, request).pipe(Effect.mapError(mapJudgeError))
+        const response = yield* callApi(options.apiKey.value, request)
         yield* Ref.update(entries, (current) => ({ ...current, [key]: response.answers }))
         yield* flush
         return { answers: response.answers, replayed: false } satisfies JudgeResult

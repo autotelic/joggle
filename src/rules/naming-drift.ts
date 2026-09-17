@@ -101,6 +101,7 @@ const find = (workspace: Workspace): ReadonlyArray<Candidate> => {
         if (left === undefined || right === undefined) continue
         if (left.name === right.name) continue
         if (left.file === right.file) continue
+        if (left.kind !== right.kind) continue
         const value = score(left.name, right.name)
         if (value < minScore) continue
         candidates.push({ left, right, score: value })

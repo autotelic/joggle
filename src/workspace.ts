@@ -374,13 +374,18 @@ export const loadWorkspace = (
 ): Effect.Effect<Workspace, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
     const files = discovered ?? (yield* resolveInputs(root, inputs.length > 0 ? inputs : ["."]))
     const parsed: Array<SourceFile> = []
-    for (const file of files) {
-      const text = yield* fs.readFileString(file).pipe(
-        Effect.mapError((cause) => new WorkspaceError({ path: file, operation: "readFileString", cause })),
+    for (const absolute of files) {
+      const text = yield* fs.readFileString(absolute).pipe(
+        Effect.mapError(
+          (cause) => new WorkspaceError({ path: absolute, operation: "readFileString", cause }),
+        ),
       )
-      parsed.push(parseSourceFile(file, text))
+      // Diagnostics carry paths relative to the root, so output is stable and
+      // hosts such as GitHub Actions can annotate the right file.
+      parsed.push(parseSourceFile(path.relative(root, absolute), text))
     }
     const units = parsed.flatMap((file) => file.units)
     const byName = new Map<string, Array<Unit>>()
