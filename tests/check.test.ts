@@ -30,15 +30,15 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     expect(boundary?.severity).toBe("error")
     expect(boundary?.message).toContain("outside the project root")
 
-    // Every rule now needs the judge, so a breach withholds all of them rather
-    // than persisting evidence into a cache that does not own the code.
-    expect(report.rules).toBe(0)
+    // A breach withholds every JUDGED rule, because their evidence would cross
+    // repositories. The structural rules persist nothing, so they still run.
+    expect(report.rules).toBe(4)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
-      "joggle/composition-pattern",
       "joggle/duplicate-implementation",
       "joggle/duplicate-meaning",
       "joggle/naming-drift",
+      "joggle/page-needs-composition",
     ])
     expect(report.skipped.every((skip) => skip.reason.includes("cache boundary"))).toBe(true)
   }),
@@ -65,10 +65,12 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     )
 
     expect(report.files).toBe(2)
-    expect(report.rules).toBe(4)
+    // Four structural rules plus four judged ones.
+    expect(report.rules).toBe(8)
     expect(report.diagnostics.length).toBe(1)
-    // The fixture has no pages or modals, so composition-pattern has nothing to
-    // ask about and never reaches the judge -- it is not skipped, it is idle.
+    // The fixture has no bundles, pages or modals, so the structural rules find
+    // nothing and the page rule produces no candidates. A rule with nothing to
+    // look at never reaches the judge, so it is idle rather than skipped.
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/duplicate-meaning",
       "joggle/naming-drift",

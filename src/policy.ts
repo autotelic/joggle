@@ -35,7 +35,7 @@ export const policy = {
    * identical. The unchanged-run short-circuit keys on this, so failing to bump
    * it means a stale report is replayed after the rules have moved.
    */
-  analysisVersion: "2026-09-04",
+  analysisVersion: "2026-09-05",
 
   judge: {
     baseUrl: "https://api.typesafe.ai",
@@ -137,12 +137,21 @@ export const policy = {
   },
 
   /**
-   * Pages and modals assessed for composition-pattern conformance in one run.
+   * When a page's own state and markup look like they belong in a bundle.
    *
-   * This is the largest candidate population in the tool -- every route and every
-   * modal -- because the check is about a whole file rather than a declaration.
+   * These are TRIGGERS, not verdicts. The first version of this rule treated
+   * every file under `routes/` as a page that should conform, which produced
+   * 1,216 candidates against Shakti's 280 real route and modal files, flagged
+   * 392 of them, and gave the model almost nothing to be confident about: 237 of
+   * the flagged pages scored under 0.3. A page that composes local components
+   * and shares no state needs no bundle, so the rule now asks only about pages
+   * under actual state pressure.
    */
-  compositionPattern: {
+  pageNeedsComposition: {
+    /** useState calls before a page's state looks like a provider's business. */
+    minLocalState: 3,
+    /** Inline JSX elements before a page's markup looks like someone's block. */
+    minInlineElements: 15,
     maxPages: 400,
   },
 
@@ -166,6 +175,9 @@ export const policy = {
   /** Files and directories the workspace scan never enters. */
   ignoredDirectories: [
     "node_modules",
+    // Nested checkouts, as this repository keeps them: analysing them as part of
+    // the parent repo reports the child's own demo pages as the parent's.
+    "repos",
     ".git",
     "dist",
     "build",

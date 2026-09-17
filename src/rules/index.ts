@@ -1,20 +1,23 @@
-import { compositionPattern } from "./composition-pattern.ts"
+import { bundleRules } from "./bundle-conformance.ts"
 import { duplicateImplementation } from "./duplicate-implementation.ts"
 import { duplicateMeaning } from "./duplicate-meaning.ts"
 import { namingDrift } from "./naming-drift.ts"
+import { pageNeedsComposition } from "./page-needs-composition.ts"
 import type { Rule } from "../rule.ts"
 
 /**
  * The registry. Add a rule by writing one file and one line here.
  *
- * Deterministic rules first, so that a run without an API key still produces
- * the findings it can prove.
+ * Deterministic rules first, so that a run without an API key still produces the
+ * findings it can prove. The four bundle-conformance rules are structural and
+ * need no model at all; the page rule is a judgement and needs a key.
  */
 export const allRules: ReadonlyArray<Rule> = [
+  ...bundleRules,
   duplicateImplementation,
   duplicateMeaning,
   namingDrift,
-  compositionPattern,
+  pageNeedsComposition,
 ]
 
 export const ruleById = (id: string): Rule | undefined => allRules.find((rule) => rule.id === id)
