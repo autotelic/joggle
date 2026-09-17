@@ -12,7 +12,12 @@ export interface Report {
   readonly files: number
   readonly rules: number
   readonly skipped: ReadonlyArray<Skipped>
-  readonly judge: { readonly requests: number; readonly replayed: number; readonly calls: number }
+  readonly judge: {
+    readonly requests: number
+    readonly replayed: number
+    readonly calls: number
+    readonly unavailable: number
+  }
   readonly elapsedMs: number
 }
 
@@ -59,8 +64,10 @@ const text = (report: Report): string => {
       : `${plural(total, "problem")} (${errors} errors, ${warnings} warnings) in ${plural(report.files, "file")} (${report.elapsedMs}ms).`,
   )
   if (report.judge.requests > 0 || report.skipped.length > 0) {
+    const judge = report.judge
+    const unavailable = judge.unavailable > 0 ? `, ${judge.unavailable} unavailable` : ""
     lines.push(
-      `  ${judged} judged findings, ${report.judge.requests} judgement attempts (${report.judge.replayed} replayed, ${report.judge.calls} API calls).`,
+      `  ${judged} judged findings; ${judge.requests} judgements, ${judge.calls} API calls, ${judge.replayed} replayed${unavailable}.`,
     )
   }
   for (const skip of report.skipped) {

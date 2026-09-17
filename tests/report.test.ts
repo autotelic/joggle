@@ -16,7 +16,7 @@ const report = (diagnostics: ReadonlyArray<Diagnostic>): Report => ({
   files: 2,
   rules: 3,
   skipped: [{ ruleId: "joggle/naming-drift", reason: "TYPESAFE_API_KEY is not set" }],
-  judge: { requests: 1, replayed: 0, calls: 0 },
+  judge: { requests: 1, replayed: 0, calls: 0, unavailable: 0 },
   elapsedMs: 5,
 })
 

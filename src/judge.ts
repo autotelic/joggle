@@ -52,6 +52,8 @@ export interface JudgeStats {
   readonly requests: number
   readonly replayed: number
   readonly calls: number
+  /** Judgements that could not be made: absent key, offline miss, or a failure. */
+  readonly unavailable: number
 }
 
 export interface Interface {
@@ -173,7 +175,12 @@ export const layer = (
       })
 
       const entries = yield* Ref.make(yield* load)
-      const stats = yield* Ref.make<JudgeStats>({ requests: 0, replayed: 0, calls: 0 })
+      const stats = yield* Ref.make<JudgeStats>({
+        requests: 0,
+        replayed: 0,
+        calls: 0,
+        unavailable: 0,
+      })
 
       const flush = Effect.gen(function* () {
         const current = yield* Ref.get(entries)
@@ -215,9 +222,11 @@ export const layer = (
           return { answers: replayed, replayed: true } satisfies JudgeResult
         }
         if (Option.isNone(options.apiKey)) {
+          yield* Ref.update(stats, (current) => ({ ...current, unavailable: current.unavailable + 1 }))
           return yield* Effect.fail(new JudgeUnavailable({ reason: "TYPESAFE_API_KEY is not set" }))
         }
         if (options.offline) {
+          yield* Ref.update(stats, (current) => ({ ...current, unavailable: current.unavailable + 1 }))
           return yield* Effect.fail(
             new JudgeUnavailable({ reason: "offline mode and no cached judgement for this candidate" }),
           )

@@ -24,7 +24,7 @@ export const judgeStub = (answers: Readonly<Record<string, Answer>>) =>
     JudgeService,
     JudgeService.of({
       ask: () => Effect.succeed({ answers, replayed: false }),
-      stats: Effect.succeed({ requests: 1, replayed: 0, calls: 0 }),
+      stats: Effect.succeed({ requests: 1, replayed: 0, calls: 0, unavailable: 0 }),
     }),
   )
 
@@ -33,7 +33,7 @@ export const judgeFailing = (reason: string) =>
     JudgeService,
     JudgeService.of({
       ask: () => Effect.fail(new JudgeUnavailable({ reason })),
-      stats: Effect.succeed({ requests: 1, replayed: 0, calls: 0 }),
+      stats: Effect.succeed({ requests: 1, replayed: 0, calls: 0, unavailable: 0 }),
     }),
   )
 
