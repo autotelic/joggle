@@ -96,6 +96,10 @@ const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
         if (left.name === right.name) continue
         if (left.file === right.file) continue
         if (left.kind !== right.kind) continue
+        // Structurally identical declarations are already reported by
+        // duplicate-implementation; judging them again double-reports and
+        // spends a call to learn nothing.
+        if (left.shapeHash === right.shapeHash) continue
         const value = score(left.name, right.name)
         if (value < minScore) continue
         candidates.push({ left, right, score: value })

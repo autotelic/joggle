@@ -15,7 +15,7 @@ const RULE_ID = "joggle/duplicate-meaning"
  * two implementations with wildly different sizes cannot be near-duplicates.
  */
 const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
-  const { minSimilarity, maxSimilarity, maxPairs } = policy.duplicateMeaning
+  const { minSimilarity, maxSimilarity, maxPairs, minTokens } = policy.duplicateMeaning
   const buckets = new Map<number, Array<Unit>>()
   for (const unit of workspace.units) {
     const bucket = Math.floor(unit.tokens.length / 8)
@@ -30,6 +30,7 @@ const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
     for (const pair of pairsOf(neighbours)) {
       if (pair.left.file === pair.right.file) continue
       if (pair.left.kind !== pair.right.kind) continue
+      if (pair.left.tokens.length < minTokens || pair.right.tokens.length < minTokens) continue
       const score = similarity(pair.left.tokens, pair.right.tokens)
       if (score < minSimilarity || score > maxSimilarity) continue
       candidates.push({ left: pair.left, right: pair.right, score })

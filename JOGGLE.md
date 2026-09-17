@@ -90,7 +90,9 @@ question version + model + evidence + questions
 ```
 
 It is serialised with sorted keys, so the same candidate produces the same key
-on every machine. Successful judgements are written to
+on every machine — which means **run from the repository root**. Evidence
+carries root-relative paths; running from a subdirectory changes the key and
+misses every cached verdict. Successful judgements are written to
 `.joggle/judgements.json`; commit that file and CI replays them with
 `--offline` and **no API key at all**. Bump `policy.questionVersion` when you
 change a question's wording, and every cached answer for it is invalidated at
@@ -126,6 +128,21 @@ Two properties make this safe to live with:
 If the key is ever pasted into a file, into chat, or into a shell that gets
 logged, rotate it in the TypeSafe console. This repository is private, so
 GitHub's secret scanning will not catch it for you.
+
+### What leaves the machine
+
+The judged rules send the evidence panel -- including source excerpts of the
+declarations being compared -- to `api.typesafe.ai`. Deterministic rules and
+`--offline` send nothing.
+
+Decide this per repository. For a client codebase, either point
+`TYPESAFE_BASE_URL` at a deployment you control, or run the judged pass over
+public and fixture code only and let the committed replay cache carry the
+verdicts into the client's CI.
+
+```sh
+TYPESAFE_BASE_URL=https://typesafe.internal.example doppler run -- pnpm joggle check src
+```
 
 ## The judgement
 

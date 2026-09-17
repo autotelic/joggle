@@ -39,7 +39,12 @@ export const policy = {
    */
   duplicateMeaning: {
     /** Lower bound on structural overlap before a pair is worth judging. */
-    minSimilarity: 0.5,
+    minSimilarity: 0.7,
+    /**
+     * Very short bodies score high on bigram overlap by accident. Judging them
+     * costs a call and teaches nothing, so they are not candidates.
+     */
+    minTokens: 12,
     /** Upper bound: at 1.0 the deterministic rule already owns the finding. */
     maxSimilarity: 0.995,
     /** Bound on how many pairs one run may send to the model. */

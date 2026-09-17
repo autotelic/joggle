@@ -1,5 +1,6 @@
 import {
   Cache,
+  Config,
   Context,
   Duration,
   Effect,
@@ -155,6 +156,11 @@ export const layer = (
       const path = yield* Path.Path
 
       const file = storePath(path, options.cacheDir)
+      // Overridable so a self-hosted or enterprise deployment can be used when
+      // the evidence panels must not leave the organisation's boundary.
+      const baseUrl = yield* Config.String("TYPESAFE_BASE_URL").pipe(
+        Effect.orElseSucceed(() => policy.judge.baseUrl),
+      )
 
       const load = Effect.gen(function* () {
         const empty: Record<string, Record<string, Answer>> = {}
@@ -182,7 +188,7 @@ export const layer = (
           model: request.model,
           questions: request.questions,
         }
-        const httpRequest = yield* HttpClientRequest.post(`${policy.judge.baseUrl}/v1/systemone`).pipe(
+        const httpRequest = yield* HttpClientRequest.post(`${baseUrl}/v1/systemone`).pipe(
           HttpClientRequest.bearerToken(apiKey),
           HttpClientRequest.acceptJson,
           HttpClientRequest.bodyJson(body),
