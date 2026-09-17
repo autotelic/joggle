@@ -10,6 +10,11 @@ import type { Unit } from "./workspace.ts"
  * other than the alphabet. Clusters make the actionable unit explicit: N copies,
  * one decision, one report -- and the choice of which to keep becomes something
  * the model decides rather than something `sort` decides.
+ *
+ * Clustering is only meaningful when the relation is transitive. Identical
+ * shape and near-identical bodies are: if A is a copy of B and B of C, all three
+ * are one thing. Names are not -- see naming-drift -- and that rule now judges
+ * pairs instead.
  */
 export interface Cluster {
   /** Ordered by path so runs stay deterministic. The first is the code's guess. */
@@ -70,3 +75,16 @@ export const makeCluster = (
 export const namesOf = (cluster: Cluster): ReadonlyArray<string> => [
   ...new Set(cluster.members.map((member) => member.name)),
 ]
+
+/**
+ * Names of a cluster, capped for display.
+ *
+ * An eighty-seven member cluster once printed all eighty-seven names into a
+ * note. A message is not a directory listing; the count carries the information
+ * and the first few carry the gist.
+ */
+export const nameList = (cluster: Cluster, max = 4): string => {
+  const names = namesOf(cluster)
+  if (names.length <= max) return names.join(", ")
+  return `${names.slice(0, max).join(", ")} and ${names.length - max} more`
+}

@@ -11,7 +11,7 @@ export function recentOrders(orders: Order[]): Order[] {
   return orders.filter((order) => order.total > 0)
 }
 
-export function getUserProfile(id: string, tenant: string): string {
+export function fetchCachedUserProfile(id: string, tenant: string): string {
   return `/users/${tenant}/${id}`
 }
 

@@ -1,9 +1,11 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { components, makeCluster, type Cluster } from "../cluster.ts"
-import { defineRule } from "../rule.ts"
-import { assessCluster, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
-import { similarity, type Unit, type Workspace } from "../workspace.ts"
+import { budgetNote, defineRule, outcome } from "../rule.ts"
+import { allPairs } from "../similarity.ts"
+import { assessCluster, collapseQuestionnaire, type ClusterRule } from "./cluster-verdict.ts"
+import type { Unit, Workspace } from "../workspace.ts"
+import { nameList } from "../cluster.ts"
 
 const spec: ClusterRule = {
   ruleId: "joggle/duplicate-meaning",
@@ -11,10 +13,9 @@ const spec: ClusterRule = {
   // A near-duplicate is a guess until a judgement says otherwise, so an
   // unjudged cluster is silence and the rule reports itself as skipped.
   onUnavailable: "propagate",
-  subject: (cluster) => {
-    const names = [...new Set(cluster.members.map((member) => member.name))]
-    return `${cluster.members.length} declarations that may be one thing: ${names.join(", ")}`
-  },
+  questionnaire: collapseQuestionnaire,
+  subject: (cluster) =>
+    `${cluster.members.length} declarations that may be one thing: ${nameList(cluster)}`,
 }
 
 interface Pair {
@@ -23,64 +24,66 @@ interface Pair {
   readonly score: number
 }
 
+/** Only declarations of the same kind, in different files, can be one thing. */
+const sameShape = (units: ReadonlyArray<Unit>, pair: Pair): boolean => {
+  const one = units[pair.left]
+  const two = units[pair.right]
+  if (one === undefined || two === undefined) return false
+  return one.file !== two.file && one.kind === two.kind
+}
+
 /**
  * Near-duplicates: structurally close but not identical, so someone renamed a
- * thing or the bodies drifted. Pairs are unioned into clusters before judging,
- * because "these eighteen `formatDate`s are one function" is a single decision,
- * not a hundred and fifty-three.
+ * thing or the bodies drifted.
+ *
+ * Pair generation is COMPLETE. It used to be a global sort by similarity with a
+ * slice, which is a selection rather than a bound: forty high-scoring pairs
+ * elsewhere in the tree could spend the whole budget and leave the eighteen
+ * definitions of one helper never compared. The sweep visits every pair that
+ * could clear the threshold, and the only bound left is on how many clusters
+ * are judged.
  */
 const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
-  const { minSimilarity, maxSimilarity, maxPairs, minTokens } = policy.duplicateMeaning
+  const { minSimilarity, maxSimilarity, minTokens } = policy.duplicateMeaning
+
   const units = workspace.units
+  const eligible = units
+    .map((unit, index) => ({ unit, index }))
+    .filter((entry) => entry.unit.tokens.length >= minTokens)
 
-  // Length buckets keep the pair scan roughly linear. Two implementations of
-  // wildly different sizes cannot be near-duplicates.
-  const buckets = new Map<number, Array<number>>()
-  units.forEach((unit, index) => {
-    const bucket = Math.floor(unit.tokens.length / 8)
-    const existing = buckets.get(bucket)
-    if (existing === undefined) buckets.set(bucket, [index])
-    else existing.push(index)
+  const candidates = allPairs(
+    eligible.map((entry) => ({ index: entry.index, shingles: entry.unit.shingles })),
+    minSimilarity,
+  )
+
+  const pairs: Array<Pair> = candidates.filter(
+    (pair) => pair.score <= maxSimilarity && sameShape(units, pair),
+  )
+
+  const groups = components(
+    workspace.units.length,
+    pairs.map((pair) => [pair.left, pair.right] as const),
+  )
+  const groupOf = new Map<number, number>()
+  groups.forEach((group, id) => {
+    for (const index of group) groupOf.set(index, id)
   })
-
-  const pairs: Array<Pair> = []
-  for (const [bucket, members] of buckets) {
-    const neighbours = [...members, ...(buckets.get(bucket + 1) ?? [])]
-    for (let a = 0; a < neighbours.length; a += 1) {
-      for (let b = a + 1; b < neighbours.length; b += 1) {
-        const left = neighbours[a]
-        const right = neighbours[b]
-        if (left === undefined || right === undefined) continue
-        const one = units[left]
-        const two = units[right]
-        if (one === undefined || two === undefined) continue
-        if (one.file === two.file) continue
-        if (one.kind !== two.kind) continue
-        if (one.tokens.length < minTokens || two.tokens.length < minTokens) continue
-        const score = similarity(one.tokens, two.tokens)
-        if (score < minSimilarity || score > maxSimilarity) continue
-        pairs.push({ left, right, score })
-      }
-    }
+  const overlapOf = new Map<number, number>()
+  for (const pair of pairs) {
+    const id = groupOf.get(pair.left)
+    if (id === undefined) continue
+    if ((overlapOf.get(id) ?? 0) < pair.score) overlapOf.set(id, pair.score)
   }
 
-  const best = pairs.sort((a, b) => b.score - a.score).slice(0, maxPairs)
-  const edges = best.map((pair) => [pair.left, pair.right] as const)
   const clusters: Array<Cluster> = []
-  for (const group of components(units.length, edges)) {
-    if (group.length < 2) continue
+  groups.forEach((group, id) => {
+    if (group.length < 2) return
     const members = group
-      .map((index) => units[index])
+      .map((index) => workspace.units[index])
       .filter((unit): unit is Unit => unit !== undefined)
-    if (members.length < 2) continue
-    const overlap = Math.max(
-      ...best
-        .filter((pair) => group.includes(pair.left) && group.includes(pair.right))
-        .map((pair) => pair.score),
-      0,
-    )
-    clusters.push(makeCluster(members, false, overlap))
-  }
+    if (members.length < 2) return
+    clusters.push(makeCluster(members, false, overlapOf.get(id) ?? 0))
+  })
   return clusters
 }
 
@@ -91,8 +94,17 @@ export const duplicateMeaning = defineRule({
   judged: true,
   run: Effect.fn("joggle/duplicate-meaning")(function* (workspace) {
     const clusters = find(workspace)
-    if (clusters.length === 0) return []
-    const outcomes = yield* Effect.forEach(clusters, assessCluster(spec, workspace.imports), { concurrency: 4 })
-    return outcomes.flatMap((outcome) => (Option.isSome(outcome) ? [outcome.value] : []))
+    if (clusters.length === 0) return outcome([])
+    const budget = policy.duplicateMeaning.maxClusters
+    const outcomes = yield* Effect.forEach(clusters.slice(0, budget), assessCluster(spec, workspace.imports), {
+      concurrency: 4,
+    })
+    const findings = outcomes.flatMap((entry) => (Option.isSome(entry) ? [entry.value] : []))
+    const largest = clusters
+      .slice(budget)
+      .sort((a, b) => b.members.length - a.members.length)
+      .slice(0, 3)
+      .map((cluster) => `${cluster.members.length}× ${spec.subject(cluster)}`)
+    return outcome(findings, budgetNote("clusters", budget, clusters.length, largest))
   }),
 })

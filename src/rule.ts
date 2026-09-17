@@ -17,45 +17,95 @@ import type { Unit, Workspace } from "./workspace.ts"
  * Deterministic rules simply never call the judge. That is the whole
  * difference; the output shape is identical, so a host cannot tell them apart.
  */
+/**
+ * What a rule produced, and what it declined to do.
+ *
+ * The notes are not decoration. Every bound in this program is a decision not to
+ * look at something, and a bound nobody can see is indistinguishable from a bug:
+ * the eighteen definitions of one helper stayed invisible for three runs because
+ * a cap discarded them silently. A rule that hits a limit now says so, in its own
+ * words, and the limit appears in the report beside the findings.
+ */
+export interface RuleOutcome {
+  readonly diagnostics: ReadonlyArray<Diagnostic>
+  readonly notes: ReadonlyArray<string>
+}
+
+export const outcome = (
+  diagnostics: ReadonlyArray<Diagnostic>,
+  notes: ReadonlyArray<string> = [],
+): RuleOutcome => ({ diagnostics, notes })
+
 export interface Rule {
   readonly id: string
   readonly severity: Severity
   readonly description: string
   /** Whether this rule needs the judge. Deterministic rules must run without it. */
   readonly judged: boolean
-  readonly run: (
-    workspace: Workspace,
-  ) => Effect.Effect<ReadonlyArray<Diagnostic>, JudgeError, JudgeService>
+  readonly run: (workspace: Workspace) => Effect.Effect<RuleOutcome, JudgeError, JudgeService>
 }
 
 export const defineRule = (rule: Rule): Rule => rule
 
-export interface Pair<A> {
-  readonly left: A
-  readonly right: A
+/**
+ * Standard wording for a bound a rule hit, so that no rule invents its own and
+ * no reader has to guess whether silence meant "nothing there".
+ */
+export const budgetNote = (
+  kind: string,
+  judged: number,
+  found: number,
+  sample: ReadonlyArray<string>,
+): ReadonlyArray<string> =>
+  found <= judged
+    ? []
+    : [
+        `${found - judged} of ${found} ${kind} were not judged (budget ${judged}). Largest unjudged: ${sample.join("; ")}`,
+      ]
+
+/** A value together with its position in the workspace, for union-find below. */
+export interface Sized<T> {
+  readonly value: T
+  readonly index: number
 }
 
 /**
- * Two declarations considered together, with the deterministic score that
- * nominated them. Rules share it so that "what a candidate is" has one answer.
+ * Sweep a size-ordered list, visiting only the pairs that could clear a
+ * similarity threshold.
+ *
+ * Kept as the reference implementation: it compares every pair inside the size
+ * window, so it is complete by construction. `allPairs` in similarity.ts uses
+ * prefix filtering to avoid the quadratic count, and a test asserts the two
+ * report the same pairs. When they disagree, this one is right.
+ *
+ * Jaccard(A, B) >= t implies |A| / |B| >= t, because the intersection cannot be
+ * larger than the smaller side. So once the list is sorted by size, each left
+ * item has a known window of right items and the scan can stop at the first item
+ * past it. That is a completeness-preserving filter: unlike sorting pairs by
+ * score and slicing, it cannot drop a pair that would have qualified.
  */
-export interface UnitPair {
-  readonly left: Unit
-  readonly right: Unit
-  readonly score: number
-}
-
-/** Every unordered pair, in a deterministic order. */
-export const pairsOf = <A>(items: ReadonlyArray<A>): ReadonlyArray<Pair<A>> => {
-  const out: Array<Pair<A>> = []
-  for (let left = 0; left < items.length; left += 1) {
-    for (let right = left + 1; right < items.length; right += 1) {
-      const a = items[left]
-      const b = items[right]
-      if (a !== undefined && b !== undefined) out.push({ left: a, right: b })
+export const sweep = <T>(
+  ordered: ReadonlyArray<Sized<T>>,
+  size: (value: T) => number,
+  threshold: number,
+  visit: (left: Sized<T>, right: Sized<T>) => void,
+): number => {
+  let compared = 0
+  for (let i = 0; i < ordered.length; i += 1) {
+    const left = ordered[i]
+    if (left === undefined) continue
+    const smaller = size(left.value)
+    if (smaller === 0 || threshold <= 0) continue
+    const limit = smaller / threshold
+    for (let j = i + 1; j < ordered.length; j += 1) {
+      const right = ordered[j]
+      if (right === undefined) break
+      if (size(right.value) > limit) break
+      compared += 1
+      visit(left, right)
     }
   }
-  return out
+  return compared
 }
 
 export const finding = (input: {

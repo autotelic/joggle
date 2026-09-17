@@ -3,6 +3,7 @@ import { Effect, FileSystem, Path } from "effect"
 import { parseSync } from "oxc-parser"
 import { policy } from "./policy.ts"
 import { buildImportGraph, importsIn, type ImportGraph, type ParsedImport } from "./imports.ts"
+import { shinglesOf } from "./similarity.ts"
 import { WorkspaceError, type SourceLocation } from "./schema.ts"
 
 /* -------------------------------------------------------------------------- */
@@ -28,6 +29,13 @@ export interface Unit {
   /** The declaration with every identifier replaced by `_`. */
   readonly shape: string
   readonly tokens: ReadonlyArray<string>
+  /**
+   * Token-bigram set, computed once. Rebuilding it inside `similarity` meant two
+   * thrown-away Set allocations and a string concatenation per bigram on every
+   * pair comparison -- millions of allocations to answer a question the unit
+   * already knew the answer to.
+   */
+  readonly shingles: ReadonlySet<string>
   readonly shapeHash: string
   /** Type-position names this declaration mentions, before resolution. */
   readonly typeRefs: ReadonlyArray<string>
@@ -261,32 +269,7 @@ export const tokenize = (shape: string): ReadonlyArray<string> => {
   return tokens
 }
 
-const bigrams = (tokens: ReadonlyArray<string>): ReadonlySet<string> => {
-  const set = new Set<string>()
-  for (let index = 0; index < tokens.length - 1; index += 1) {
-    set.add(`${tokens[index]}\u0000${tokens[index + 1]}`)
-  }
-  return set
-}
 
-/**
- * Token-bigram Jaccard similarity. Cheap, deterministic, and good enough to
- * decide which pairs deserve a judgement -- which is the only thing it is for.
- */
-export const similarity = (
-  left: ReadonlyArray<string>,
-  right: ReadonlyArray<string>,
-): number => {
-  if (left.length === 0 || right.length === 0) {
-    return left.join(" ") === right.join(" ") ? 1 : 0
-  }
-  const a = bigrams(left)
-  const b = bigrams(right)
-  let intersection = 0
-  for (const token of a) if (b.has(token)) intersection += 1
-  const union = a.size + b.size - intersection
-  return union === 0 ? 0 : intersection / union
-}
 
 const hash = (value: string): string => createHash("sha1").update(value).digest("hex").slice(0, 16)
 
@@ -476,6 +459,7 @@ const parseSourceFile = (file: string, text: string): SourceFile => {
   if (isRecord(program)) {
     for (const site of sitesIn(program)) {
       const shape = normalize(text, site, identifiers, comments)
+      const tokens = tokenize(shape)
       const from = locate(starts, site.start)
       const to = locate(starts, site.end)
       units.push({
@@ -488,7 +472,8 @@ const parseSourceFile = (file: string, text: string): SourceFile => {
         exported: site.exported,
         text: text.slice(site.start, site.end),
         shape,
-        tokens: tokenize(shape),
+        tokens,
+        shingles: shinglesOf(tokens),
         shapeHash: hash(shape),
         typeRefs: [
           ...new Set(

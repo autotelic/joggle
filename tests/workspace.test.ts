@@ -1,7 +1,8 @@
 import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
-import { loadWorkspace, similarity, tokenize } from "../src/workspace.ts"
+import { loadWorkspace, tokenize } from "../src/workspace.ts"
+import { similarity } from "../src/similarity.ts"
 
 const corpus = "tests/fixtures/corpus"
 

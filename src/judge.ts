@@ -2,6 +2,7 @@ import {
   Cache,
   Config,
   Context,
+  Schedule,
   Duration,
   Effect,
   Exit,
@@ -201,17 +202,36 @@ export const layer = (
           HttpClientRequest.bodyJson(body),
           Effect.mapError(mapJudgeError),
         )
-        // Retry transport failures only: an HTTP status is a verdict, not a hiccup.
         const client = (yield* HttpClient.HttpClient).pipe(HttpClient.retryTransient({ times: 3 }))
-        const response = yield* client.execute(httpRequest).pipe(Effect.mapError(mapJudgeError))
-        // Classify the status before decoding: a 401 is not a malformed body.
-        if (response.status < 200 || response.status >= 300) {
-          return yield* Effect.fail(
-            new JudgeRejected({ status: response.status, detail: statusDetail(response.status) }),
+
+        // One attempt: execute, classify the status, decode.
+        const attempt = Effect.gen(function* () {
+          const response = yield* client.execute(httpRequest).pipe(Effect.mapError(mapJudgeError))
+          // Classify before decoding: a 401 is not a malformed body.
+          if (response.status < 200 || response.status >= 300) {
+            return yield* Effect.fail(
+              new JudgeRejected({ status: response.status, detail: statusDetail(response.status) }),
+            )
+          }
+          return yield* HttpClientResponse.schemaBodyJson(SystemOneResponse)(response).pipe(
+            Effect.mapError(mapJudgeError),
           )
-        }
-        return yield* HttpClientResponse.schemaBodyJson(SystemOneResponse)(response).pipe(
-          Effect.mapError(mapJudgeError),
+        })
+
+        // 429 and 529 are not verdicts, they are backpressure, and the docs are
+        // explicit: back off and retry rather than failing. This was a real bug
+        // -- classifying the status by hand meant `retryTransient` never saw
+        // these, so one overloaded response skipped a whole rule mid-run.
+        return yield* attempt.pipe(
+          Effect.retry({
+            while: (error: JudgeError) =>
+              error._tag === "joggle/JudgeRejected" &&
+              (error.status === 429 || error.status === 529),
+            schedule: Schedule.exponential("400 millis").pipe(
+              Schedule.jittered,
+              Schedule.upTo({ times: 6 }),
+            ),
+          }),
         )
       })
 

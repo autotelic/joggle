@@ -28,6 +28,17 @@ export interface Report {
   readonly files: number
   readonly rules: number
   readonly skipped: ReadonlyArray<Skipped>
+  /**
+   * Bounds the rules hit, in their own words. A note is not a failure: it is
+   * something the rule chose not to look at, and it belongs next to the findings
+   * so that a reader can tell "nothing there" from "we stopped looking".
+   */
+  readonly notes: ReadonlyArray<Skipped>
+  /**
+   * Where the wall clock went. A run that takes a minute is fine; a run that
+   * takes a minute for a reason nobody can see is not.
+   */
+  readonly timings: ReadonlyArray<{ readonly phase: string; readonly ms: number }>
   readonly judge: {
     readonly requests: number
     readonly replayed: number
@@ -121,11 +132,19 @@ const provenance = (report: Report): string => {
   if (report.diagnostics.length === 0 && report.judge.requests === 0) return ""
   const { requests, calls, replayed, unavailable } = report.judge
   const u = unavailable > 0 ? `, ${unavailable} unavailable` : ""
-  return `Finished in ${Math.round(report.elapsedMs / 100) / 10}s on ${plural(report.files, "file")} using ${plural(report.rules, "rule")}. ${judged} of ${report.diagnostics.length} findings verified by a judgement; ${requests} judgements, ${calls} API calls, ${replayed} replayed${u}.`
+  const phases = report.timings
+    .filter((timing) => timing.ms >= 50)
+    .sort((a, b) => b.ms - a.ms)
+    .map((timing) => `${timing.phase} ${Math.round(timing.ms / 100) / 10}s`)
+    .join(", ")
+  const where = phases === "" ? "" : ` (${phases})`
+  return `Finished in ${Math.round(report.elapsedMs / 100) / 10}s on ${plural(report.files, "file")} using ${plural(report.rules, "rule")}${where}. ${judged} of ${report.diagnostics.length} findings verified by a judgement; ${requests} judgements, ${calls} API calls, ${replayed} replayed${u}.`
 }
 
-const notes = (report: Report): ReadonlyArray<string> =>
-  report.skipped.map((skip) => `note: ${skip.ruleId} skipped — ${skip.reason}`)
+const notes = (report: Report): ReadonlyArray<string> => [
+  ...report.skipped.map((skip) => `note: ${skip.ruleId} skipped — ${skip.reason}`),
+  ...report.notes.map((note) => `note: ${note.ruleId} — ${note.reason}`),
+]
 
 /* -------------------------------------------------------------------------- */
 /* text                                                                       */
@@ -217,6 +236,7 @@ const json = (report: Report): string =>
         problems: report.diagnostics.length,
         ...counts(report),
         skipped: report.skipped,
+        notes: report.notes,
         judge: report.judge,
         elapsedMs: report.elapsedMs,
       },

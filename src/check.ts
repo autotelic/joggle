@@ -73,10 +73,15 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
         })
       : undefined
 
+  const workspaceStarted = Date.now()
   const workspace = yield* loadWorkspace(options.cwd, options.paths, discovered)
+  const timings: Array<{ phase: string; ms: number }> = [
+    { phase: "workspace", ms: Date.now() - workspaceStarted },
+  ]
 
   const diagnostics: Array<Diagnostic> = []
   const skipped: Array<Skipped> = []
+  const notes: Array<Skipped> = []
 
   // A file outside the root produces a "../" relative path. Its evidence has no
   // business in a cache whose location nobody chose.
@@ -106,12 +111,18 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   }
 
   for (const rule of effective) {
-    const outcome = yield* rule.run(workspace).pipe(
-      Effect.map((findings) => ({ _tag: "ok" as const, findings })),
+    const ruleStarted = Date.now()
+    const result = yield* rule.run(workspace).pipe(
+      Effect.map((value) => ({ _tag: "ok" as const, value })),
       Effect.catch((error) => Effect.succeed({ _tag: "skipped" as const, error })),
     )
-    if (outcome._tag === "ok") diagnostics.push(...outcome.findings)
-    else skipped.push({ ruleId: rule.id, reason: reasonOf(outcome.error) })
+    if (result._tag === "ok") {
+      diagnostics.push(...result.value.diagnostics)
+      for (const note of result.value.notes) notes.push({ ruleId: rule.id, reason: note })
+    } else {
+      skipped.push({ ruleId: rule.id, reason: reasonOf(result.error) })
+    }
+    timings.push({ phase: rule.id.replace("joggle/", ""), ms: Date.now() - ruleStarted })
   }
 
   if (options.typecheck && options.useTsgo) {
@@ -125,6 +136,8 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     files: workspace.files.length,
     rules: effective.length,
     skipped,
+    notes,
+    timings,
     judge: yield* judge.stats,
     elapsedMs: Date.now() - started,
   }

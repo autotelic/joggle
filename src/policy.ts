@@ -47,20 +47,67 @@ export const policy = {
     minTokens: 12,
     /** At 1.0 the exact-duplicate rule already owns the pair. */
     maxSimilarity: 0.995,
-    /** Cost bound for one run. */
-    maxPairs: 40,
+    /**
+     * Clusters sent for judgement in one run.
+     *
+     * This used to cap *pairs*, applied by sorting them by similarity and
+     * slicing. That is a selection, not a bound: on one codebase forty
+     * high-scoring pairs elsewhere in the tree spent the whole budget and the
+     * eighteen definitions of `formatDate` were never compared at all. Pair
+     * generation is now complete up to a provable length filter, and the only
+     * remaining bound is on how many clusters get judged -- with the overflow
+     * named in the report rather than dropped.
+     */
+    maxClusters: 400,
   },
 
-  /** Cost bound for one run. Over-budget candidates are reported unverified. */
+  /** Clusters sent for judgement in one run. Overflow is reported unverified. */
   duplicateImplementation: {
-    maxJudgements: 500,
+    maxClusters: 500,
   },
 
-  /** Name-family search: which pairs of names are worth asking about. */
+  /**
+   * Name-family search.
+   *
+   * A pair of names is judged on its own; the rule does not cluster, because
+   * "is this name another spelling of that one" is a question about two things.
+   * Union-find over a non-transitive relation chained every `*Modal` in one
+   * codebase into a single eighty-seven member "concept", which is not a
+   * judgement anyone can make or act on.
+   */
   namingDrift: {
     /** Name-root overlap below which a pair is not worth a call. */
     minScore: 0.5,
-    maxPairs: 30,
+    /**
+     * Words two names must share beyond a category noun. `AddContactModal` and
+     * `DeleteTaskModal` share one word and are two members of a category; two
+     * spellings of one concept share at least two.
+     */
+    minSharedWords: 2,
+    /**
+     * High on purpose. Name pairs are cheap to enumerate and cheap to judge, and
+     * a budget that truncates 1,564 of 1,864 real candidates is a bigger problem
+     * than the time it saves: it hides the rule's actual yield. Raise the
+     * evidence cost or tighten the candidate filter instead of capping this.
+     */
+    maxClusters: 4000,
+  },
+
+  /**
+   * How much of a cluster is described to the model.
+   *
+   * A cluster of two hundred declarations is one decision but not one question:
+   * sending every member's source blew the request budget and the API answered
+   * 400. The first N members are described and the rest are counted, so the
+   * decision still stands on the whole cluster even when the detail is bounded.
+   */
+  evidence: {
+    maxMembers: 12,
+    maxSourceChars: 1500,
+    /** Characters of a doc comment kept as evidence. */
+    maxDocChars: 400,
+    /** Paths listed in a finding's help before it says "and N more". */
+    maxListedPaths: 4,
   },
 
   /** Files and directories the workspace scan never enters. */
