@@ -3,6 +3,7 @@ import { Service as Judge, type JudgeResult } from "../judge.ts"
 import { choiceOf, finding, noulOf } from "../rule.ts"
 import type { Diagnostic, Question, Severity } from "../schema.ts"
 import { namesOf, type Cluster } from "../cluster.ts"
+import type { ImportGraph } from "../imports.ts"
 import type { Unit } from "../workspace.ts"
 
 /** What a rule has to supply for its clusters to be judged the same way. */
@@ -91,6 +92,26 @@ const questionsFor = (cluster: Cluster): Record<string, Question> => {
 const memberList = (units: ReadonlyArray<Unit>): string =>
   units.map((unit) => `${unit.file}:${unit.location.line}`).join(", ")
 
+/**
+ * Who depends on the declaration being deleted.
+ *
+ * This is the sentence that used to be a wish. "Keep X and import it here" is
+ * only true advice if we know what imports the copy going away, and until the
+ * graph existed we had never checked.
+ */
+const dependents = (imports: ImportGraph, unit: Unit): string => {
+  const named = imports.importersOfName(unit.file, unit.name)
+  const files = [...new Set(named.map((edge) => edge.from))]
+  if (files.length === 0) {
+    return imports.importersOf.get(unit.file) === undefined
+      ? "nothing in the analysed set imports this file"
+      : `no file imports \`${unit.name}\` by name`
+  }
+  const shown = files.slice(0, 4).join(", ")
+  const more = files.length > 4 ? ` and ${files.length - 4} more` : ""
+  return `${files.length} file${files.length === 1 ? "" : "s"} import \`${unit.name}\`: ${shown}${more}`
+}
+
 /** No judgement available: report the fact, say so, and never guess a canonical. */
 export const unverifiedFinding = (rule: ClusterRule, cluster: Cluster): Diagnostic | undefined => {
   const keep = cluster.members[0]
@@ -111,6 +132,7 @@ export const unverifiedFinding = (rule: ClusterRule, cluster: Cluster): Diagnost
 const decideWith = (
   rule: ClusterRule,
   cluster: Cluster,
+  imports: ImportGraph,
   answers: Readonly<Record<string, import("../schema.ts").Answer>>,
 ): Option.Option<Diagnostic> => {
   const verdict = choiceOf(answers, "verdict")
@@ -139,7 +161,7 @@ const decideWith = (
       ruleId: rule.ruleId,
       severity: rule.severity,
       message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
-      help: `Delete or import instead of redeclaring: ${memberList(drops)}.`,
+      help: `Delete or import instead of redeclaring: ${memberList(drops)}. ${dependents(imports, keep)}.`,
       location: first.location,
       confidence: verdict.confidence,
       score: noulOf(answers, "redundant") ?? verdict.confidence,
@@ -148,7 +170,7 @@ const decideWith = (
   )
 }
 
-export const assessCluster = (rule: ClusterRule) =>
+export const assessCluster = (rule: ClusterRule, imports: ImportGraph) =>
   Effect.fn(`joggle/${rule.ruleId}.assess`)(function* (cluster: Cluster) {
     const judge = yield* Judge
     const request = judge.ask({ evidence: evidenceOf(cluster), questions: questionsFor(cluster) })
@@ -156,7 +178,7 @@ export const assessCluster = (rule: ClusterRule) =>
     if (rule.onUnavailable === "propagate") {
       // Let the failure through so the engine records the rule as skipped.
       const result = yield* request
-      return decideWith(rule, cluster, result.answers)
+      return decideWith(rule, cluster, imports, result.answers)
     }
 
     const outcome = yield* request.pipe(
@@ -167,5 +189,5 @@ export const assessCluster = (rule: ClusterRule) =>
       const fallback = unverifiedFinding(rule, cluster)
       return fallback === undefined ? Option.none<Diagnostic>() : Option.some(fallback)
     }
-    return decideWith(rule, cluster, outcome.value.answers)
+    return decideWith(rule, cluster, imports, outcome.value.answers)
   })

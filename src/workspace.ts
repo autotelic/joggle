@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { Effect, FileSystem, Path } from "effect"
 import { parseSync } from "oxc-parser"
 import { policy } from "./policy.ts"
+import { buildImportGraph, importsIn, type ImportGraph, type ParsedImport } from "./imports.ts"
 import { WorkspaceError, type SourceLocation } from "./schema.ts"
 
 /* -------------------------------------------------------------------------- */
@@ -34,6 +35,8 @@ export interface SourceFile {
   readonly path: string
   readonly text: string
   readonly units: ReadonlyArray<Unit>
+  /** Raw import/re-export statements, before resolution. */
+  readonly imports: ReadonlyArray<ParsedImport>
 }
 
 /**
@@ -45,6 +48,13 @@ export interface Workspace {
   readonly files: ReadonlyArray<SourceFile>
   readonly units: ReadonlyArray<Unit>
   readonly byName: ReadonlyMap<string, ReadonlyArray<Unit>>
+  /**
+   * Who imports what, resolved against the files actually analysed. This is
+   * pillar two of the four in docs/new-passes.md and it was the missing one:
+   * without it, "keep X and import it here" was advice we had never checked, and
+   * there was no way to know what a deletion would break.
+   */
+  readonly imports: ImportGraph
 }
 
 /* -------------------------------------------------------------------------- */
@@ -452,7 +462,8 @@ const parseSourceFile = (file: string, text: string): SourceFile => {
       })
     }
   }
-  return { path: file, text, units }
+  const imports = isRecord(program) ? importsIn(program) : []
+  return { path: file, text, units, imports }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -555,5 +566,5 @@ export const loadWorkspace = (
       if (existing === undefined) byName.set(unit.name, [unit])
       else existing.push(unit)
     }
-    return { root, files: parsed, units, byName }
+    return { root, files: parsed, units, byName, imports: buildImportGraph(parsed, path) }
   })

@@ -47,7 +47,7 @@ export const duplicateImplementation = defineRule({
     const clusters = find(workspace)
     if (clusters.length === 0) return []
     const budget = policy.duplicateImplementation.maxJudgements
-    const outcomes = yield* Effect.forEach(clusters.slice(0, budget), assessCluster(spec), {
+    const outcomes = yield* Effect.forEach(clusters.slice(0, budget), assessCluster(spec, workspace.imports), {
       concurrency: 8,
     })
     const reported = outcomes.flatMap((outcome) => (Option.isSome(outcome) ? [outcome.value] : []))

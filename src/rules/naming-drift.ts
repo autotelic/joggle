@@ -119,7 +119,7 @@ export const namingDrift = defineRule({
   run: Effect.fn("joggle/naming-drift")(function* (workspace) {
     const clusters = find(workspace)
     if (clusters.length === 0) return []
-    const outcomes = yield* Effect.forEach(clusters, assessCluster(spec), { concurrency: 4 })
+    const outcomes = yield* Effect.forEach(clusters, assessCluster(spec, workspace.imports), { concurrency: 4 })
     return outcomes.flatMap((outcome) => (Option.isSome(outcome) ? [outcome.value] : []))
   }),
 })
