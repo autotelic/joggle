@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import { Service as Judge } from "./judge.ts"
 import { finding } from "./rule.ts"
 import { allRules } from "./rules/index.ts"
-import { sortDiagnostics, type Report, type Skipped } from "./report.ts"
+import { rankDiagnostics, type Report, type Skipped } from "./report.ts"
 import type { Diagnostic, JudgeError } from "./schema.ts"
 import { Service as Tsgo } from "./tsgo.ts"
 import { loadWorkspace } from "./workspace.ts"
@@ -121,7 +121,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   }
 
   const report: Report = {
-    diagnostics: sortDiagnostics(diagnostics),
+    diagnostics: rankDiagnostics(diagnostics),
     files: workspace.files.length,
     rules: effective.length,
     skipped,

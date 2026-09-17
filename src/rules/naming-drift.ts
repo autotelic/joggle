@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge } from "../judge.ts"
-import { choiceOf, defineRule, finding, type UnitPair } from "../rule.ts"
+import { choiceOf, defineRule, finding, noulOf, type UnitPair } from "../rule.ts"
 import type { Answer, Diagnostic, Question } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -98,6 +98,17 @@ const questions = {
       distinct: "Two different concepts. Both names are correct. Change nothing.",
     },
   },
+  one_concept: {
+    type: "noul",
+    instructions: {
+      question: "Are \`left.symbol\` and \`right.symbol\` two spellings of one concept?",
+      focus: "Answer yes only if a reader would be better served by one name.",
+    },
+    criteria: {
+      true: "One concept, two spellings.",
+      false: "Two concepts, both names correct.",
+    },
+  },
 } satisfies Record<string, Question>
 
 const assess = Effect.fn("joggle/naming-drift.assess")(function* (candidate: UnitPair) {
@@ -134,6 +145,7 @@ const assess = Effect.fn("joggle/naming-drift.assess")(function* (candidate: Uni
       help: `Standardize on \`${keep.name}\`. Read together, both mean "${expanded(keep.name).join(" ")}".`,
       location: drop.location,
       confidence: verdict.confidence,
+      score: noulOf(result.answers, "one_concept") ?? verdict.confidence,
       judged: true,
     }),
   )

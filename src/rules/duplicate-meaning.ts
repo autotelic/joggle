@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge } from "../judge.ts"
-import { choiceOf, defineRule, finding, pairsOf, type UnitPair } from "../rule.ts"
+import { choiceOf, defineRule, finding, noulOf, pairsOf, type UnitPair } from "../rule.ts"
 import type { Answer, Diagnostic, Question } from "../schema.ts"
 import { similarity, type Unit, type Workspace } from "../workspace.ts"
 
@@ -56,6 +56,17 @@ const questions = {
       unrelated: "Coincidentally similar. They are different things. Change nothing.",
     },
   },
+  same: {
+    type: "noul",
+    instructions: {
+      question: "Do \`left\` and \`right\` implement the same thing, such that one should replace the other?",
+      focus: "Answer yes only if a reader is worse off for having both.",
+    },
+    criteria: {
+      true: "One declaration should replace the other.",
+      false: "Both should stay as they are.",
+    },
+  },
 } satisfies Record<string, Question>
 
 const assess = Effect.fn("joggle/duplicate-meaning.assess")(function* (candidate: UnitPair) {
@@ -95,6 +106,7 @@ const assess = Effect.fn("joggle/duplicate-meaning.assess")(function* (candidate
       help: `Keep \`${keep.name}\` and point this declaration's callers at it.`,
       location: drop.location,
       confidence: verdict.confidence,
+      score: noulOf(result.answers, "same") ?? verdict.confidence,
       judged: true,
     }),
   )

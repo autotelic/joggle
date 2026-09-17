@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge, type JudgeResult } from "../judge.ts"
-import { choiceOf, defineRule, finding } from "../rule.ts"
+import { choiceOf, defineRule, finding, noulOf } from "../rule.ts"
 import type { Answer, Diagnostic, Question } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -67,6 +67,17 @@ const questions = {
         "The repetition is intentional. The two belong to different concerns and are expected to diverge.",
     },
   },
+  redundant: {
+    type: "noul",
+    instructions: {
+      question: "Is \`right\` a redundant copy of \`left\`?",
+      focus: "Answer yes only if a reader is worse off for having two declarations instead of one.",
+    },
+    criteria: {
+      true: "\`right\` adds nothing. One declaration would be better.",
+      false: "\`right\` should stay.",
+    },
+  },
 } satisfies Record<string, Question>
 
 const kindOf = (unit: Unit): string => (unit.kind === "function" ? "Implementation" : "Declaration")
@@ -126,6 +137,7 @@ const assess = Effect.fn("joggle/duplicate-implementation.assess")(function* (ca
       help: `Keep \`${keep.name}\` and import it here. If the two are genuinely different concepts, change one so the shape differs.`,
       location: drop.location,
       confidence: verdict.confidence,
+      score: noulOf(outcome.value.answers, "redundant") ?? verdict.confidence,
       judged: true,
     }),
   )

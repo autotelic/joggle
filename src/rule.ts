@@ -66,6 +66,7 @@ export const finding = (input: {
   readonly judged: boolean
   readonly help?: string | undefined
   readonly confidence?: number | undefined
+  readonly score?: number | undefined
 }): Diagnostic => ({
   ruleId: input.ruleId,
   severity: input.severity,
@@ -74,6 +75,7 @@ export const finding = (input: {
   judged: input.judged,
   ...(input.help === undefined ? {} : { help: input.help }),
   ...(input.confidence === undefined ? {} : { confidence: input.confidence }),
+  ...(input.score === undefined ? {} : { score: input.score }),
 })
 
 /**
@@ -91,6 +93,21 @@ export const choiceOf = (
   return answer !== undefined && answer.type === "choice"
     ? { choice: answer.choice, confidence: answer.confidence }
     : undefined
+}
+
+/**
+ * A Noul answer, used as a ranking score.
+ *
+ * The re-ranking cookbook is explicit that a Noul is the right primitive when
+ * you need "a comparable score for every query-candidate pair... without
+ * inventing a scoring scale". Every rule asks one, so the whole report sorts.
+ */
+export const noulOf = (
+  answers: Readonly<Record<string, Answer>>,
+  id: string,
+): number | undefined => {
+  const answer = answers[id]
+  return answer !== undefined && answer.type === "noul" ? answer.noul : undefined
 }
 
 /** Short, human-readable "file:line:col" for messages. */

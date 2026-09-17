@@ -51,6 +51,22 @@ export const sortDiagnostics = (
       a.ruleId.localeCompare(b.ruleId),
   )
 
+/**
+ * The report is a ranked list, not a file listing. A Noul per candidate gives
+ * every finding a comparable score -- see the re-ranking cookbook -- so the
+ * most likely real duplication is read first. File order is the tiebreak, which
+ * keeps runs deterministic.
+ */
+export const rankDiagnostics = (
+  diagnostics: ReadonlyArray<Diagnostic>,
+): ReadonlyArray<Diagnostic> =>
+  [...diagnostics].sort(
+    (a, b) =>
+      (b.score ?? -1) - (a.score ?? -1) ||
+      a.location.file.localeCompare(b.location.file) ||
+      a.location.line - b.location.line,
+  )
+
 interface Palette {
   readonly bold: (text: string) => string
   readonly dim: (text: string) => string
@@ -119,7 +135,8 @@ const text = (report: Report): string => {
   const lines = report.diagnostics.map((d) => {
     const { file, line, column } = d.location
     const help = d.help === undefined ? "" : ` help: ${d.help}`
-    return `${file}:${line}:${column}: ${label(d.severity)} ${d.ruleId}: ${d.message}${help}`
+    const score = d.score === undefined ? "" : ` (${d.score.toFixed(2)})`
+    return `${file}:${line}:${column}: ${label(d.severity)} ${d.ruleId}${score}: ${d.message}${help}`
   })
   if (lines.length > 0) lines.push("")
   lines.push(problemSummary(report))
@@ -154,8 +171,9 @@ const stylish = (report: Report, c: Palette): string => {
       const padded = (severity[index] ?? "").padEnd(severityWidth)
       const level = diagnostic.severity === "error" ? c.red(padded) : c.yellow(padded)
       const verified = diagnostic.judged ? "" : c.dim(" (unverified)")
+      const score = diagnostic.score === undefined ? "" : diagnostic.score.toFixed(2)
       lines.push(
-        `  ${c.dim((where[index] ?? "").padEnd(whereWidth))}  ${level}  ${diagnostic.message}${verified}  ${c.dim(diagnostic.ruleId)}`,
+        `  ${c.dim((where[index] ?? "").padEnd(whereWidth))}  ${level}  ${c.dim(score.padEnd(4))}  ${diagnostic.message}${verified}  ${c.dim(diagnostic.ruleId)}`,
       )
     })
   }

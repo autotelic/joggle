@@ -67,6 +67,21 @@ interface IdentifierSite {
 }
 
 /**
+ * Node kinds that name a *type*. In a type position the identifier is the whole
+ * meaning: `z.infer<typeof CompanyTypeSchema>` and `z.infer<typeof schema>` are
+ * different types, and `FastifyRequest<{ Params: { id: string } }>` is a
+ * different endpoint in every route that declares one. Erasing these made the
+ * shape matcher claim those pairs were identical, which cost 308 of 525
+ * verification calls on one codebase answering "keep both".
+ */
+const TYPE_REFERENCE_ROOT = new Set([
+  "TSClassImplements",
+  "TSInterfaceHeritage",
+  "TSTypeQuery",
+  "TSTypeReference",
+])
+
+/**
  * Node kinds whose `key` or `property` names the shape rather than the reader:
  * `user.name`, `{ name: string }`, `{ name }`, class fields, enum members.
  */
@@ -83,10 +98,39 @@ const PROPERTY_BEARING = new Set([
   "TSPropertySignature",
 ])
 
-/** Collect every `Identifier` node in the file, marking the ones that are shape. */
+/** Every `Identifier` in a subtree, as start offsets. */
+const identifierOffsets = (root: unknown): ReadonlyArray<number> => {
+  const offsets: Array<number> = []
+  const stack: Array<unknown> = [root]
+  while (stack.length > 0) {
+    const node = stack.pop()
+    if (Array.isArray(node)) {
+      for (const child of node) stack.push(child)
+      continue
+    }
+    if (!isRecord(node)) continue
+    if (node["type"] === "Identifier" && typeof node["start"] === "number") {
+      offsets.push(node["start"])
+    }
+    for (const value of Object.values(node)) {
+      if (value !== null && typeof value === "object") stack.push(value)
+    }
+  }
+  return offsets
+}
+
+/**
+ * Collect every `Identifier` node in the file, marking the ones that are shape.
+ *
+ * Three things survive normalisation: property names, type references, and
+ * generic type-parameter *declarations* (which are local bindings, so `f<T>`
+ * and `g<U>` still compare equal). Everything else is a local name.
+ */
 const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
   const found: Array<{ start: number; end: number; name: string }> = []
   const keep = new Set<number>()
+  const typeRoots: Array<unknown> = []
+  const typeParameters = new Set<string>()
   const stack: Array<unknown> = [root]
   while (stack.length > 0) {
     const node = stack.pop()
@@ -96,16 +140,19 @@ const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
     }
     if (!isRecord(node)) continue
     const kind = node["type"]
-    if (typeof kind === "string" && PROPERTY_BEARING.has(kind)) {
-      for (const field of ["key", "property", "id"]) {
-        const child = node[field]
-        if (
-          isRecord(child) &&
-          child["type"] === "Identifier" &&
-          typeof child["start"] === "number"
-        ) {
-          keep.add(child["start"])
+    if (typeof kind === "string") {
+      if (PROPERTY_BEARING.has(kind)) {
+        for (const field of ["key", "property", "id"]) {
+          const child = node[field]
+          if (isRecord(child) && child["type"] === "Identifier" && typeof child["start"] === "number") {
+            keep.add(child["start"])
+          }
         }
+      }
+      if (TYPE_REFERENCE_ROOT.has(kind)) typeRoots.push(node)
+      if (kind === "TSTypeParameter") {
+        const name = node["name"]
+        if (isRecord(name) && typeof name["name"] === "string") typeParameters.add(name["name"])
       }
     }
     if (
@@ -120,6 +167,15 @@ const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
+
+  for (const typeRoot of typeRoots) {
+    for (const offset of identifierOffsets(typeRoot)) {
+      const site = found.find((candidate) => candidate.start === offset)
+      if (site === undefined || typeParameters.has(site.name)) continue
+      keep.add(offset)
+    }
+  }
+
   return found.map((site) => ({ ...site, keep: keep.has(site.start) }))
 }
 
@@ -286,8 +342,56 @@ const sitesIn = (program: Record<string, unknown>): ReadonlyArray<DeclarationSit
           const init = declarator["init"]
           if (!isRecord(init)) continue
           const initType = init["type"]
+          if (initType === "ObjectExpression") {
+            fromDeclaration(init, exported)
+            continue
+          }
           if (initType !== "ArrowFunctionExpression" && initType !== "FunctionExpression") continue
           push(init, "function", isRecord(id) ? id["name"] : undefined, exported)
+        }
+        return
+      }
+      // Class methods and object-literal methods were invisible: only top-level
+      // declarations became units, so a helper copied between two classes or two
+      // API objects was never a candidate. They are named Owner.member so a
+      // reader can tell which one the report means.
+      case "ClassDeclaration":
+      case "ClassExpression": {
+        const classId = declaration["id"]
+        const className =
+          isRecord(classId) && typeof classId["name"] === "string" ? classId["name"] : undefined
+        const body = declaration["body"]
+        if (!isRecord(body)) return
+        const members = body["body"]
+        if (!Array.isArray(members)) return
+        for (const member of members) {
+          if (!isRecord(member)) continue
+          const key = member["key"]
+          const keyName = isRecord(key) && typeof key["name"] === "string" ? key["name"] : undefined
+          if (keyName === undefined) continue
+          const name = className === undefined ? keyName : `${className}.${keyName}`
+          const value = member["value"]
+          if (isRecord(value) && typeof value["start"] === "number" && typeof value["end"] === "number") {
+            sites.push({ kind: "function", name, start: value["start"], end: value["end"], exported })
+          } else {
+            push(member, "function", name, exported)
+          }
+        }
+        return
+      }
+      case "ObjectExpression": {
+        const properties = declaration["properties"]
+        if (!Array.isArray(properties)) return
+        for (const property of properties) {
+          if (!isRecord(property) || property["type"] !== "Property") continue
+          const key = property["key"]
+          const keyName = isRecord(key) && typeof key["name"] === "string" ? key["name"] : undefined
+          if (keyName === undefined) continue
+          const value = property["value"]
+          if (!isRecord(value)) continue
+          const valueType = value["type"]
+          if (valueType !== "ArrowFunctionExpression" && valueType !== "FunctionExpression") continue
+          push(value, "function", keyName, exported)
         }
         return
       }

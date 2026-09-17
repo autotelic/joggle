@@ -36,6 +36,13 @@ export const Diagnostic = Schema.Struct({
    * rule was deterministic, which is itself useful information for a reader.
    */
   confidence: Schema.optionalKey(Schema.Number),
+  /**
+   * How strongly the judgement says this is real, as a Noul probability. Unlike
+   * `confidence` (which summarises how peaked the Choice distribution was, and
+   * measured uninformative) this is comparable across every finding in a run,
+   * so it is what the report sorts by.
+   */
+  score: Schema.optionalKey(Schema.Number),
   judged: Schema.Boolean,
 })
 
