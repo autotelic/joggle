@@ -158,6 +158,48 @@ Thresholds live in `src/policy.ts` and nowhere else. When a verdict stops
 matching what the team would decide, you change a weight, re-run, and see the
 difference -- you do not rewrite a prompt.
 
+### What the judge is actually for
+
+Code finds; the model verifies. This is the opposite of how joggle started, and
+the first real measurements are what corrected it.
+
+Findings were being produced two ways: exact shape equality (a fact, but
+reported unverified) and a hand-tuned near-duplicate search that asked the model
+to *discover*. Over 55 API calls that produced 5 findings, and the questions
+could not have done better, because two of the four were constants:
+
+* `same_behavior` was asked about pairs selected *because their text differs*.
+  Of 49 real judgements, 40 came back below 0.25. The answer was decided by the
+  candidate filter before the question was asked.
+* `merge_changes_behavior` -- "would replacing one with the other change
+  behaviour for some caller?" -- was made a hard veto at 0.4. Across 49
+  judgements it never once fell below 0.4 (mean 0.64). Asked without any call
+  sites in the state, the model always answers "probably yes". A question whose
+  answer is fixed in advance is not a judgement.
+
+Both are gone. Behaviour is now asked about only where it is genuinely open,
+and only in the band where the text actually differs.
+
+The judge's job is intent, not behaviour. When two declarations are
+syntactically identical, equivalence is already an AST fact; the only open
+question is whether the repetition is redundancy or two things that merely look
+alike. That is a perceptual question about names and purpose, which is what a
+calibrated model is good at, and code decides what to do with the answer.
+
+One policy rule has since been deleted for the same reason. It suppressed a
+finding when the two declarations sat in different areas and neither was a
+general-purpose utility. Over 500 verdicts that removed 284 candidates --
+including a type named `GhostProjectSummary` declared once in the API and once
+in the UI, where the model itself answered `sameName 0.97` and "keep left". The
+gate inverted a correct judgement. **Locality is not intent**, and
+`docs/names.md` is the argument: one concept should have one name and one
+declaration. The model may now override the deterministic fact only when it
+judges the two names to mean different things, or says confidently that both
+should stay.
+
+Below the judgement budget, candidates are still reported, marked unverified. A
+budget must never silently delete a finding.
+
 ## Adding a rule
 
 1. Add a `src/rules/<name>.ts` with the five moves above.

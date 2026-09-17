@@ -25,10 +25,12 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     expect(boundary?.severity).toBe("error")
     expect(boundary?.message).toContain("outside the project root")
 
-    // Deterministic rules still run; the judged ones are withheld, not guessed.
-    expect(report.rules).toBe(1)
+    // Every rule now needs the judge, so a breach withholds all of them rather
+    // than persisting evidence into a cache that does not own the code.
+    expect(report.rules).toBe(0)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
+      "joggle/duplicate-implementation",
       "joggle/duplicate-meaning",
       "joggle/naming-drift",
     ])

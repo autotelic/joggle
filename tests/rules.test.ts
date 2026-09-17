@@ -65,7 +65,7 @@ it.effect("judged rule stays quiet when the policy does not activate", () =>
   ),
 )
 
-it.effect("judged rule refuses to merge when behaviour would change", () =>
+it.effect("judged rule stays quiet when one is a deliberate specialization", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
       const findings = yield* duplicateMeaning.run(workspace)
@@ -75,12 +75,72 @@ it.effect("judged rule refuses to merge when behaviour would change", () =>
         judgeStub({
           same_concept: noul(0.95),
           same_behavior: noul(0.95),
-          intentional_specialization: noul(0.05),
-          merge_changes_behavior: noul(0.9),
+          intentional_specialization: noul(0.9),
           canonical: choice("left", 0.8),
         }),
       ),
     ),
+  ),
+)
+
+it.effect("exact duplicates are suppressed when the verdict is keep both", () =>
+  withWorkspace((workspace) =>
+    Effect.gen(function* () {
+      const findings = yield* duplicateImplementation.run(workspace)
+      expect(findings.length).toBe(0)
+    }).pipe(
+      Effect.provide(
+        judgeStub({ names_describe_same_thing: noul(0.9), verdict: choice("keep_both", 0.9) }),
+      ),
+    ),
+  ),
+)
+
+it.effect("exact duplicates are suppressed when the names mean different things", () =>
+  withWorkspace((workspace) =>
+    Effect.gen(function* () {
+      const findings = yield* duplicateImplementation.run(workspace)
+      expect(findings.length).toBe(0)
+    }).pipe(
+      Effect.provide(
+        judgeStub({ names_describe_same_thing: noul(0.1), verdict: choice("left", 0.7) }),
+      ),
+    ),
+  ),
+)
+
+it.effect("exact duplicates are reported when the judgement says one is redundant", () =>
+  withWorkspace((workspace) =>
+    Effect.gen(function* () {
+      const findings = yield* duplicateImplementation.run(workspace)
+      expect(findings.length).toBe(2)
+      for (const entry of findings) {
+        expect(entry.judged).toBe(true)
+        expect(entry.confidence).toBeGreaterThan(0)
+      }
+    }).pipe(
+      Effect.provide(
+        judgeStub({
+          names_describe_same_thing: noul(0.9),
+          different_domains: noul(0.1),
+          general_purpose: noul(0.8),
+          verdict: choice("left", 0.85),
+        }),
+      ),
+    ),
+  ),
+)
+
+it.effect("a response missing the verdict leaves the finding unverified, not judged", () =>
+  withWorkspace((workspace) =>
+    Effect.gen(function* () {
+      const findings = yield* duplicateImplementation.run(workspace)
+      expect(findings.length).toBe(2)
+      for (const entry of findings) {
+        expect(entry.judged).toBe(false)
+        expect(entry.help).toContain("Not verified")
+      }
+    }).pipe(Effect.provide(judgeStub({ names_describe_same_thing: noul(0.9) }))),
   ),
 )
 

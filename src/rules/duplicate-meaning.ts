@@ -104,15 +104,6 @@ const questions = {
       false: "Neither is a deliberate specialization of the other.",
     },
   },
-  merge_changes_behavior: {
-    type: "noul",
-    instructions:
-      "If every call site of the less canonical one were pointed at the other instead, would any caller observe a change in behaviour?",
-    criteria: {
-      true: "At least one caller would observe a change.",
-      false: "No caller would observe a change.",
-    },
-  },
   canonical: {
     type: "choice",
     instructions:
@@ -147,26 +138,23 @@ const assess = Effect.fn("joggle/duplicate-meaning.assess")(function* (candidate
   const sameConcept = noul(result.answers, "same_concept")
   const sameBehavior = noul(result.answers, "same_behavior")
   const specialization = noul(result.answers, "intentional_specialization")
-  const mergeRisk = noul(result.answers, "merge_changes_behavior")
   const canonical = choice(result.answers, "canonical")
   if (
     sameConcept === undefined ||
     sameBehavior === undefined ||
     specialization === undefined ||
-    mergeRisk === undefined ||
     canonical === undefined
   ) {
     return Option.none<Diagnostic>()
   }
 
-  const { weights, activationScore, maxMergeRisk, maxSpecialization } = policy.duplicateMeaning
+  const { weights, activationScore, maxSpecialization } = policy.duplicateMeaning
   const composite =
     weights.sameConcept * sameConcept +
     weights.sameBehavior * sameBehavior +
     weights.notSpecialization * (1 - specialization)
 
   if (composite < activationScore) return Option.none<Diagnostic>()
-  if (mergeRisk > maxMergeRisk) return Option.none<Diagnostic>()
   if (specialization > maxSpecialization) return Option.none<Diagnostic>()
 
   const keep =

@@ -51,15 +51,50 @@ export const policy = {
     maxPairs: 40,
     /** Composite score required before we report. */
     activationScore: 0.7,
-    /** Ceiling on the probability that merging would change behaviour. */
-    maxMergeRisk: 0.4,
     /** Ceiling on the probability that one is a deliberate specialization. */
     maxSpecialization: 0.45,
+    /**
+     * `merge_changes_behavior` used to be asked and used as a hard veto. Across
+     * 49 real judgements it never once fell below 0.4 (min 0.19, mean 0.64):
+     * asked whether replacing one function with another could change behaviour
+     * for some caller, with no call sites in the state, the model always says
+     * "probably yes". A question whose answer is decided before it is asked is
+     * not a judgement, it is a constant. Behaviour is now only asked about
+     * where it is genuinely open (the near-duplicate band), and never as a veto.
+     */
     weights: {
-      sameConcept: 0.45,
-      sameBehavior: 0.45,
+      sameConcept: 0.6,
+      sameBehavior: 0.3,
       notSpecialization: 0.1,
     },
+  },
+
+  /**
+   * Verification of exact-shape duplicates. Here equality is a fact, so the
+   * only open question is intent -- redundant, or two domains that look alike.
+   */
+  duplicateImplementation: {
+    /**
+     * Below this, the two names are judged to mean different things, so the
+     * shape match is a coincidence rather than duplication.
+     */
+    nameDivergenceFloor: 0.35,
+    /** A confident "keep both" suppresses the finding. */
+    keepBothConfidence: 0.8,
+    /**
+     * This block used to suppress when the two declarations sat in different
+     * areas and neither was a general-purpose utility. Measured over 500 real
+     * verdicts that gate removed 284 candidates -- including, at the top of the
+     * list, a type named `GhostProjectSummary` declared once in the API and once
+     * in the UI, where the model itself answered sameName 0.97 and "keep left".
+     * Two declarations of one name in two areas is not evidence of intentional
+     * separation; it is the exact thing docs/names.md argues against. The gate
+     * inverted a correct judgement, so it is gone: the model may only override
+     * the deterministic fact when it is confident, never on locality.
+     */
+    /** Bound on verification calls per run. Over-budget candidates are still
+     *  reported, marked unverified, so a budget never silently deletes a finding. */
+    maxJudgements: 500,
   },
 
   /** joggle/naming-drift: do these two names refer to the same concept? */
