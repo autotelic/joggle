@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge } from "../judge.ts"
-import { defineRule, finding, pairsOf, type UnitPair } from "../rule.ts"
+import { choiceOf, defineRule, finding, pairsOf, type UnitPair } from "../rule.ts"
 import type { Answer, Diagnostic, Question } from "../schema.ts"
 import { similarity, type Unit, type Workspace } from "../workspace.ts"
 
@@ -58,16 +58,6 @@ const questions = {
   },
 } satisfies Record<string, Question>
 
-const choice = (
-  answers: Readonly<Record<string, Answer>>,
-  id: string,
-): { readonly choice: string; readonly confidence: number } | undefined => {
-  const answer = answers[id]
-  return answer !== undefined && answer.type === "choice"
-    ? { choice: answer.choice, confidence: answer.confidence }
-    : undefined
-}
-
 const assess = Effect.fn("joggle/duplicate-meaning.assess")(function* (candidate: UnitPair) {
   const judge = yield* Judge
   const evidence = {
@@ -87,7 +77,7 @@ const assess = Effect.fn("joggle/duplicate-meaning.assess")(function* (candidate
   }
 
   const result = yield* judge.ask({ evidence, questions })
-  const verdict = choice(result.answers, "verdict")
+  const verdict = choiceOf(result.answers, "verdict")
   if (verdict === undefined) return Option.none<Diagnostic>()
   if (verdict.choice === "related_keep_both" || verdict.choice === "unrelated") {
     return Option.none<Diagnostic>()

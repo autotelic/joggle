@@ -1,6 +1,6 @@
 import type { Effect } from "effect"
 import type { Service as JudgeService } from "./judge.ts"
-import type { Diagnostic, JudgeError, Severity, SourceLocation } from "./schema.ts"
+import type { Answer, Diagnostic, JudgeError, Severity, SourceLocation } from "./schema.ts"
 import type { Unit, Workspace } from "./workspace.ts"
 
 /**
@@ -75,6 +75,23 @@ export const finding = (input: {
   ...(input.help === undefined ? {} : { help: input.help }),
   ...(input.confidence === undefined ? {} : { confidence: input.confidence }),
 })
+
+/**
+ * The one question every rule asks, and the only answer code reads.
+ *
+ * It lived in each rule file until joggle reported its own copy of it three
+ * times. That is the tool working: the shape was identical, the names were
+ * identical, and nothing about the three copies was intentional.
+ */
+export const choiceOf = (
+  answers: Readonly<Record<string, Answer>>,
+  id: string,
+): { readonly choice: string; readonly confidence: number } | undefined => {
+  const answer = answers[id]
+  return answer !== undefined && answer.type === "choice"
+    ? { choice: answer.choice, confidence: answer.confidence }
+    : undefined
+}
 
 /** Short, human-readable "file:line:col" for messages. */
 export const at = (location: SourceLocation): string =>

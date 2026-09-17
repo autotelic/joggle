@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge, type JudgeResult } from "../judge.ts"
-import { defineRule, finding } from "../rule.ts"
+import { choiceOf, defineRule, finding } from "../rule.ts"
 import type { Answer, Diagnostic, Question } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -69,16 +69,6 @@ const questions = {
   },
 } satisfies Record<string, Question>
 
-const choice = (
-  answers: Readonly<Record<string, Answer>>,
-  id: string,
-): { readonly choice: string; readonly confidence: number } | undefined => {
-  const answer = answers[id]
-  return answer !== undefined && answer.type === "choice"
-    ? { choice: answer.choice, confidence: answer.confidence }
-    : undefined
-}
-
 const kindOf = (unit: Unit): string => (unit.kind === "function" ? "Implementation" : "Declaration")
 
 const unverifiedFinding = (candidate: Candidate): Diagnostic =>
@@ -120,7 +110,7 @@ const assess = Effect.fn("joggle/duplicate-implementation.assess")(function* (ca
   )
   if (Option.isNone(outcome)) return unverified(candidate)
 
-  const verdict = choice(outcome.value.answers, "verdict")
+  const verdict = choiceOf(outcome.value.answers, "verdict")
   if (verdict === undefined) return unverified(candidate)
   if (verdict.choice === "keep_both") return Option.none<Diagnostic>()
 
