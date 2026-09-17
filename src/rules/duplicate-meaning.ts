@@ -199,6 +199,7 @@ export const duplicateMeaning = defineRule({
   id: RULE_ID,
   severity: "warn",
   description: "Cross-file near-duplicates that a judgement says are the same concept.",
+  judged: true,
   run: Effect.fn("joggle/duplicate-meaning")(function* (workspace) {
     const candidates = find(workspace)
     if (candidates.length === 0) return []

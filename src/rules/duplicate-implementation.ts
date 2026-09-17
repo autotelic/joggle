@@ -17,6 +17,7 @@ export const duplicateImplementation = defineRule({
   id: RULE_ID,
   severity: "warn",
   description: "Structurally identical declarations in more than one file.",
+  judged: false,
   run: Effect.fn("joggle/duplicate-implementation")(function* (workspace) {
     const groups = new Map<string, Array<Unit>>()
     for (const unit of workspace.units) {

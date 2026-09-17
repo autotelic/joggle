@@ -189,6 +189,7 @@ export const namingDrift = defineRule({
   id: RULE_ID,
   severity: "warn",
   description: "Two spellings of one concept across files.",
+  judged: true,
   run: Effect.fn("joggle/naming-drift")(function* (workspace) {
     const candidates = find(workspace)
     if (candidates.length === 0) return []

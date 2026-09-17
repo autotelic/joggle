@@ -17,6 +17,13 @@ export interface Options {
   readonly typecheck: boolean
   /** Use tsgo for project discovery instead of walking directories. */
   readonly useTsgo: boolean
+  /**
+   * True when the caller chose where judgements are stored. If they did not,
+   * joggle refuses to persist evidence for files that live outside the analysis
+   * root -- otherwise analysing another repository from here would write that
+   * repository's source into this one's committed cache.
+   */
+  readonly cacheDirExplicit: boolean
 }
 
 const reasonOf = (error: JudgeError): string => {
@@ -71,7 +78,34 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   const diagnostics: Array<Diagnostic> = []
   const skipped: Array<Skipped> = []
 
-  for (const rule of selected) {
+  // A file outside the root produces a "../" relative path. Its evidence has no
+  // business in a cache whose location nobody chose.
+  const escaping = workspace.files.filter((file) => file.path.startsWith(".."))
+  const breach = !options.cacheDirExplicit && escaping.length > 0
+  if (breach) {
+    const first = escaping[0]
+    diagnostics.push(
+      finding({
+        ruleId: "joggle/cache-boundary",
+        severity: "error",
+        message: `Analysed files live outside the project root (${first?.path ?? "?"}), so judgements would be persisted into a cache that does not own that code.`,
+        help: "Pass --cache-dir pointing outside the analysed tree, or run joggle from the analysed project's root.",
+        location: { file: first?.path ?? ".", line: 1, column: 1 },
+        judged: false,
+      }),
+    )
+  }
+
+  const effective = breach ? selected.filter((rule) => !rule.judged) : selected
+  if (breach) {
+    for (const rule of selected) {
+      if (rule.judged) {
+        skipped.push({ ruleId: rule.id, reason: "cache boundary: evidence would cross repositories" })
+      }
+    }
+  }
+
+  for (const rule of effective) {
     const outcome = yield* rule.run(workspace).pipe(
       Effect.map((findings) => ({ _tag: "ok" as const, findings })),
       Effect.catch((error) => Effect.succeed({ _tag: "skipped" as const, error })),
@@ -89,7 +123,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   const report: Report = {
     diagnostics: sortDiagnostics(diagnostics),
     files: workspace.files.length,
-    rules: selected.length,
+    rules: effective.length,
     skipped,
     judge: yield* judge.stats,
     elapsedMs: Date.now() - started,

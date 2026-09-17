@@ -48,6 +48,7 @@ const check = Command.make(
         rules,
         typecheck: config.typecheck,
         useTsgo: !config.noTsgo,
+        cacheDirExplicit: Option.isSome(config.cacheDir),
       }).pipe(
         Effect.provide(judgeLayer({ cacheDir, offline: config.offline, apiKey })),
         Effect.provide(tsgoLayer(cwd)),
@@ -67,7 +68,8 @@ const rules = Command.make(
     Effect.gen(function* () {
       const width = allRules.reduce((max, rule) => Math.max(max, rule.id.length), 0)
       const lines = allRules.map(
-        (rule) => `${rule.id.padEnd(width)}  ${rule.severity.padEnd(5)}  ${rule.description}`,
+        (rule) =>
+          `${rule.id.padEnd(width)}  ${rule.severity.padEnd(5)}  ${rule.judged ? "judged" : "static"}  ${rule.description}`,
       )
       yield* write(lines.join("\n"))
     }),

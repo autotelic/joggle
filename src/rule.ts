@@ -21,6 +21,8 @@ export interface Rule {
   readonly id: string
   readonly severity: Severity
   readonly description: string
+  /** Whether this rule needs the judge. Deterministic rules must run without it. */
+  readonly judged: boolean
   readonly run: (
     workspace: Workspace,
   ) => Effect.Effect<ReadonlyArray<Diagnostic>, JudgeError, JudgeService>
