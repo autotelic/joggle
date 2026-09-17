@@ -127,8 +127,6 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     skipped,
     judge: yield* judge.stats,
     elapsedMs: Date.now() - started,
-    // Carried so the text reporter can draw a code frame without re-reading disk.
-    sources: new Map(workspace.files.map((file) => [file.path, file.text])),
   }
   return report
 })

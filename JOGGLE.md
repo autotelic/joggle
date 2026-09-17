@@ -70,10 +70,26 @@ With no paths, joggle asks `tsgo --listFilesOnly` what the project is, so it
 analyses exactly what the compiler sees rather than whatever is on disk. With
 paths, it walks them itself.
 
+Output formats follow oxlint, because oxlint already decided what a linter's
+output should be and its decisions are worth copying:
+
+| Format | Shape | For |
+| --- | --- | --- |
+| `text` (default) | `path:line:col: severity rule: message help: ...`, one line per problem | terminals and CI logs |
+| `stylish` | grouped per file, aligned columns, colour on a TTY | reading by hand |
+| `unix` | `path:line:col: message [Severity/rule]` plus a count | editors and scripts |
+| `json` | everything, including per-answer confidence | another tool |
+| `github` | Actions workflow commands | annotations |
+
+A hand-rolled code frame was removed in favour of the compact default. On a
+1,870-file codebase the frames made the report 8,083 lines; oxlint's shape
+prints 343. A linter's output is read on a terminal and scrolled in CI, and
+those two want different things.
+
 | Flag | Meaning |
 | --- | --- |
 | `--rule <ids>` | comma-separated rule ids |
-| `--format text\|json\|github` | output format |
+| `--format text\|stylish\|unix\|json\|github` | output format (see below) |
 | `--max-warnings <n>` | fail when warnings exceed `n` (`-1` disables) |
 | `--typecheck` | include tsgo diagnostics as `joggle/typecheck` |
 | `--no-tsgo` | never invoke tsgo |

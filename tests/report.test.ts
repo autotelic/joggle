@@ -18,7 +18,6 @@ const report = (diagnostics: ReadonlyArray<Diagnostic>): Report => ({
   skipped: [{ ruleId: "joggle/naming-drift", reason: "TYPESAFE_API_KEY is not set" }],
   judge: { requests: 1, replayed: 0, calls: 0, unavailable: 0 },
   elapsedMs: 5,
-  sources: new Map([["src/a.ts", "// header\nconst x = 1\nexport const b = 2\n"]]),
 })
 
 it("sorts by file, then position, then severity", () => {
@@ -34,20 +33,29 @@ it("sorts by file, then position, then severity", () => {
   ])
 })
 
-it("text output carries a code frame, the help and a summary", () => {
-  const text = render(report([diagnostic({ help: "Keep the other one." })]), "text")
-  expect(text).toContain("src/a.ts:3:7")
-  expect(text).toContain("joggle/duplicate-implementation")
-  expect(text).toContain("export const b = 2") // the source line itself
-  expect(text).toContain("─") // the caret underline
-  expect(text).toContain("help: Keep the other one.")
-  expect(text).toContain("Found 1 warning in 2 files")
-  expect(text).toContain("note: joggle/naming-drift skipped")
+it("default output is one greppable line per problem, like oxlint", () => {
+  const out = render(report([diagnostic({ help: "Keep the other one." })]), "text")
+  expect(out).toContain("src/a.ts:3:7: warning joggle/duplicate-implementation:")
+  expect(out).toContain("help: Keep the other one.")
+  expect(out).toContain("1 problem (1 warning)")
+  expect(out).toContain("note: joggle/naming-drift skipped")
+  // No code frame: the compact form is what keeps CI logs readable.
+  expect(out).not.toContain("│")
 })
 
-it("an unverified finding is labelled as such", () => {
-  const text = render(report([diagnostic()]), "text")
-  expect(text).toContain("(unverified)")
+it("stylish groups by file and colours only when asked", () => {
+  const plainOut = render(report([diagnostic()]), "stylish")
+  expect(plainOut).toContain("src/a.ts")
+  expect(plainOut).toContain("✖ 1 problem (1 warning)")
+  expect(plainOut).not.toContain("\u001b")
+  const coloured = render(report([diagnostic()]), "stylish", { color: true })
+  expect(coloured).toContain("\u001b[")
+})
+
+it("unix output is machine-parsable and ends with a count", () => {
+  const out = render(report([diagnostic()]), "unix")
+  expect(out).toContain("src/a.ts:3:7: Something is duplicated. [Warning/joggle/duplicate-implementation]")
+  expect(out).toContain("1 problem")
 })
 
 it("github output emits workflow commands", () => {

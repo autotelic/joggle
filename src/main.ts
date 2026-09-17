@@ -19,7 +19,9 @@ const check = Command.make(
   {
     paths: Argument.String("paths").pipe(Argument.variadic()),
     rule: Flag.String("rule").pipe(Flag.optional),
-    format: Flag.Literals("format", ["text", "json", "github"]).pipe(Flag.withDefault("text")),
+    format: Flag.Literals("format", ["text", "stylish", "unix", "json", "github"]).pipe(
+      Flag.withDefault("text"),
+    ),
     maxWarnings: Flag.Int("max-warnings").pipe(Flag.withDefault(-1)),
     typecheck: Flag.Boolean("typecheck").pipe(Flag.withDefault(false)),
     offline: Flag.Boolean("offline").pipe(Flag.withDefault(false)),
