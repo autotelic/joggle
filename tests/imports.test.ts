@@ -4,6 +4,9 @@ import { buildImportGraph, resolveSpecifier } from "../src/imports.ts"
 
 const known = new Set(["src/types.ts", "src/utils/index.ts", "app/lib/helpers.ts"])
 
+/** Structure facts are irrelevant to import resolution; only the shape matters. */
+const empty = { calls: [], jsx: [], objects: [] }
+
 it.effect("relative specifiers resolve exactly, including index files", () =>
   Effect.gen(function* () {
     const path = yield* Path.Path
@@ -32,9 +35,9 @@ it.effect("the graph records importers by file and by name", () =>
   Effect.gen(function* () {
     const path = yield* Path.Path
     const files = [
-      { path: "src/types.ts", text: "", units: [], imports: [] },
-      { path: "src/a.ts", text: "", units: [], imports: [{ specifier: "./types", names: ["Task"] }] },
-      { path: "src/b.ts", text: "", units: [], imports: [{ specifier: "./types", names: [] }] },
+      { path: "src/types.ts", text: "", units: [], imports: [], facts: empty },
+      { path: "src/a.ts", text: "", units: [], imports: [{ specifier: "./types", names: ["Task"] }], facts: empty },
+      { path: "src/b.ts", text: "", units: [], imports: [{ specifier: "./types", names: [] }], facts: empty },
     ]
     const graph = buildImportGraph(files, path)
     expect(graph.unresolved).toBe(0)

@@ -35,6 +35,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     expect(report.rules).toBe(0)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
+      "joggle/composition-pattern",
       "joggle/duplicate-implementation",
       "joggle/duplicate-meaning",
       "joggle/naming-drift",
@@ -64,8 +65,10 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     )
 
     expect(report.files).toBe(2)
-    expect(report.rules).toBe(3)
+    expect(report.rules).toBe(4)
     expect(report.diagnostics.length).toBe(1)
+    // The fixture has no pages or modals, so composition-pattern has nothing to
+    // ask about and never reaches the judge -- it is not skipped, it is idle.
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/duplicate-meaning",
       "joggle/naming-drift",

@@ -52,12 +52,31 @@ export interface Unit {
   readonly doc: string | undefined
 }
 
+/**
+ * Structure a JSX codebase reveals through names rather than shapes.
+ *
+ * A composition pattern is a convention about how components are organised --
+ * a context, a provider, blocks, and a dot-notation export -- and every part of
+ * that convention is spelled somewhere in the source. These three lists are
+ * enough to check it without a renderer, a bundler or a runtime.
+ */
+export interface StructureFacts {
+  /** Callee names, dotted for member calls: `createContext`, `React.useState`. */
+  readonly calls: ReadonlyArray<string>
+  /** Element names as written, dotted for member JSX: `Button`, `Counter.Provider`. */
+  readonly jsx: ReadonlyArray<string>
+  /** Key names of every object literal, one entry per literal. */
+  readonly objects: ReadonlyArray<ReadonlyArray<string>>
+}
+
 export interface SourceFile {
   readonly path: string
   readonly text: string
   readonly units: ReadonlyArray<Unit>
   /** Raw import/re-export statements, before resolution. */
   readonly imports: ReadonlyArray<ParsedImport>
+  /** Names the file spells: what it calls, what it renders, what it declares. */
+  readonly facts: StructureFacts
 }
 
 /**
@@ -430,6 +449,82 @@ const sitesIn = (program: Record<string, unknown>): ReadonlyArray<DeclarationSit
   return sites
 }
 
+/**
+ * Collect the names a file spells.
+ *
+ * One generic walk, three lists. A composition pattern is checkable from them
+ * because every part of the convention is literally written down: a call to
+ * `createContext`, a render of `Counter.Provider`, an object literal with
+ * `state`, `actions` and `meta` among its keys.
+ */
+const structureIn = (root: unknown): StructureFacts => {
+  const calls = new Set<string>()
+  const jsx = new Set<string>()
+  const objects: Array<ReadonlyArray<string>> = []
+
+  const nameOf = (node: unknown): string | undefined => {
+    if (!isRecord(node)) return undefined
+    if (node["type"] === "Identifier" && typeof node["name"] === "string") return node["name"]
+    if (node["type"] === "StaticMemberExpression") {
+      const object = nameOf(node["object"])
+      const property = node["property"]
+      const key =
+        isRecord(property) && typeof property["name"] === "string" ? property["name"] : undefined
+      return object !== undefined && key !== undefined ? object + "." + key : undefined
+    }
+    if (node["type"] === "JSXIdentifier" && typeof node["name"] === "string") return node["name"]
+    if (node["type"] === "JSXMemberExpression") {
+      const object = nameOf(node["object"])
+      const property = nameOf(node["property"])
+      return object !== undefined && property !== undefined ? object + "." + property : undefined
+    }
+    return undefined
+  }
+
+  const stack: Array<unknown> = [root]
+  while (stack.length > 0) {
+    const node = stack.pop()
+    if (Array.isArray(node)) {
+      for (const child of node) stack.push(child)
+      continue
+    }
+    if (!isRecord(node)) continue
+    switch (node["type"]) {
+      case "CallExpression": {
+        const called = nameOf(node["callee"])
+        if (called !== undefined) calls.add(called)
+        break
+      }
+      case "JSXOpeningElement":
+      case "JSXSelfClosingElement": {
+        const element = nameOf(node["name"])
+        if (element !== undefined) jsx.add(element)
+        break
+      }
+      case "ObjectExpression": {
+        const properties = node["properties"]
+        if (Array.isArray(properties)) {
+          const keys: Array<string> = []
+          for (const property of properties) {
+            if (!isRecord(property)) continue
+            const key = property["key"]
+            if (isRecord(key) && typeof key["name"] === "string") keys.push(key["name"])
+            else if (isRecord(key) && typeof key["value"] === "string") keys.push(key["value"])
+          }
+          objects.push(keys)
+        }
+        break
+      }
+      default:
+        break
+    }
+    for (const value of Object.values(node)) {
+      if (value !== null && typeof value === "object") stack.push(value)
+    }
+  }
+  return { calls: [...calls], jsx: [...jsx], objects }
+}
+
 const parseSourceFile = (file: string, text: string): SourceFile => {
   const parsed = parseSync(file, text, { sourceType: "module", lang: langOf(file) })
   const program: unknown = parsed.program
@@ -491,7 +586,7 @@ const parseSourceFile = (file: string, text: string): SourceFile => {
     }
   }
   const imports = isRecord(program) ? importsIn(program) : []
-  return { path: file, text, units, imports }
+  return { path: file, text, units, imports, facts: structureIn(program) }
 }
 
 /* -------------------------------------------------------------------------- */

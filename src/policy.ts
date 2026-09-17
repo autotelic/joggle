@@ -35,7 +35,7 @@ export const policy = {
    * identical. The unchanged-run short-circuit keys on this, so failing to bump
    * it means a stale report is replayed after the rules have moved.
    */
-  analysisVersion: "2026-09-03",
+  analysisVersion: "2026-09-04",
 
   judge: {
     baseUrl: "https://api.typesafe.ai",
@@ -134,6 +134,16 @@ export const policy = {
      * evidence cost or tighten the candidate filter instead of capping this.
      */
     maxClusters: 4000,
+  },
+
+  /**
+   * Pages and modals assessed for composition-pattern conformance in one run.
+   *
+   * This is the largest candidate population in the tool -- every route and every
+   * modal -- because the check is about a whole file rather than a declaration.
+   */
+  compositionPattern: {
+    maxPages: 400,
   },
 
   /**
