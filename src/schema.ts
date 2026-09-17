@@ -45,21 +45,33 @@ export interface Diagnostic extends Schema.Schema.Type<typeof Diagnostic> {}
 /* System One wire contract                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * TypeSafe accepts JSON structure wherever prose gets blurry: instructions,
+ * Choice option descriptions, Score levels and Noul criteria. Labelled fields
+ * ("question", "compare", "focus") make a decision boundary easier to review
+ * than one dense sentence, and the model is trained on the structure.
+ */
+export const Entry = Schema.Union([
+  Schema.String,
+  Schema.Record(Schema.String, Schema.Unknown),
+  Schema.Array(Schema.Unknown),
+])
+
 export const NoulQuestion = Schema.Struct({
   type: Schema.tag("noul"),
-  instructions: Schema.String,
+  instructions: Entry,
   criteria: Schema.optionalKey(
     Schema.Struct({
-      true: Schema.String,
-      false: Schema.String,
+      true: Entry,
+      false: Entry,
     }),
   ),
 })
 
 export const ChoiceQuestion = Schema.Struct({
   type: Schema.tag("choice"),
-  instructions: Schema.String,
-  criteria: Schema.Record(Schema.String, Schema.NullOr(Schema.String)),
+  instructions: Entry,
+  criteria: Schema.Record(Schema.String, Schema.NullOr(Entry)),
 })
 
 export const Question = Schema.Union([NoulQuestion, ChoiceQuestion])

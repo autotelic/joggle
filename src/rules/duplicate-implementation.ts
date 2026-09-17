@@ -14,11 +14,7 @@ interface Candidate {
   readonly duplicate: Unit
 }
 
-/**
- * Deterministic candidate generation. Exact shape equality is a fact about the
- * AST, so this half is allowed to be broad: everything it over-produces is the
- * judge's problem, and the judge is cheaper than a missed duplicate.
- */
+/** Broad on purpose. Over-production is the judge's problem; a missed pair is not. */
 const find = (workspace: Workspace): ReadonlyArray<Candidate> => {
   const groups = new Map<string, Array<Unit>>()
   for (const unit of workspace.units) {
@@ -45,55 +41,33 @@ const find = (workspace: Workspace): ReadonlyArray<Candidate> => {
 }
 
 /**
- * Behaviour is not asked about. Two declarations with the same shape hash have
- * the same syntax by construction, so the only open question is *intent*: is
- * this redundancy, or is it two domains that happen to look alike? Those are
- * perceptual questions about names and areas, which is what the model is for.
+ * One question, three options, and no threshold on the answer.
+ *
+ * TypeSafe's guidance is that when the only thing you want is the best option,
+ * you read `choice` rather than comparing a number to a floor. Confidence is
+ * carried onto the finding so a reader or a CI gate can route on it; it is
+ * never used here to overrule the model.
  */
 const questions = {
-  names_describe_same_thing: {
-    type: "noul",
-    instructions:
-      "Do the two names `left.symbol` and `right.symbol` describe the same thing, or do they name genuinely different things?",
-    criteria: {
-      true: "The two names mean the same thing.",
-      false: "The two names mean different things.",
-    },
-  },
-  different_domains: {
-    type: "noul",
-    instructions:
-      "Do `left.path` and `right.path` belong to different functional areas of this codebase, judging by the directory names?",
-    criteria: {
-      true: "The two declarations live in unrelated areas.",
-      false: "The two declarations live in the same area.",
-    },
-  },
-  general_purpose: {
-    type: "noul",
-    instructions:
-      "Is `left.source` a general-purpose helper that has nothing to do with one specific domain, rather than a domain concept?",
-    criteria: {
-      true: "General-purpose: could live in a shared utility module.",
-      false: "Domain-specific: it names a concept of this business.",
-    },
-  },
   verdict: {
     type: "choice",
-    instructions:
-      "Given `left.source` and `right.source` are syntactically identical, what should happen?",
+    instructions: {
+      question: "Should one of these two declarations go away?",
+      compare: ["`left.source`", "`right.source`"],
+      focus:
+        "`left.source` and `right.source` are syntactically identical, including property names and types. Decide whether that is redundancy or two things that only look alike.",
+      location: "`left.path` and `right.path` say where each one lives.",
+    },
     criteria: {
-      left: "Keep `left`; `right` is redundant.",
-      right: "Keep `right`; `left` is redundant.",
-      keep_both: "Keep both. The duplication is intentional, because the two belong to different concerns.",
+      keep_left:
+        "`right` is a redundant copy of `left`. Keep `left`, import it where `right` was used, and delete `right`.",
+      keep_right:
+        "`left` is a redundant copy of `right`. Keep `right`, import it where `left` was used, and delete `left`.",
+      keep_both:
+        "The repetition is intentional. The two belong to different concerns and are expected to diverge.",
     },
   },
 } satisfies Record<string, Question>
-
-const noul = (answers: Readonly<Record<string, Answer>>, id: string): number | undefined => {
-  const answer = answers[id]
-  return answer !== undefined && answer.type === "noul" ? answer.noul : undefined
-}
 
 const choice = (
   answers: Readonly<Record<string, Answer>>,
@@ -105,24 +79,22 @@ const choice = (
     : undefined
 }
 
+const kindOf = (unit: Unit): string => (unit.kind === "function" ? "Implementation" : "Declaration")
+
 const unverifiedFinding = (candidate: Candidate): Diagnostic =>
   finding({
-      ruleId: RULE_ID,
-      severity: "warn",
-      message: `${kindOf(candidate.duplicate)} is structurally identical to \`${candidate.canonical.name}\` in ${candidate.canonical.file}:${candidate.canonical.location.line}.`,
-      help: `Keep \`${candidate.canonical.name}\` and import it here, or make the two genuinely different. Not verified: no judgement was available.`,
-      location: candidate.duplicate.location,
-      judged: false,
-    })
+    ruleId: RULE_ID,
+    severity: "warn",
+    message: `${kindOf(candidate.duplicate)} is structurally identical to \`${candidate.canonical.name}\` in ${candidate.canonical.file}:${candidate.canonical.location.line}.`,
+    help: `Keep \`${candidate.canonical.name}\` and import it here, or make the two genuinely different. Not verified: no judgement was available.`,
+    location: candidate.duplicate.location,
+    judged: false,
+  })
 
 const unverified = (candidate: Candidate): Option.Option<Diagnostic> =>
   Option.some(unverifiedFinding(candidate))
 
-const kindOf = (unit: Unit): string => (unit.kind === "function" ? "Implementation" : "Declaration")
-
-const assess = Effect.fn("joggle/duplicate-implementation.assess")(function* (
-  candidate: Candidate,
-) {
+const assess = Effect.fn("joggle/duplicate-implementation.assess")(function* (candidate: Candidate) {
   const judge = yield* Judge
   const evidence = {
     left: {
@@ -148,38 +120,22 @@ const assess = Effect.fn("joggle/duplicate-implementation.assess")(function* (
   )
   if (Option.isNone(outcome)) return unverified(candidate)
 
-  const answers = outcome.value.answers
-  const sameName = noul(answers, "names_describe_same_thing")
-  const generalPurpose = noul(answers, "general_purpose")
-  const verdict = choice(answers, "verdict")
-  const p = policy.duplicateImplementation
-
-  // A response without the verdict is not a judgement we can act on. Claiming
-  // "judged" here would be worse than admitting the finding is unverified.
+  const verdict = choice(outcome.value.answers, "verdict")
   if (verdict === undefined) return unverified(candidate)
+  if (verdict.choice === "keep_both") return Option.none<Diagnostic>()
 
-  // The model may override the deterministic fact for exactly two reasons, and
-  // both are about intent rather than geography:
-  //   1. the two names genuinely mean different things, so the match is chance;
-  //   2. it is confident that both declarations should stay.
-  if (verdict.choice === "keep_both" && verdict.confidence >= p.keepBothConfidence) {
-    return Option.none<Diagnostic>()
-  }
-  if (sameName !== undefined && sameName < p.nameDivergenceFloor) return Option.none<Diagnostic>()
-
-  const keepRight = verdict.choice === "right"
+  const keepRight = verdict.choice === "keep_right"
   const keep = keepRight ? candidate.duplicate : candidate.canonical
   const drop = keepRight ? candidate.canonical : candidate.duplicate
-  const confidence = Math.max(verdict.confidence, sameName ?? 0, generalPurpose ?? 0)
 
   return Option.some(
     finding({
       ruleId: RULE_ID,
       severity: "warn",
-      message: `${kindOf(drop)} is structurally identical to \`${keep.name}\` in ${keep.file}:${keep.location.line}.`,
+      message: `${kindOf(drop)} is a redundant copy of \`${keep.name}\` in ${keep.file}:${keep.location.line}.`,
       help: `Keep \`${keep.name}\` and import it here. If the two are genuinely different concepts, change one so the shape differs.`,
       location: drop.location,
-      confidence,
+      confidence: verdict.confidence,
       judged: true,
     }),
   )
@@ -188,7 +144,7 @@ const assess = Effect.fn("joggle/duplicate-implementation.assess")(function* (
 export const duplicateImplementation = defineRule({
   id: RULE_ID,
   severity: "warn",
-  description: "Structurally identical declarations in more than one file.",
+  description: "One declaration written more than once across files.",
   judged: true,
   run: Effect.fn("joggle/duplicate-implementation")(function* (workspace) {
     const candidates = find(workspace)
@@ -199,7 +155,6 @@ export const duplicateImplementation = defineRule({
     })
     const reported = outcomes.flatMap((outcome) => (Option.isSome(outcome) ? [outcome.value] : []))
     // Over budget: still reported, never silently dropped.
-    const overflow = candidates.slice(budget).map(unverifiedFinding)
-    return [...reported, ...overflow]
+    return [...reported, ...candidates.slice(budget).map(unverifiedFinding)]
   }),
 })

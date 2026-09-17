@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge } from "../judge.ts"
-import { defineRule, finding, type UnitPair } from "../rule.ts"
+import { defineRule, finding } from "../rule.ts"
 import type { Answer, Diagnostic, Question } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -16,35 +16,13 @@ const RULE_ID = "joggle/naming-drift"
  * `orgId` and `organizationId` as the same phrase rather than as two strings.
  */
 const abbreviations: Readonly<Record<string, string>> = {
-  arg: "argument",
-  auth: "authentication",
-  cfg: "configuration",
-  config: "configuration",
-  ctx: "context",
-  db: "database",
-  dir: "directory",
-  doc: "document",
-  env: "environment",
-  err: "error",
-  fn: "function",
-  id: "identifier",
-  idx: "index",
-  impl: "implementation",
-  info: "information",
-  init: "initialize",
-  msg: "message",
-  num: "number",
-  org: "organization",
-  param: "parameter",
-  prev: "previous",
-  repo: "repository",
-  req: "request",
-  res: "response",
-  spec: "specification",
-  stat: "statistic",
-  str: "string",
-  util: "utility",
-  utils: "utility",
+  arg: "argument", auth: "authentication", cfg: "configuration", config: "configuration",
+  ctx: "context", db: "database", dir: "directory", doc: "document", env: "environment",
+  err: "error", fn: "function", id: "identifier", idx: "index", impl: "implementation",
+  info: "information", init: "initialize", msg: "message", num: "number",
+  org: "organization", param: "parameter", prev: "previous", repo: "repository",
+  req: "request", res: "response", spec: "specification", stat: "statistic",
+  str: "string", util: "utility", utils: "utility",
 }
 
 export const words = (name: string): ReadonlyArray<string> =>
@@ -70,11 +48,14 @@ const score = (left: string, right: string): number => {
   return headA !== undefined && headA === headB ? Math.min(1, jaccard + 0.25) : jaccard
 }
 
-/**
- * Only declarations sharing a head noun are compared. Drift is always a
- * disagreement about how to say the same noun, never about two unrelated ones.
- */
-const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
+interface Candidate {
+  readonly left: Unit
+  readonly right: Unit
+  readonly score: number
+}
+
+/** Only declarations sharing a head noun are compared. */
+const find = (workspace: Workspace): ReadonlyArray<Candidate> => {
   const { minScore, maxPairs } = policy.namingDrift
   const byHead = new Map<string, Array<Unit>>()
   for (const unit of workspace.units) {
@@ -86,7 +67,7 @@ const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
     else existing.push(unit)
   }
 
-  const candidates: Array<UnitPair> = []
+  const candidates: Array<Candidate> = []
   for (const group of byHead.values()) {
     for (let a = 0; a < group.length; a += 1) {
       for (let b = a + 1; b < group.length; b += 1) {
@@ -96,9 +77,6 @@ const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
         if (left.name === right.name) continue
         if (left.file === right.file) continue
         if (left.kind !== right.kind) continue
-        // Structurally identical declarations are already reported by
-        // duplicate-implementation; judging them again double-reports and
-        // spends a call to learn nothing.
         if (left.shapeHash === right.shapeHash) continue
         const value = score(left.name, right.name)
         if (value < minScore) continue
@@ -111,75 +89,67 @@ const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
 }
 
 const questions = {
-  same_concept: {
-    type: "noul",
-    instructions:
-      "Do `left.symbol` and `right.symbol` denote the same concept in this codebase, given how each is used?",
-    criteria: {
-      true: "The two names refer to one concept; one spelling is redundant.",
-      false: "They refer to genuinely different concepts.",
-    },
-  },
-  canonical: {
+  verdict: {
     type: "choice",
-    instructions:
-      "If the codebase should standardize on one spelling for this concept, which one fits best?",
+    instructions: {
+      question: "Are these two names two spellings of one concept, or two different concepts?",
+      compare: ["`left.symbol`", "`right.symbol`"],
+      focus:
+        "Read past the abbreviation: `left.expanded` and `right.expanded` are what each name means word by word. Judge the concepts, not the strings.",
+      location: "`left.path` and `right.path` say where each one lives.",
+    },
     criteria: {
-      left: "Standardize on `left.symbol`.",
-      right: "Standardize on `right.symbol`.",
-      both: "Both names are needed; do not consolidate.",
+      same_use_left: "One concept, two spellings. Standardize on `left.symbol`.",
+      same_use_right: "One concept, two spellings. Standardize on `right.symbol`.",
+      distinct: "Two different concepts. Both names are correct. Change nothing.",
     },
   },
 } satisfies Record<string, Question>
 
-const assess = Effect.fn("joggle/naming-drift.assess")(function* (candidate: UnitPair) {
+const choice = (
+  answers: Readonly<Record<string, Answer>>,
+  id: string,
+): { readonly choice: string; readonly confidence: number } | undefined => {
+  const answer = answers[id]
+  return answer !== undefined && answer.type === "choice"
+    ? { choice: answer.choice, confidence: answer.confidence }
+    : undefined
+}
+
+const assess = Effect.fn("joggle/naming-drift.assess")(function* (candidate: Candidate) {
   const judge = yield* Judge
   const evidence = {
     left: {
       symbol: candidate.left.name,
       expanded: expanded(candidate.left.name).join(" "),
       path: candidate.left.file,
-      line: candidate.left.location.line,
       source: candidate.left.text.slice(0, 400),
     },
     right: {
       symbol: candidate.right.name,
       expanded: expanded(candidate.right.name).join(" "),
       path: candidate.right.file,
-      line: candidate.right.location.line,
       source: candidate.right.text.slice(0, 400),
     },
     name_overlap: Number(candidate.score.toFixed(3)),
   }
 
   const result = yield* judge.ask({ evidence, questions })
-  const sameConceptAnswer: Answer | undefined = result.answers["same_concept"]
-  const canonicalAnswer: Answer | undefined = result.answers["canonical"]
-  if (
-    sameConceptAnswer === undefined ||
-    sameConceptAnswer.type !== "noul" ||
-    canonicalAnswer === undefined ||
-    canonicalAnswer.type !== "choice"
-  ) {
-    return Option.none<Diagnostic>()
-  }
+  const verdict = choice(result.answers, "verdict")
+  if (verdict === undefined) return Option.none<Diagnostic>()
+  if (verdict.choice === "distinct") return Option.none<Diagnostic>()
 
-  const { sameConceptThreshold, confidenceFloor } = policy.namingDrift
-  if (sameConceptAnswer.noul < sameConceptThreshold) return Option.none<Diagnostic>()
-  if (canonicalAnswer.confidence < confidenceFloor) return Option.none<Diagnostic>()
-  if (canonicalAnswer.choice === "both") return Option.none<Diagnostic>()
-
-  const keep = canonicalAnswer.choice === "left" ? candidate.left : candidate.right
+  const keep = verdict.choice === "same_use_right" ? candidate.right : candidate.left
   const drop = keep === candidate.left ? candidate.right : candidate.left
 
   return Option.some(
     finding({
       ruleId: RULE_ID,
       severity: "warn",
-      message: `\`${drop.name}\` appears to name the same concept as \`${keep.name}\` (${keep.file}:${keep.location.line}).`,
+      message: `\`${drop.name}\` and \`${keep.name}\` are two spellings of one concept.`,
       help: `Standardize on \`${keep.name}\`. Read together, both mean "${expanded(keep.name).join(" ")}".`,
       location: drop.location,
-      confidence: sameConceptAnswer.noul,
+      confidence: verdict.confidence,
       judged: true,
     }),
   )

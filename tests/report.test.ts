@@ -18,6 +18,7 @@ const report = (diagnostics: ReadonlyArray<Diagnostic>): Report => ({
   skipped: [{ ruleId: "joggle/naming-drift", reason: "TYPESAFE_API_KEY is not set" }],
   judge: { requests: 1, replayed: 0, calls: 0, unavailable: 0 },
   elapsedMs: 5,
+  sources: new Map([["src/a.ts", "// header\nconst x = 1\nexport const b = 2\n"]]),
 })
 
 it("sorts by file, then position, then severity", () => {
@@ -33,13 +34,20 @@ it("sorts by file, then position, then severity", () => {
   ])
 })
 
-it("text output carries spans, help and a summary", () => {
+it("text output carries a code frame, the help and a summary", () => {
   const text = render(report([diagnostic({ help: "Keep the other one." })]), "text")
   expect(text).toContain("src/a.ts:3:7")
   expect(text).toContain("joggle/duplicate-implementation")
+  expect(text).toContain("export const b = 2") // the source line itself
+  expect(text).toContain("─") // the caret underline
   expect(text).toContain("help: Keep the other one.")
-  expect(text).toContain("1 problem (0 errors, 1 warnings)")
+  expect(text).toContain("Found 1 warning in 2 files")
   expect(text).toContain("note: joggle/naming-drift skipped")
+})
+
+it("an unverified finding is labelled as such", () => {
+  const text = render(report([diagnostic()]), "text")
+  expect(text).toContain("(unverified)")
 })
 
 it("github output emits workflow commands", () => {

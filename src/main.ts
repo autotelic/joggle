@@ -54,7 +54,7 @@ const check = Command.make(
         Effect.provide(tsgoLayer(cwd)),
       )
 
-      yield* write(render(report, config.format))
+      yield* write(render(report, config.format, { color: process.stdout.isTTY === true }))
       yield* Effect.sync(() => {
         process.exitCode = exitCodeFor(report, config.maxWarnings)
       })
