@@ -1,126 +1,98 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
-import { Service as Judge } from "../judge.ts"
-import { choiceOf, defineRule, finding, noulOf, pairsOf, type UnitPair } from "../rule.ts"
-import type { Answer, Diagnostic, Question } from "../schema.ts"
+import { components, makeCluster, type Cluster } from "../cluster.ts"
+import { defineRule } from "../rule.ts"
+import { assessCluster, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
 import { similarity, type Unit, type Workspace } from "../workspace.ts"
 
-const RULE_ID = "joggle/duplicate-meaning"
+const spec: ClusterRule = {
+  ruleId: "joggle/duplicate-meaning",
+  severity: "warn",
+  // A near-duplicate is a guess until a judgement says otherwise, so an
+  // unjudged cluster is silence and the rule reports itself as skipped.
+  onUnavailable: "propagate",
+  subject: (cluster) => {
+    const names = [...new Set(cluster.members.map((member) => member.name))]
+    return `${cluster.members.length} declarations that may be one thing: ${names.join(", ")}`
+  },
+}
+
+interface Pair {
+  readonly left: number
+  readonly right: number
+  readonly score: number
+}
 
 /**
  * Near-duplicates: structurally close but not identical, so someone renamed a
- * thing or the bodies drifted. Whether that is one concept or two is exactly the
- * judgement code cannot make, so this rule exists only to ask it.
+ * thing or the bodies drifted. Pairs are unioned into clusters before judging,
+ * because "these eighteen `formatDate`s are one function" is a single decision,
+ * not a hundred and fifty-three.
  */
-const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
+const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
   const { minSimilarity, maxSimilarity, maxPairs, minTokens } = policy.duplicateMeaning
-  const buckets = new Map<number, Array<Unit>>()
-  for (const unit of workspace.units) {
+  const units = workspace.units
+
+  // Length buckets keep the pair scan roughly linear. Two implementations of
+  // wildly different sizes cannot be near-duplicates.
+  const buckets = new Map<number, Array<number>>()
+  units.forEach((unit, index) => {
     const bucket = Math.floor(unit.tokens.length / 8)
     const existing = buckets.get(bucket)
-    if (existing === undefined) buckets.set(bucket, [unit])
-    else existing.push(unit)
-  }
+    if (existing === undefined) buckets.set(bucket, [index])
+    else existing.push(index)
+  })
 
-  const candidates: Array<UnitPair> = []
-  for (const [index, bucket] of buckets) {
-    const neighbours = [...bucket, ...(buckets.get(index + 1) ?? [])]
-    for (const pair of pairsOf(neighbours)) {
-      if (pair.left.file === pair.right.file) continue
-      if (pair.left.kind !== pair.right.kind) continue
-      if (pair.left.tokens.length < minTokens || pair.right.tokens.length < minTokens) continue
-      const score = similarity(pair.left.tokens, pair.right.tokens)
-      if (score < minSimilarity || score > maxSimilarity) continue
-      candidates.push({ left: pair.left, right: pair.right, score })
+  const pairs: Array<Pair> = []
+  for (const [bucket, members] of buckets) {
+    const neighbours = [...members, ...(buckets.get(bucket + 1) ?? [])]
+    for (let a = 0; a < neighbours.length; a += 1) {
+      for (let b = a + 1; b < neighbours.length; b += 1) {
+        const left = neighbours[a]
+        const right = neighbours[b]
+        if (left === undefined || right === undefined) continue
+        const one = units[left]
+        const two = units[right]
+        if (one === undefined || two === undefined) continue
+        if (one.file === two.file) continue
+        if (one.kind !== two.kind) continue
+        if (one.tokens.length < minTokens || two.tokens.length < minTokens) continue
+        const score = similarity(one.tokens, two.tokens)
+        if (score < minSimilarity || score > maxSimilarity) continue
+        pairs.push({ left, right, score })
+      }
     }
   }
 
-  return candidates.sort((a, b) => b.score - a.score).slice(0, maxPairs)
+  const best = pairs.sort((a, b) => b.score - a.score).slice(0, maxPairs)
+  const edges = best.map((pair) => [pair.left, pair.right] as const)
+  const clusters: Array<Cluster> = []
+  for (const group of components(units.length, edges)) {
+    if (group.length < 2) continue
+    const members = group
+      .map((index) => units[index])
+      .filter((unit): unit is Unit => unit !== undefined)
+    if (members.length < 2) continue
+    const overlap = Math.max(
+      ...best
+        .filter((pair) => group.includes(pair.left) && group.includes(pair.right))
+        .map((pair) => pair.score),
+      0,
+    )
+    clusters.push(makeCluster(members, false, overlap))
+  }
+  return clusters
 }
 
-const questions = {
-  verdict: {
-    type: "choice",
-    instructions: {
-      question: "Are these two declarations the same thing?",
-      compare: ["`left.source`", "`right.source`"],
-      focus:
-        "They are `structural_overlap` similar but not identical. Decide whether the difference is naming drift, a genuine refinement of one idea, or two unrelated things.",
-      location: "`left.path` and `right.path` say where each one lives.",
-    },
-    criteria: {
-      same_keep_left: "One concept. Keep `left` and replace `right` with it.",
-      same_keep_right: "One concept. Keep `right` and replace `left` with it.",
-      related_keep_both:
-        "Related but deliberately separate, such as a special case of a general routine. Keep both.",
-      unrelated: "Coincidentally similar. They are different things. Change nothing.",
-    },
-  },
-  same: {
-    type: "noul",
-    instructions: {
-      question: "Do \`left\` and \`right\` implement the same thing, such that one should replace the other?",
-      focus: "Answer yes only if a reader is worse off for having both.",
-    },
-    criteria: {
-      true: "One declaration should replace the other.",
-      false: "Both should stay as they are.",
-    },
-  },
-} satisfies Record<string, Question>
-
-const assess = Effect.fn("joggle/duplicate-meaning.assess")(function* (candidate: UnitPair) {
-  const judge = yield* Judge
-  const evidence = {
-    left: {
-      symbol: candidate.left.name,
-      kind: candidate.left.kind,
-      path: candidate.left.file,
-      source: candidate.left.text,
-    },
-    right: {
-      symbol: candidate.right.name,
-      kind: candidate.right.kind,
-      path: candidate.right.file,
-      source: candidate.right.text,
-    },
-    structural_overlap: Number(candidate.score.toFixed(3)),
-  }
-
-  const result = yield* judge.ask({ evidence, questions })
-  const verdict = choiceOf(result.answers, "verdict")
-  if (verdict === undefined) return Option.none<Diagnostic>()
-  if (verdict.choice === "related_keep_both" || verdict.choice === "unrelated") {
-    return Option.none<Diagnostic>()
-  }
-
-  const keepRight = verdict.choice === "same_keep_right"
-  const keep = keepRight ? candidate.right : candidate.left
-  const drop = keepRight ? candidate.left : candidate.right
-
-  return Option.some(
-    finding({
-      ruleId: RULE_ID,
-      severity: "warn",
-      message: `Near-duplicate of \`${keep.name}\` (${keep.file}:${keep.location.line}) — ${Math.round(candidate.score * 100)}% structural overlap.`,
-      help: `Keep \`${keep.name}\` and point this declaration's callers at it.`,
-      location: drop.location,
-      confidence: verdict.confidence,
-      score: noulOf(result.answers, "same") ?? verdict.confidence,
-      judged: true,
-    }),
-  )
-})
-
 export const duplicateMeaning = defineRule({
-  id: RULE_ID,
-  severity: "warn",
+  id: spec.ruleId,
+  severity: spec.severity,
   description: "Near-duplicates where a judgement says one declaration replaces the other.",
   judged: true,
   run: Effect.fn("joggle/duplicate-meaning")(function* (workspace) {
-    const candidates = find(workspace)
-    if (candidates.length === 0) return []
-    const outcomes = yield* Effect.forEach(candidates, assess, { concurrency: 4 })
+    const clusters = find(workspace)
+    if (clusters.length === 0) return []
+    const outcomes = yield* Effect.forEach(clusters, assessCluster(spec), { concurrency: 4 })
     return outcomes.flatMap((outcome) => (Option.isSome(outcome) ? [outcome.value] : []))
   }),
 })

@@ -1,11 +1,21 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
-import { Service as Judge } from "../judge.ts"
-import { choiceOf, defineRule, finding, noulOf, type UnitPair } from "../rule.ts"
-import type { Answer, Diagnostic, Question } from "../schema.ts"
+import { components, makeCluster, type Cluster } from "../cluster.ts"
+import { defineRule } from "../rule.ts"
+import { assessCluster, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
-const RULE_ID = "joggle/naming-drift"
+const spec: ClusterRule = {
+  ruleId: "joggle/naming-drift",
+  severity: "warn",
+  onUnavailable: "propagate",
+  subject: (cluster) => {
+    const names = [...new Set(cluster.members.map((member) => member.name))]
+    return names.length === 1
+      ? `\`${names[0] ?? "?"}\` is spelled ${cluster.members.length} ways`
+      : `${names.join(", ")} may be one concept`
+  },
+}
 
 /**
  * One spelling per concept.
@@ -13,7 +23,7 @@ const RULE_ID = "joggle/naming-drift"
  * Names are addresses: an agent finds code by grepping a name, so two names for
  * one concept cost retrieval on every future change. This table is the only
  * hand-written knowledge in the rule, and it exists so the judgement sees
- * `orgId` and `organizationId` as the same phrase rather than as two strings.
+ * `orgId` and `organizationId` as the same phrase rather than two strings.
  */
 const abbreviations: Readonly<Record<string, string>> = {
   arg: "argument", auth: "authentication", cfg: "configuration", config: "configuration",
@@ -36,7 +46,7 @@ export const words = (name: string): ReadonlyArray<string> =>
 export const expanded = (name: string): ReadonlyArray<string> =>
   words(name).map((word) => abbreviations[word] ?? word)
 
-const score = (left: string, right: string): number => {
+const nameScore = (left: string, right: string): number => {
   const a = new Set(expanded(left))
   const b = new Set(expanded(right))
   let intersection = 0
@@ -48,118 +58,68 @@ const score = (left: string, right: string): number => {
   return headA !== undefined && headA === headB ? Math.min(1, jaccard + 0.25) : jaccard
 }
 
-/** Only declarations sharing a head noun are compared. */
-const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
+/** Only declarations sharing a head noun are compared; clusters then grow by union. */
+const find = (workspace: Workspace): ReadonlyArray<Cluster> => {
   const { minScore, maxPairs } = policy.namingDrift
-  const byHead = new Map<string, Array<Unit>>()
-  for (const unit of workspace.units) {
-    if (!unit.exported) continue
+  const units = workspace.units
+  const byHead = new Map<string, Array<number>>()
+  units.forEach((unit, index) => {
+    if (!unit.exported) return
     const head = expanded(unit.name).at(-1)
-    if (head === undefined) continue
+    if (head === undefined) return
     const existing = byHead.get(head)
-    if (existing === undefined) byHead.set(head, [unit])
-    else existing.push(unit)
-  }
+    if (existing === undefined) byHead.set(head, [index])
+    else existing.push(index)
+  })
 
-  const candidates: Array<UnitPair> = []
+  const pairs: Array<{ left: number; right: number; score: number }> = []
   for (const group of byHead.values()) {
     for (let a = 0; a < group.length; a += 1) {
       for (let b = a + 1; b < group.length; b += 1) {
         const left = group[a]
         const right = group[b]
         if (left === undefined || right === undefined) continue
-        if (left.name === right.name) continue
-        if (left.file === right.file) continue
-        if (left.kind !== right.kind) continue
-        if (left.shapeHash === right.shapeHash) continue
-        const value = score(left.name, right.name)
-        if (value < minScore) continue
-        candidates.push({ left, right, score: value })
+        const one = units[left]
+        const two = units[right]
+        if (one === undefined || two === undefined) continue
+        if (one.name === two.name) continue
+        if (one.file === two.file) continue
+        if (one.kind !== two.kind) continue
+        const score = nameScore(one.name, two.name)
+        if (score < minScore) continue
+        pairs.push({ left, right, score })
       }
     }
   }
 
-  return candidates.sort((a, b) => b.score - a.score).slice(0, maxPairs)
+  const best = pairs.sort((a, b) => b.score - a.score).slice(0, maxPairs)
+  const clusters: Array<Cluster> = []
+  for (const group of components(units.length, best.map((pair) => [pair.left, pair.right] as const))) {
+    if (group.length < 2) continue
+    const members = group
+      .map((index) => units[index])
+      .filter((unit): unit is Unit => unit !== undefined)
+    if (members.length < 2) continue
+    const overlap = Math.max(
+      ...best
+        .filter((pair) => group.includes(pair.left) && group.includes(pair.right))
+        .map((pair) => pair.score),
+      0,
+    )
+    clusters.push(makeCluster(members, false, overlap))
+  }
+  return clusters
 }
 
-const questions = {
-  verdict: {
-    type: "choice",
-    instructions: {
-      question: "Are these two names two spellings of one concept, or two different concepts?",
-      compare: ["`left.symbol`", "`right.symbol`"],
-      focus:
-        "Read past the abbreviation: `left.expanded` and `right.expanded` are what each name means word by word. Judge the concepts, not the strings.",
-      location: "`left.path` and `right.path` say where each one lives.",
-    },
-    criteria: {
-      same_use_left: "One concept, two spellings. Standardize on `left.symbol`.",
-      same_use_right: "One concept, two spellings. Standardize on `right.symbol`.",
-      distinct: "Two different concepts. Both names are correct. Change nothing.",
-    },
-  },
-  one_concept: {
-    type: "noul",
-    instructions: {
-      question: "Are \`left.symbol\` and \`right.symbol\` two spellings of one concept?",
-      focus: "Answer yes only if a reader would be better served by one name.",
-    },
-    criteria: {
-      true: "One concept, two spellings.",
-      false: "Two concepts, both names correct.",
-    },
-  },
-} satisfies Record<string, Question>
-
-const assess = Effect.fn("joggle/naming-drift.assess")(function* (candidate: UnitPair) {
-  const judge = yield* Judge
-  const evidence = {
-    left: {
-      symbol: candidate.left.name,
-      expanded: expanded(candidate.left.name).join(" "),
-      path: candidate.left.file,
-      source: candidate.left.text.slice(0, 400),
-    },
-    right: {
-      symbol: candidate.right.name,
-      expanded: expanded(candidate.right.name).join(" "),
-      path: candidate.right.file,
-      source: candidate.right.text.slice(0, 400),
-    },
-    name_overlap: Number(candidate.score.toFixed(3)),
-  }
-
-  const result = yield* judge.ask({ evidence, questions })
-  const verdict = choiceOf(result.answers, "verdict")
-  if (verdict === undefined) return Option.none<Diagnostic>()
-  if (verdict.choice === "distinct") return Option.none<Diagnostic>()
-
-  const keep = verdict.choice === "same_use_right" ? candidate.right : candidate.left
-  const drop = keep === candidate.left ? candidate.right : candidate.left
-
-  return Option.some(
-    finding({
-      ruleId: RULE_ID,
-      severity: "warn",
-      message: `\`${drop.name}\` and \`${keep.name}\` are two spellings of one concept.`,
-      help: `Standardize on \`${keep.name}\`. Read together, both mean "${expanded(keep.name).join(" ")}".`,
-      location: drop.location,
-      confidence: verdict.confidence,
-      score: noulOf(result.answers, "one_concept") ?? verdict.confidence,
-      judged: true,
-    }),
-  )
-})
-
 export const namingDrift = defineRule({
-  id: RULE_ID,
-  severity: "warn",
+  id: spec.ruleId,
+  severity: spec.severity,
   description: "Two spellings of one concept across files.",
   judged: true,
   run: Effect.fn("joggle/naming-drift")(function* (workspace) {
-    const candidates = find(workspace)
-    if (candidates.length === 0) return []
-    const outcomes = yield* Effect.forEach(candidates, assess, { concurrency: 4 })
+    const clusters = find(workspace)
+    if (clusters.length === 0) return []
+    const outcomes = yield* Effect.forEach(clusters, assessCluster(spec), { concurrency: 4 })
     return outcomes.flatMap((outcome) => (Option.isSome(outcome) ? [outcome.value] : []))
   }),
 })
