@@ -100,6 +100,33 @@ When the judge is unavailable, judged rules are reported as skipped and the
 deterministic rules still run. A missing key degrades the gate; it does not
 disable it.
 
+### Where the key goes
+
+The key is read from the process environment only, so it never appears in the
+repository or in any config file joggle owns.
+
+Locally, use the secret manager the team already has:
+
+```sh
+doppler run -- pnpm joggle check src      # recommended
+direnv allow                              # or a gitignored .envrc.local
+```
+
+In CI, add `TYPESAFE_API_KEY` as a repository secret and map it onto the step
+that judges new candidates. The replay job needs no secret at all.
+
+Two properties make this safe to live with:
+
+* `.joggle/judgements.json` holds questions, evidence and answers. It never
+  holds the key, so it is safe to commit and review.
+* Because the cache is the replay path, **the judged run can be done by a
+  person and the result handed to CI or to an agent**. Neither of them ever
+  needs the credential; they work from the committed verdicts.
+
+If the key is ever pasted into a file, into chat, or into a shell that gets
+logged, rotate it in the TypeSafe console. This repository is private, so
+GitHub's secret scanning will not catch it for you.
+
 ## The judgement
 
 The evidence panel is the System One `state`; the questions are the typed

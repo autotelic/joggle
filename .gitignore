@@ -3,6 +3,17 @@ entropy-machine/entropy-types
 repos/
 node_modules/
 dist/
-.joggle/
 *.tsbuildinfo
 coverage/
+
+# Judgement replay cache. Kept in git on purpose: CI replays reviewed verdicts
+# with no API key. Nothing else in .joggle/ is tracked.
+.joggle/*
+!.joggle/judgements.json
+
+# Local secrets — never commit these.
+.env
+.env.*
+!.env.example
+*.pem
+.secrets*
