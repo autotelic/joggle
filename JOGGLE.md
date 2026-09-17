@@ -167,11 +167,68 @@ difference -- you do not rewrite a prompt.
    answers that should not.
 5. Run `pnpm joggle check src` -- joggle is expected to pass its own rules.
 
+## Why the next layer is types, not more AST
+
+joggle reasons about syntax today: it parses with oxc, normalises a
+declaration's text, and hashes it. That catches copy-pasted code -- on a
+1,870-file codebase it found a `delay` helper copied into six files and one
+type declared in 48 -- but 79% of what it reported were *type* declarations,
+judged by text similarity. That is the wrong instrument, and the material in
+`docs/` says why:
+
+* `docs/names.md` -- types are the one contract the compiler enforces, and a
+  type name is a search term exactly like a function name. Every `any` leaves
+  the compiler with nothing to say and the agent with nothing to search.
+* `docs/parse.md` -- the entire argument is that the type system is where a
+  program makes illegal states unrepresentable, and that validation which
+  discards what it learned is the anti-pattern.
+* `docs/something.md` -- the goal is a compiler on top of the codebase that can
+  refuse a change because "this file is in the wrong relationship to that".
+* `docs/new-passes.md` names four pillars: AST structure, dependency graph,
+  **type resolution data**, and text analysis. joggle has the first, part of
+  the second, and none of the third.
+
+Types are also the only layer where the answer is *provable* rather than
+similar. Measured on that same codebase with `tsgo --generateTrace` -- 11.5s
+and 301MB of type facts for 1,870 files:
+
+```
+User: 46 resolved entries across 24 declaring files, 3 distinct resolved shapes
+      Object (x38), Any (x4), TypeParameter (x4)
+```
+
+One name, three meanings, four of them `any`. Text hashing cannot see that. The
+checker knows it exactly.
+
+So the direction is: keep the AST as the index and the source of spans, and
+move the *judgements* to the type graph.
+
+The first type-aware rule should be **`joggle/one-concept-one-type`**: the same
+declared name resolving to different types in different places. Divergence is a
+correctness problem; provable identity is a collapse candidate. Neither is
+reachable from text.
+
+Two implementation notes, because a trace is a hack that works and not the
+final shape:
+
+* `--generateTrace` needs no fork and is read-only, but the join from a source
+  declaration to its resolved type is not a plain name lookup -- aliases expand,
+  and one name can appear as several entries. `CompanyType` did not appear at
+  all under its own name. Solving that join is the first task.
+* The eventual host is the checker itself, the way `Effect-TS/language-service`
+  and `effect-ts/tsgo` do it: run inside the compiler and ask
+  `getTypeAtLocation`. The trace route buys the same facts today without
+  maintaining a fork.
+
+Deliberately *not* next: widening AST coverage to class and object-literal
+methods. That is more surface on a weaker signal. It comes after types.
+
 ## Not here yet
 
-The honest list: no LSP, no `--fix`, no emission as an oxlint rule, no `Score`
-questions, and no calibration harness -- the last one being the piece that has
-to exist before any rule can move from `warn` to `error` with confidence.
+The honest list: **no type awareness** (see above -- it is the next layer), no
+LSP, no `--fix`, no emission as an oxlint rule, no `Score` questions, and no
+calibration harness. The calibration harness is the piece that has to exist
+before any judged rule can move from `warn` to `error`.
 
 ## Layout
 
