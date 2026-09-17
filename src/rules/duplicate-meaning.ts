@@ -1,17 +1,11 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge } from "../judge.ts"
-import { defineRule, finding, pairsOf } from "../rule.ts"
+import { defineRule, finding, pairsOf, type UnitPair } from "../rule.ts"
 import type { Answer, Diagnostic, Question } from "../schema.ts"
 import { similarity, type Unit, type Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/duplicate-meaning"
-
-interface Candidate {
-  readonly left: Unit
-  readonly right: Unit
-  readonly score: number
-}
 
 /**
  * Deterministic preselection. Expensive to get wrong only in the sense that we
@@ -20,7 +14,7 @@ interface Candidate {
  * Token-length bucketing keeps this linear-ish instead of a full O(n^2) sweep:
  * two implementations with wildly different sizes cannot be near-duplicates.
  */
-const find = (workspace: Workspace): ReadonlyArray<Candidate> => {
+const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
   const { minSimilarity, maxSimilarity, maxPairs } = policy.duplicateMeaning
   const buckets = new Map<number, Array<Unit>>()
   for (const unit of workspace.units) {
@@ -30,7 +24,7 @@ const find = (workspace: Workspace): ReadonlyArray<Candidate> => {
     else existing.push(unit)
   }
 
-  const candidates: Array<Candidate> = []
+  const candidates: Array<UnitPair> = []
   for (const [index, bucket] of buckets) {
     const neighbours = [...bucket, ...(buckets.get(index + 1) ?? [])]
     for (const pair of pairsOf(neighbours)) {
@@ -57,7 +51,7 @@ interface Evidence {
   readonly structural_overlap: number
 }
 
-const evidenceOf = (candidate: Candidate): Evidence => ({
+const evidenceOf = (candidate: UnitPair): Evidence => ({
   left: {
     symbol: candidate.left.name,
     path: candidate.left.file,
@@ -145,7 +139,7 @@ const choice = (
     : undefined
 }
 
-const assess = Effect.fn("joggle/duplicate-meaning.assess")(function* (candidate: Candidate) {
+const assess = Effect.fn("joggle/duplicate-meaning.assess")(function* (candidate: UnitPair) {
   const judge = yield* Judge
   const result = yield* judge.ask({ evidence: evidenceOf(candidate), questions })
 

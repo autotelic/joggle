@@ -15,6 +15,7 @@ import * as HttpClient from "effect/unstable/http/HttpClient"
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse"
 import { policy } from "./policy.ts"
+import { isRecord } from "./workspace.ts"
 import {
   JudgeCacheFile,
   JudgeCacheKey,
@@ -63,9 +64,6 @@ export class Service extends Context.Service<Service, Interface>()("@joggle/Judg
 /* Helpers                                                                     */
 /* -------------------------------------------------------------------------- */
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
 const describe = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause))
 
 const tagOf = (cause: unknown): string =>
@@ -109,7 +107,11 @@ const canonical = (value: unknown): string => {
   return JSON.stringify(encode(value))
 }
 
-const keyOf = (request: JudgeRequest): string =>
+/**
+ * The cache key, exported because the replay file is a contract: tooling (and
+ * tests) need to compute the same key without going through the client.
+ */
+export const cacheKeyFor = (request: JudgeRequest): string =>
   canonical({
     questionVersion: policy.questionVersion,
     model: policy.model,
@@ -232,7 +234,7 @@ export const layer = (
 
       const ask = Effect.fn("Judge.ask")(function* (request: JudgeRequest) {
         yield* Ref.update(stats, (current) => ({ ...current, requests: current.requests + 1 }))
-        return yield* Cache.get(cache, keyOf(request))
+        return yield* Cache.get(cache, cacheKeyFor(request))
       })
 
       return Service.of({ ask, stats: Ref.get(stats) })

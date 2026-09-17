@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge } from "../judge.ts"
-import { defineRule, finding } from "../rule.ts"
+import { defineRule, finding, type UnitPair } from "../rule.ts"
 import type { Answer, Diagnostic, Question } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -70,17 +70,11 @@ const score = (left: string, right: string): number => {
   return headA !== undefined && headA === headB ? Math.min(1, jaccard + 0.25) : jaccard
 }
 
-interface Candidate {
-  readonly left: Unit
-  readonly right: Unit
-  readonly score: number
-}
-
 /**
  * Only declarations sharing a head noun are compared. Drift is always a
  * disagreement about how to say the same noun, never about two unrelated ones.
  */
-const find = (workspace: Workspace): ReadonlyArray<Candidate> => {
+const find = (workspace: Workspace): ReadonlyArray<UnitPair> => {
   const { minScore, maxPairs } = policy.namingDrift
   const byHead = new Map<string, Array<Unit>>()
   for (const unit of workspace.units) {
@@ -92,7 +86,7 @@ const find = (workspace: Workspace): ReadonlyArray<Candidate> => {
     else existing.push(unit)
   }
 
-  const candidates: Array<Candidate> = []
+  const candidates: Array<UnitPair> = []
   for (const group of byHead.values()) {
     for (let a = 0; a < group.length; a += 1) {
       for (let b = a + 1; b < group.length; b += 1) {
@@ -134,7 +128,7 @@ const questions = {
   },
 } satisfies Record<string, Question>
 
-const assess = Effect.fn("joggle/naming-drift.assess")(function* (candidate: Candidate) {
+const assess = Effect.fn("joggle/naming-drift.assess")(function* (candidate: UnitPair) {
   const judge = yield* Judge
   const evidence = {
     left: {

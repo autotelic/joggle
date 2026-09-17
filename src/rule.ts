@@ -1,7 +1,7 @@
 import type { Effect } from "effect"
 import type { Service as JudgeService } from "./judge.ts"
 import type { Diagnostic, JudgeError, Severity, SourceLocation } from "./schema.ts"
-import type { Workspace } from "./workspace.ts"
+import type { Unit, Workspace } from "./workspace.ts"
 
 /**
  * A rule is a function from the deterministic workspace index to diagnostics.
@@ -31,6 +31,16 @@ export const defineRule = (rule: Rule): Rule => rule
 export interface Pair<A> {
   readonly left: A
   readonly right: A
+}
+
+/**
+ * Two declarations considered together, with the deterministic score that
+ * nominated them. Rules share it so that "what a candidate is" has one answer.
+ */
+export interface UnitPair {
+  readonly left: Unit
+  readonly right: Unit
+  readonly score: number
 }
 
 /** Every unordered pair, in a deterministic order. */
