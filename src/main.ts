@@ -1,4 +1,4 @@
-import { Config, Effect, Layer, Option, Path } from "effect"
+import { Cause, Config, Effect, Exit, Layer, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeServices } from "@effect/platform-node"
@@ -86,7 +86,13 @@ const services = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer)
 
 const program = Command.run(cli, { version: policy.version }).pipe(Effect.provide(services))
 
-Effect.runPromise(program).catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+/**
+ * Never fail silently. A typed failure, an interruption and a defect all have
+ * to reach stderr with enough detail to act on. This is a CI gate, and a gate
+ * that exits non-zero without saying why is worse than no gate at all.
+ */
+Effect.runPromiseExit(program).then((exit) => {
+  if (Exit.isSuccess(exit)) return
+  process.stderr.write(`${Cause.pretty(exit.cause)}\n`)
   process.exitCode = 1
 })

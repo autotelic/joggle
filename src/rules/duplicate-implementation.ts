@@ -36,6 +36,9 @@ export const duplicateImplementation = defineRule({
       const canonical = ordered[0]
       if (canonical === undefined) continue
       for (const unit of ordered.slice(1)) {
+        // A declaration is never reported against another in its own file: the
+        // advice is "import the shared one", which is not a within-file move.
+        if (unit.file === canonical.file) continue
         diagnostics.push(
           finding({
             ruleId: RULE_ID,

@@ -58,11 +58,35 @@ interface IdentifierSite {
   readonly start: number
   readonly end: number
   readonly name: string
+  /**
+   * Property keys and member-access properties are part of what a declaration
+   * *means*; local binding names are not. Keeping the former and erasing the
+   * latter is the difference between "the same shape" and "the same thing".
+   */
+  readonly keep: boolean
 }
 
-/** Collect every `Identifier` node in the file, without caring about node kinds. */
+/**
+ * Node kinds whose `key` or `property` names the shape rather than the reader:
+ * `user.name`, `{ name: string }`, `{ name }`, class fields, enum members.
+ */
+const PROPERTY_BEARING = new Set([
+  "AccessorProperty",
+  "ClassProperty",
+  "MemberExpression",
+  "MethodDefinition",
+  "ObjectProperty",
+  "Property",
+  "PropertyDefinition",
+  "TSEnumMember",
+  "TSMethodSignature",
+  "TSPropertySignature",
+])
+
+/** Collect every `Identifier` node in the file, marking the ones that are shape. */
 const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
-  const found: Array<IdentifierSite> = []
+  const found: Array<{ start: number; end: number; name: string }> = []
+  const keep = new Set<number>()
   const stack: Array<unknown> = [root]
   while (stack.length > 0) {
     const node = stack.pop()
@@ -71,8 +95,21 @@ const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
       continue
     }
     if (!isRecord(node)) continue
+    const kind = node["type"]
+    if (typeof kind === "string" && PROPERTY_BEARING.has(kind)) {
+      for (const field of ["key", "property", "id"]) {
+        const child = node[field]
+        if (
+          isRecord(child) &&
+          child["type"] === "Identifier" &&
+          typeof child["start"] === "number"
+        ) {
+          keep.add(child["start"])
+        }
+      }
+    }
     if (
-      node["type"] === "Identifier" &&
+      kind === "Identifier" &&
       typeof node["name"] === "string" &&
       typeof node["start"] === "number" &&
       typeof node["end"] === "number"
@@ -83,7 +120,7 @@ const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
-  return found
+  return found.map((site) => ({ ...site, keep: keep.has(site.start) }))
 }
 
 interface Span {
@@ -116,6 +153,7 @@ const normalize = (
     }
   }
   for (const identifier of identifiers) {
+    if (identifier.keep) continue
     if (identifier.start < span.start) continue
     if (identifier.start + identifier.name.length > span.end) continue
     if (text.slice(identifier.start, identifier.start + identifier.name.length) !== identifier.name) continue
@@ -319,6 +357,9 @@ const parseSourceFile = (file: string, text: string): SourceFile => {
 
 const ignored = new Set<string>(policy.ignoredDirectories)
 
+/** Insurance against symlink cycles and pathological trees. */
+const walkLimits = { directories: 5000, files: 20000 }
+
 const walk = (
   dir: string,
 ): Effect.Effect<ReadonlyArray<string>, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
@@ -326,24 +367,40 @@ const walk = (
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const found: Array<string> = []
-    const stack: Array<string> = [dir]
-    while (stack.length > 0) {
+    const stack: Array<string> = []
+    const seen = new Set<string>()
+
+    // The path the caller named must be readable; anything discovered below it
+    // is best effort. One odd entry must not fail the whole run.
+    const rootEntries = yield* fs.readDirectory(dir).pipe(
+      Effect.mapError(
+        (cause) => new WorkspaceError({ path: dir, operation: "readDirectory", cause }),
+      ),
+    )
+    seen.add(dir)
+    for (const entry of rootEntries) {
+      if (!ignored.has(entry)) stack.push(path.join(dir, entry))
+    }
+
+    while (stack.length > 0 && seen.size < walkLimits.directories && found.length < walkLimits.files) {
       const current = stack.pop()
       if (current === undefined) break
-      const entries = yield* fs.readDirectory(current).pipe(
-        Effect.mapError(
-          (cause) =>
-            new WorkspaceError({ path: current, operation: "readDirectory", cause }),
-        ),
+      // stat, not the name: a zero-byte file called "tsx" is not a directory.
+      const info = yield* Effect.orElseSucceed(fs.stat(current), () => undefined)
+      if (info === undefined) continue
+      if (info.type === "File") {
+        if (looksLikeSource(current)) found.push(current)
+        continue
+      }
+      if (info.type !== "Directory") continue
+      if (seen.has(current)) continue
+      seen.add(current)
+      const entries = yield* Effect.orElseSucceed(
+        fs.readDirectory(current),
+        () => [] as ReadonlyArray<string>,
       )
       for (const entry of entries) {
-        if (ignored.has(entry)) continue
-        const full = path.join(current, entry)
-        if (looksLikeSource(full)) {
-          found.push(full)
-        } else if (!entry.includes(".")) {
-          stack.push(full)
-        }
+        if (!ignored.has(entry)) stack.push(path.join(current, entry))
       }
     }
     return found.sort()
