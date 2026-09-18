@@ -4,7 +4,7 @@ import { NodeServices } from "@effect/platform-node"
 import { everyFile } from "../src/rule.ts"
 import { bundleRules } from "../src/rules/bundle-conformance.ts"
 import { loadWorkspace } from "../src/workspace.ts"
-import { judgeStub } from "./support.ts"
+import { judgeStub, noConfig } from "./support.ts"
 
 /** Run every producer rule over one fixture directory, keyed by rule id. */
 const runAll = (root: string) =>
@@ -12,7 +12,7 @@ const runAll = (root: string) =>
     const workspace = yield* loadWorkspace(root, ["."])
     const byRule = new Map<string, ReadonlyArray<string>>()
     for (const rule of bundleRules) {
-      const { diagnostics } = yield* rule.run(workspace, everyFile)
+      const { diagnostics } = yield* rule.run(workspace, everyFile, noConfig)
       byRule.set(rule.id, diagnostics.map((entry) => entry.help ?? entry.message))
     }
     return byRule

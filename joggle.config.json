@@ -7,7 +7,9 @@
     "joggle/bundle-context-hook": "warn",
     "joggle/page-needs-composition": "warn",
     "joggle/naming-drift": "off",
-    "joggle/duplicate-meaning": "off"
+    "joggle/duplicate-meaning": "off",
+    "joggle/layer-direction": "warn",
+    "joggle/import-cycle": "warn"
   },
   "ignore": [
     {
@@ -16,6 +18,31 @@
       "reason": "fixtures are deliberately broken"
     }
   ],
+  "architecture": {
+    "layers": [
+      {
+        "name": "contract",
+        "include": ["src/schema.ts", "src/state.ts", "src/policy.ts", "src/config.ts"]
+      },
+      {
+        "name": "kernel",
+        "include": [
+          "src/rule.ts",
+          "src/imports.ts",
+          "src/similarity.ts",
+          "src/cluster.ts",
+          "src/bundles.ts",
+          "src/architecture.ts",
+          "src/workspace.ts",
+          "src/tsgo.ts",
+          "src/judge.ts"
+        ]
+      },
+      { "name": "rules", "include": ["src/rules/**"] },
+      { "name": "engine", "include": ["src/check.ts", "src/report.ts"] },
+      { "name": "entry", "include": ["src/main.ts"] }
+    ]
+  },
   "evidence": {
     "repository": "joggle analyses other repositories and reports diagnostics; it does not render. There is no React here, so the composition-pattern rules are only meaningful when run against a codebase that does render."
   }

@@ -7,7 +7,14 @@ import { allRules } from "./rules/index.ts"
 import { rankDiagnostics, type Report, type Skipped } from "./report.ts"
 import { everyFile, type Scope } from "./rule.ts"
 import { isEnabled, isIgnored, severityFor, type JoggleConfig } from "./config.ts"
-import { Baseline, StoredRun, type Diagnostic, type JudgeError, type JudgeTotals } from "./schema.ts"
+import {
+  Baseline,
+  StoredRun,
+  WorkspaceError,
+  type Diagnostic,
+  type JudgeError,
+  type JudgeTotals,
+} from "./schema.ts"
 import { Service as Tsgo } from "./tsgo.ts"
 import { discoverFiles, loadWorkspace } from "./workspace.ts"
 import type { ImportGraph } from "./imports.ts"
@@ -263,6 +270,21 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   const discoverStarted = Date.now()
   const files = yield* discoverFiles(options.cwd, options.paths, discovered)
 
+  // A run that found no source files did not pass. Reporting "0 problems" for an
+  // empty file set is the worst output this program can produce, because it looks
+  // exactly like success -- and that is how the architecture rules measured
+  // nothing at all while appearing clean, when the tool was invoked with no path
+  // argument and TypeScript discovery came back empty.
+  if (files.length === 0) {
+    const where =
+      options.paths.length === 0
+        ? "no source files under " + options.cwd + ", and no path argument was given"
+        : "no source files under " + options.paths.join(", ") + " in " + options.cwd
+    return yield* Effect.fail(
+      new WorkspaceError({ path: options.cwd, operation: "discover", cause: new Error(where) }),
+    )
+  }
+
   // Read once. The manifest needs the content, and a miss hands the same text to
   // the parser rather than reading the tree twice.
   const contents = new Map<string, string>()
@@ -399,7 +421,9 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
 
   for (const rule of effective) {
     const ruleStarted = Date.now()
-    const result = yield* rule.run(workspace, scope).pipe(
+    // The config goes in, because a rule that enforces a layering is entitled to
+    // know what the layering is. Rules that need nothing take two parameters.
+    const result = yield* rule.run(workspace, scope, { config: options.config }).pipe(
       Effect.map((value) => ({ _tag: "ok" as const, value })),
       Effect.catch((error) => Effect.succeed({ _tag: "skipped" as const, error })),
     )

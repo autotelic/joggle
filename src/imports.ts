@@ -6,15 +6,28 @@ export interface ParsedImport {
   readonly specifier: string
   /** Names taken from the target. Empty for a side-effect import. */
   readonly names: ReadonlyArray<string>
+  /**
+   * `import type` and `export type` are erased at build time.
+   *
+   * Worth recording because it is the difference between a cycle that cannot
+   * exist at runtime and one that can: a type-only edge leaves no module
+   * initialisation behind, so a loop through it has no load-order consequence.
+   * Reporting both at the same volume is how a linter trains people to ignore it.
+   */
+  readonly typeOnly: boolean
 }
 
 export interface ImportEdge {
   /** Importing file, workspace-relative. */
   readonly from: string
+  /** The specifier as written, so a finding can be pointed at its own line. */
+  readonly specifier: string
   /** Resolved workspace-relative path, or the raw specifier when unresolved. */
   readonly to: string
   readonly resolved: boolean
   readonly names: ReadonlyArray<string>
+  /** Erased at build time, so it cannot create a runtime cycle. */
+  readonly typeOnly: boolean
 }
 
 export interface ImportGraph {
@@ -85,9 +98,11 @@ export const buildImportGraph = (
       if (target === undefined) unresolved += 1
       edges.push({
         from: file.path,
+        specifier: statement.specifier,
         to: target ?? statement.specifier,
         resolved: target !== undefined,
         names: statement.names,
+        typeOnly: statement.typeOnly,
       })
     }
   }
@@ -143,7 +158,17 @@ export const importsIn = (program: Record<string, unknown>): ReadonlyArray<Parse
         if (name !== undefined) names.push(name)
       }
     }
-    found.push({ specifier: value, names })
+    // A statement is erased when it says so at the declaration, or when every
+    // name it takes is taken as a type. Mixed imports (`import { type A, b }`) are
+    // NOT erased: the runtime edge is real and so is any cycle through it.
+    let typeOnly = node["importKind"] === "type" || node["exportKind"] === "type"
+    if (!typeOnly && Array.isArray(specifiers) && specifiers.length > 0) {
+      typeOnly = specifiers.every((specifier) => {
+        if (typeof specifier !== "object" || specifier === null) return false
+        return (specifier as Record<string, unknown>)["importKind"] === "type"
+      })
+    }
+    found.push({ specifier: value, names, typeOnly })
   }
   return found
 }

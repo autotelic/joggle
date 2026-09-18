@@ -41,6 +41,24 @@ export const JoggleConfig = Schema.Struct({
       }),
     ),
   ),
+  /**
+   * The repository's layering, if it has one.
+   *
+   * Listed from most depended-upon to least, so a later layer may import an
+   * earlier one and never the reverse. This is the part of a codebase's
+   * architecture that is DECIDABLE -- it is a property of the import graph, not
+   * of anyone's taste -- which is why it is enforced here rather than judged.
+   */
+  architecture: Schema.optionalKey(
+    Schema.Struct({
+      layers: Schema.Array(
+        Schema.Struct({
+          name: Schema.String,
+          include: Schema.Array(Schema.String),
+        }),
+      ),
+    }),
+  ),
   evidence: Schema.optionalKey(
     Schema.Struct({
       /**
@@ -65,6 +83,15 @@ export interface IgnoreRule {
 }
 
 export const emptyConfig: JoggleConfig = {}
+
+/**
+ * Glob matching for path patterns: `*` stops at a separator, `**` does not.
+ *
+ * Exported because the architecture rules match file paths against declared
+ * layers, and two matchers would be two behaviours for one config file.
+ */
+export const matchesGlob = (glob: string, value: string): boolean =>
+  globToRegExp(glob).test(value)
 
 const globToRegExp = (glob: string): RegExp => {
   const escaped = glob

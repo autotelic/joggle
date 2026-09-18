@@ -126,8 +126,33 @@ const program = Command.run(cli, { version: policy.version }).pipe(Effect.provid
  * to reach stderr with enough detail to act on. This is a CI gate, and a gate
  * that exits non-zero without saying why is worse than no gate at all.
  */
+/**
+ * A typed failure deserves a sentence, not a stack.
+ *
+ * `Cause.pretty` prints the operation, the cause and the whole trace, which is
+ * right for a defect and wrong for "you did not pass a path": the one line that
+ * matters ends up buried under the machinery that produced it.
+ */
+const describeFailure = (failure: unknown): string | undefined => {
+  if (typeof failure !== "object" || failure === null) return undefined
+  const record = failure as Record<string, unknown>
+  const tag = record["_tag"]
+  if (tag === "joggle/WorkspaceError") {
+    const cause = record["cause"]
+    const detail = cause instanceof Error ? cause.message : String(cause ?? "")
+    return String(record["operation"]) + ": " + detail
+  }
+  if (tag === "joggle/JudgeUnavailable") return "judgement unavailable: " + String(record["reason"])
+  if (tag === "joggle/JudgeRejected") {
+    return "the judge refused the request: " + String(record["detail"])
+  }
+  return undefined
+}
+
 Effect.runPromiseExit(program).then((exit) => {
   if (Exit.isSuccess(exit)) return
-  process.stderr.write(`${Cause.pretty(exit.cause)}\n`)
+  const failure = Cause.findErrorOption(exit.cause)
+  const described = Option.isSome(failure) ? describeFailure(failure.value) : undefined
+  process.stderr.write(described === undefined ? `${Cause.pretty(exit.cause)}\n` : `${described}\n`)
   process.exitCode = 1
 })

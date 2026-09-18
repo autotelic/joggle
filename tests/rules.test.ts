@@ -4,7 +4,7 @@ import { duplicateImplementation } from "../src/rules/duplicate-implementation.t
 import { duplicateMeaning } from "../src/rules/duplicate-meaning.ts"
 import { namingDrift } from "../src/rules/naming-drift.ts"
 import { everyFile } from "../src/rule.ts"
-import { choice, judgeFailing, judgeStub, noul, withWorkspace } from "./support.ts"
+import { choice, judgeFailing, judgeStub, noul, withWorkspace, noConfig } from "./support.ts"
 
 const collapse = (canonical: string, confidence = 0.85) => ({
   verdict: choice("collapse", confidence),
@@ -15,7 +15,7 @@ const collapse = (canonical: string, confidence = 0.85) => ({
 it.effect("a cluster of identical declarations is one finding", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* duplicateImplementation.run(workspace, everyFile)).diagnostics
+      const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
       // One cluster, not two. The fixture's two files each declare their own
       // `User`, so the two functions that take one are NOT the same function:
       // resolved type identity says users.ts#User and orders.ts#User are
@@ -34,7 +34,7 @@ it.effect("a cluster of identical declarations is one finding", () =>
 it.effect("the model picks which member survives", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* duplicateImplementation.run(workspace, everyFile)).diagnostics
+      const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBe(1)
       // member_1 is src/users.ts, so the drop is src/orders.ts.
       for (const entry of findings) expect(entry.location.file).toBe("src/orders.ts")
@@ -47,7 +47,7 @@ it.effect("keep_variants and no_issue are both silence", () =>
     ["keep_variants", "no_issue"].map((verdict) =>
       withWorkspace((workspace) =>
         Effect.gen(function* () {
-          const findings = (yield* duplicateImplementation.run(workspace, everyFile)).diagnostics
+          const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
           expect(findings.length).toBe(0)
         }).pipe(Effect.provide(judgeStub({ verdict: choice(verdict, 0.9) }))),
       ),
@@ -58,7 +58,7 @@ it.effect("keep_variants and no_issue are both silence", () =>
 it.effect("a response without a verdict is unverified, not judged", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* duplicateImplementation.run(workspace, everyFile)).diagnostics
+      const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBe(1)
       for (const entry of findings) {
         expect(entry.judged).toBe(false)
@@ -71,7 +71,7 @@ it.effect("a response without a verdict is unverified, not judged", () =>
 it.effect("an unavailable judge still reports, unverified", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* duplicateImplementation.run(workspace, everyFile)).diagnostics
+      const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBe(1)
       for (const entry of findings) expect(entry.judged).toBe(false)
     }).pipe(Effect.provide(judgeFailing("TYPESAFE_API_KEY is not set"))),
@@ -81,7 +81,7 @@ it.effect("an unavailable judge still reports, unverified", () =>
 it.effect("near-duplicates collapse when the cluster is judged one thing", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* duplicateMeaning.run(workspace, everyFile)).diagnostics
+      const findings = (yield* duplicateMeaning.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBeGreaterThan(0)
       for (const entry of findings) {
         expect(entry.judged).toBe(true)
@@ -94,7 +94,7 @@ it.effect("near-duplicates collapse when the cluster is judged one thing", () =>
 it.effect("near-duplicates stay quiet when the cluster is unrelated", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* duplicateMeaning.run(workspace, everyFile)).diagnostics
+      const findings = (yield* duplicateMeaning.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBe(0)
     }).pipe(Effect.provide(judgeStub({ verdict: choice("no_issue", 0.9) }))),
   ),
@@ -103,7 +103,7 @@ it.effect("near-duplicates stay quiet when the cluster is unrelated", () =>
 it.effect("naming drift collapses to the spelling the model chose", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* namingDrift.run(workspace, everyFile)).diagnostics
+      const findings = (yield* namingDrift.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBeGreaterThan(0)
       // The cluster message names every spelling it is collapsing.
       expect(findings.some((entry) => entry.message.includes("Profile"))).toBe(true)
@@ -119,7 +119,7 @@ it.effect("naming drift collapses to the spelling the model chose", () =>
 it.effect("two distinct concepts are silence", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* namingDrift.run(workspace, everyFile)).diagnostics
+      const findings = (yield* namingDrift.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBe(0)
     }).pipe(
       Effect.provide(

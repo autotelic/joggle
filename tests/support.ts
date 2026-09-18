@@ -5,6 +5,7 @@ import { Service as JudgeService } from "../src/judge.ts"
 import { JudgeUnavailable, type Answer, type WorkspaceError } from "../src/schema.ts"
 import { Service as TsgoService } from "../src/tsgo.ts"
 import { loadWorkspace, type Workspace } from "../src/workspace.ts"
+import type { RunContext } from "../src/rule.ts"
 
 export const corpus = "tests/fixtures/corpus"
 
@@ -73,3 +74,12 @@ export const choice = (value: string, confidence: number): Answer => ({
 })
 
 export const noApiKey = Option.none<string>()
+
+/**
+ * The run context for a rule that needs no configuration.
+ *
+ * The architecture rules read the declared layering, so every rule now takes a
+ * context; most rules ignore it, and a test that is not about layering should
+ * not have to invent one.
+ */
+export const noConfig: RunContext = { config: {} }

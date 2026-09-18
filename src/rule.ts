@@ -1,5 +1,6 @@
 import type { Effect } from "effect"
 import { policy } from "./policy.ts"
+import type { JoggleConfig } from "./config.ts"
 import type { Service as JudgeService } from "./judge.ts"
 import type { Answer, Diagnostic, JudgeError, Severity, SourceLocation } from "./schema.ts"
 import type { Unit, Workspace } from "./workspace.ts"
@@ -62,6 +63,18 @@ export const everyFile: Scope = { changed: undefined }
 export const inScope = (scope: Scope, file: string): boolean =>
   scope.changed === undefined || scope.changed.has(file)
 
+/**
+ * What every rule is told about the run, beyond the code it is reading.
+ *
+ * The config belongs here rather than on the workspace because it describes the
+ * repository's ARCHITECTURE, and a rule that enforces a layering is entitled to
+ * know what the layering is. Rules that need nothing take two parameters and
+ * ignore this one.
+ */
+export interface RunContext {
+  readonly config: JoggleConfig
+}
+
 export interface Rule {
   readonly id: string
   readonly severity: Severity
@@ -71,6 +84,7 @@ export interface Rule {
   readonly run: (
     workspace: Workspace,
     scope: Scope,
+    context: RunContext,
   ) => Effect.Effect<RuleOutcome, JudgeError, JudgeService>
 }
 

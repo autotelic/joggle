@@ -4,7 +4,7 @@ import { duplicateImplementation } from "../src/rules/duplicate-implementation.t
 import { duplicateMeaning } from "../src/rules/duplicate-meaning.ts"
 import { everyFile, marginOf, qualityOf } from "../src/rule.ts"
 import type { Answer } from "../src/schema.ts"
-import { judgeStub, noul, withWorkspace } from "./support.ts"
+import { judgeStub, noul, withWorkspace, noConfig } from "./support.ts"
 
 /** A Choice answer with a real distribution, which the shared stub does not carry. */
 const spread = (probabilities: Record<string, number>): Answer => ({
@@ -48,7 +48,7 @@ it.effect("a provable finding degrades to unverified when the model says no", ()
       // Exact duplicates are a FACT, so this rule reports them either way -- but
       // the reason is now on the finding instead of being overruled by a Choice
       // that said `collapse`.
-      const findings = (yield* duplicateImplementation.run(workspace, everyFile)).diagnostics
+      const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBe(1)
       expect(findings[0]?.judged).toBe(false)
       expect(findings[0]?.help).toContain("the yes/no question answered no")
@@ -63,7 +63,7 @@ it.effect("a provable finding degrades to unverified when the model says no", ()
 it.effect("a guessed finding disappears when the model says no", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* duplicateMeaning.run(workspace, everyFile)).diagnostics
+      const findings = (yield* duplicateMeaning.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings).toEqual([])
     }).pipe(
       Effect.provide(
@@ -76,7 +76,7 @@ it.effect("a guessed finding disappears when the model says no", () =>
 it.effect("a shrug across two options is not a judgement", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* duplicateMeaning.run(workspace, everyFile)).diagnostics
+      const findings = (yield* duplicateMeaning.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings).toEqual([])
     }).pipe(
       Effect.provide(
