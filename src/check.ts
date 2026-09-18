@@ -9,7 +9,7 @@ import type { Rule } from "./rule.ts"
 import type { Loaded } from "./plugins.ts"
 import { funnelNotes, rankDiagnostics, type Report, type Skipped } from "./report.ts"
 import { everyFile, type Scope } from "./rule.ts"
-import { isEnabled, isIgnored, severityFor, type JoggleConfig } from "./config.ts"
+import { appliesAt, isEnabled, isIgnored, severityFor, type JoggleConfig } from "./config.ts"
 import {
   Baseline,
   StoredRun,
@@ -560,6 +560,9 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     .filter((item): item is { entry: Diagnostic; severity: import("./schema.ts").Severity } => item.severity !== "off")
     .map((item) => ({ ...item.entry, severity: item.severity }))
     .filter((entry) => !isIgnored(options.config, entry.ruleId, entry.location.file))
+    // Scoped out by configuration: this rule is not configured to speak about
+    // this file. A finding, not a rule, is what gets scoped.
+    .filter((entry) => appliesAt(options.config, entry.ruleId, entry.location.file))
 
   const judgeTotals: JudgeTotals = yield* judge.stats
   const elapsedMs = Date.now() - started

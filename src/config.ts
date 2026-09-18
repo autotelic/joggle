@@ -27,8 +27,28 @@ import type { Severity } from "./schema.ts"
  * threshold change buried in rule logic.
  */
 export const JoggleConfig = Schema.Struct({
+  /**
+   * Which rules run, how loudly, and where.
+   *
+   * A rule's value is a severity, or a severity plus the paths it applies to.
+   * Scoping is what makes a PRESET usable: a preset that checks a domain layer's
+   * purity should run everywhere, while one that decomposes a domain's types
+   * should only run inside it. Without this, enabling a preset means running all
+   * of it on all of the repository, which is how people decide a linter is too
+   * noisy rather than too specific.
+   */
   rules: Schema.optionalKey(
-    Schema.Record(Schema.String, Schema.Literals(["error", "warn", "info", "off"])),
+    Schema.Record(
+      Schema.String,
+      Schema.Union([
+        Schema.Literals(["error", "warn", "info", "off"]),
+        Schema.Struct({
+          severity: Schema.Literals(["error", "warn", "info", "off"]),
+          /** Globs, relative to the analysed root. Absent means everywhere. */
+          paths: Schema.optionalKey(Schema.Array(Schema.String)),
+        }),
+      ]),
+    ),
   ),
   ignore: Schema.optionalKey(
     Schema.Array(
@@ -62,6 +82,17 @@ export const JoggleConfig = Schema.Struct({
         Schema.Struct({
           name: Schema.String,
           include: Schema.Array(Schema.String),
+          /**
+           * Specifiers this layer may not import.
+           *
+           * The invariant that keeps a new architecture from eroding. A domain
+           * package is pure by definition, and "pure" is not a judgement -- it
+           * is an import-graph question with an exact answer. `react*` and
+           * `fastify*` are prefix patterns on purpose: a name without a
+           * wildcard has to match exactly, so `react` does not catch
+           * `react-dom` by accident.
+           */
+          forbid: Schema.optionalKey(Schema.Array(Schema.String)),
         }),
       ),
     }),
@@ -119,15 +150,45 @@ export const isIgnored = (
     return globToRegExp(entry.path).test(path)
   })
 
+/**
+ * A rule's configuration, in both of its forms.
+ *
+ * Written once so that everything downstream sees one shape. A rule declared as
+ * a bare severity and one declared with paths differ only in where they apply,
+ * which is not a distinction the rest of the program should have to carry.
+ */
+export interface RuleSetting {
+  readonly severity: Severity | "off"
+  readonly paths: ReadonlyArray<string> | undefined
+}
+
+const settingFor = (config: JoggleConfig, ruleId: string): RuleSetting | undefined => {
+  const configured = config.rules?.[ruleId]
+  if (configured === undefined) return undefined
+  return typeof configured === "string"
+    ? { severity: configured, paths: undefined }
+    : { severity: configured.severity, paths: configured.paths }
+}
+
 /** The severity to use for a rule: the config's, or the rule's own. */
 export const severityFor = (
   config: JoggleConfig,
   ruleId: string,
   fallback: Severity,
-): Severity | "off" => {
-  const configured = config.rules?.[ruleId]
-  if (configured === "off") return "off"
-  return configured ?? fallback
+): Severity | "off" => settingFor(config, ruleId)?.severity ?? fallback
+
+/**
+ * Whether a rule's configuration lets it speak about this file.
+ *
+ * Applied to the FINDING, not to the rule. A rule reads the whole workspace -- a
+ * duplicate is by definition about more than one file -- so scoping a rule out
+ * of a file it is not configured for would mean it could not see that file at
+ * all, and a duplicate across the boundary would vanish rather than be reported
+ * or not. What is scoped is where the answer may be reported.
+ */
+export const appliesAt = (config: JoggleConfig, ruleId: string, path: string): boolean => {
+  const paths = settingFor(config, ruleId)?.paths
+  return paths === undefined || paths.some((glob) => matchesGlob(glob, path))
 }
 
 /** Whether a rule runs at all under this config. */

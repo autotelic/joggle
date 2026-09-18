@@ -1,5 +1,11 @@
 import { Effect } from "effect"
-import { cyclesIn, directionViolations, layerOf, layersFrom } from "../architecture.ts"
+import {
+  cyclesIn,
+  directionViolations,
+  layerOf,
+  layersFrom,
+  purityViolations,
+} from "../architecture.ts"
 import { defineRule, finding, outcome, type Rule, type RunContext, type Scope } from "../rule.ts"
 import type { Diagnostic } from "../schema.ts"
 import type { ImportEdge } from "../imports.ts"
@@ -7,6 +13,7 @@ import type { SourceFile, Workspace } from "../workspace.ts"
 
 const LAYER_RULE = "joggle/layer-direction"
 const CYCLE_RULE = "joggle/import-cycle"
+const PURITY_RULE = "joggle/layer-purity"
 
 /**
  * The line an import statement sits on.
@@ -136,4 +143,66 @@ export const importCycle = defineRule({
   }),
 })
 
-export const importArchitectureRules: ReadonlyArray<Rule> = [layerDirection, importCycle]
+export const layerPurity = defineRule({
+  id: PURITY_RULE,
+  severity: "warn",
+  description: "A module imports something its layer forbids.",
+  judged: false,
+  run: Effect.fn("joggle/layer-purity")(function* (
+    workspace: Workspace,
+    _scope: Scope,
+    context: RunContext,
+  ) {
+    const layers = layersFrom(context.config)
+    const constrained = layers.filter((layer) => layer.forbid.length > 0)
+    if (constrained.length === 0) return outcome([])
+
+    const violations = purityViolations(workspace.imports, layers)
+    const files = filesByPath(workspace)
+    const edgeAt = new Map(
+      workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.specifier, edge]),
+    )
+
+    const diagnostics = violations.flatMap((violation): ReadonlyArray<Diagnostic> => {
+      const edge = edgeAt.get(violation.from + "\u0000" + violation.specifier)
+      if (edge === undefined) return []
+      return [
+        finding({
+          ruleId: PURITY_RULE,
+          severity: "warn",
+          message:
+            violation.from +
+            " imports " +
+            violation.specifier +
+            ", which the " +
+            violation.layer +
+            " layer forbids.",
+          help:
+            "The " +
+            violation.layer +
+            " layer declares " +
+            violation.pattern +
+            " forbidden in joggle.config.json, so nothing inside it may reach for " +
+            violation.specifier +
+            ". Take what this needs as an argument, or move the file out of the layer.",
+          location: { file: violation.from, ...lineOf(files, edge) },
+          identity: [PURITY_RULE, violation.from, violation.specifier].join("\u0000"),
+          judged: false,
+        }),
+      ]
+    })
+
+    return outcome(diagnostics, [
+      violations.length +
+        " forbidden import(s) across " +
+        constrained.length +
+        " constrained layer(s)",
+    ])
+  }),
+})
+
+export const importArchitectureRules: ReadonlyArray<Rule> = [
+  layerDirection,
+  layerPurity,
+  importCycle,
+]

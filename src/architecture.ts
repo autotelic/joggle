@@ -19,6 +19,8 @@ export interface Layer {
   readonly include: ReadonlyArray<string>
   /** Position in the declared order. Lower is more depended-upon. */
   readonly rank: number
+  /** Specifiers this layer may not import. Empty means unconstrained. */
+  readonly forbid: ReadonlyArray<string>
 }
 
 /**
@@ -33,6 +35,7 @@ export const layersFrom = (config: JoggleConfig): ReadonlyArray<Layer> =>
     name: layer.name,
     include: layer.include,
     rank,
+    forbid: layer.forbid ?? [],
   }))
 
 export const layerOf = (
@@ -83,6 +86,50 @@ export const sharedLayerFor = (
     if (best === undefined || layer.rank > best.rank) best = layer
   }
   return best
+}
+
+export interface PurityViolation {
+  readonly from: string
+  readonly specifier: string
+  readonly layer: string
+  readonly pattern: string
+}
+
+/**
+ * Imports a layer forbids itself.
+ *
+ * The other half of a layering. `directionViolations` says which way
+ * dependencies may point; this says what may not cross a layer's boundary at
+ * all, which is what "the domain is pure" reduces to once it stops being a
+ * slogan: a file in the domain package importing react is a fact about an
+ * import graph, and facts with exact answers belong in the free layer.
+ *
+ * Nothing here is a judgement about whether the domain SHOULD be pure. That is
+ * declared, and this measures the distance to it.
+ */
+export const purityViolations = (
+  imports: ImportGraph,
+  layers: ReadonlyArray<Layer>,
+): ReadonlyArray<PurityViolation> => {
+  const found: Array<PurityViolation> = []
+  for (const edge of imports.edges) {
+    const layer = layerOf(layers, edge.from)
+    if (layer === undefined || layer.forbid.length === 0) continue
+    for (const pattern of layer.forbid) {
+      if (matchesGlob(pattern, edge.specifier)) {
+        found.push({
+          from: edge.from,
+          specifier: edge.specifier,
+          layer: layer.name,
+          pattern,
+        })
+      }
+    }
+  }
+  return found.sort(
+    (left, right) =>
+      left.from.localeCompare(right.from) || left.specifier.localeCompare(right.specifier),
+  )
 }
 
 export interface DirectionViolation {
