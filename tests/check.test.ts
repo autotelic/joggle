@@ -40,6 +40,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       "joggle/dependency-fit",
       "joggle/duplicate-implementation",
       "joggle/duplicate-meaning",
+      "joggle/hoist-to-domain",
       "joggle/naming-drift",
       "joggle/page-needs-composition",
     ])
@@ -71,7 +72,7 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     expect(report.files).toBe(2)
     // Seven structural rules -- four bundle checks, three architecture checks --
     // plus four judged ones.
-    expect(report.rules).toBe(12)
+    expect(report.rules).toBe(13)
     expect(report.diagnostics.length).toBe(1)
     // The fixture has no bundles, pages or modals, so the structural rules find
     // nothing and the page rule produces no candidates. A rule with nothing to

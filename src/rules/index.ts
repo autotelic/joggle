@@ -3,6 +3,7 @@ import { duplicateImplementation } from "./duplicate-implementation.ts"
 import { duplicateMeaning } from "./duplicate-meaning.ts"
 import { importArchitectureRules } from "./import-architecture.ts"
 import { dependencyFit } from "./dependency-fit.ts"
+import { hoistToDomain } from "./hoist-to-domain.ts"
 import { namingDrift } from "./naming-drift.ts"
 import { pageNeedsComposition } from "./page-needs-composition.ts"
 import type { Rule } from "../rule.ts"
@@ -18,6 +19,7 @@ export const allRules: ReadonlyArray<Rule> = [
   ...bundleRules,
   ...importArchitectureRules,
   dependencyFit,
+  hoistToDomain,
   duplicateImplementation,
   duplicateMeaning,
   namingDrift,

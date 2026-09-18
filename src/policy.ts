@@ -150,6 +150,19 @@ export const policy = {
     maxDependencies: 400,
   },
 
+  /**
+   * Declarations sent for judgement in one run.
+   *
+   * The candidate filter is structural and deliberately narrow -- an exported
+   * function, not a component, not a framework export, with enough in it to hold
+   * a rule -- so this is a ceiling rather than a budget.
+   */
+  hoistToDomain: {
+    maxDeclarations: 600,
+    /** Tokens below which a declaration cannot be holding a rule. */
+    minTokens: 40,
+  },
+
   duplicateImplementation: {
     maxClusters: 500,
     /**

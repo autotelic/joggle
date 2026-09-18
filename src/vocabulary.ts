@@ -131,6 +131,42 @@ export const pageVerdictByRole: Record<string, Record<string, string>> = {
 }
 
 /**
+ * What a declaration is doing, which decides whether its location is a problem.
+ *
+ * The same distinction the duplicate rule needs, one level up. A calculation is a
+ * domain rule in any file; a status code is a transport concern in any file. The
+ * model is asked what the thing IS, and the code decides whether that is where it
+ * belongs.
+ */
+export const dutyVocabulary = {
+  domain_logic:
+    "A rule, invariant or calculation about the business: something that would be true of the company even if this software were rewritten.",
+  transport_concern:
+    "Parsing a request, shaping a response, choosing a status code, or reading a header.",
+  rendering: "Producing markup, or preparing data purely for display.",
+  orchestration: "Calling other things in order, owning no rules of its own.",
+  infrastructure:
+    "Talking to a database, a queue, a file system or a third-party service.",
+  not_applicable: "None of these: a helper with no meaning outside its immediate caller.",
+} as const
+
+/**
+ * Whether a file is already where logic like this belongs.
+ *
+ * The question a declared `domain` layer would have answered. Asked instead of
+ * configured, so a repository that has not written its layering down still gets
+ * an answer -- and one that HAS written it down can pin this decision later.
+ */
+export const homeVocabulary = {
+  already_there: "Yes: this is a domain or model package, which is where rules live.",
+  route_or_handler:
+    "No: a route, a handler or an HTTP edge, which should be calling a rule rather than containing one.",
+  component_or_feature:
+    "No: a component or feature directory, which should be rendering a rule's answer rather than deciding it.",
+  not_applicable: "Cannot tell from the path.",
+} as const
+
+/**
  * Whether a dependency fits what a module is for.
  *
  * Its own export rather than a corner of another purpose's vocabulary, because
