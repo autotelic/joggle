@@ -202,6 +202,43 @@ const notes = (report: Report): ReadonlyArray<string> => [
 /* text                                                                       */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * How many findings each rule produced, largest first.
+ *
+ * The flat list is right for a machine and right for CI, and it is a wall at scale:
+ * nine hundred findings in score order tells a reader nothing about what KIND of
+ * work they are being handed. This is the shape of the report, printed above the
+ * summary, and it is omitted when there is only one rule because a census of one
+ * is a line that says nothing.
+ */
+const census = (report: Report): ReadonlyArray<string> => {
+  const byRule = new Map<string, { total: number; warnings: number; notices: number }>()
+  for (const diagnostic of report.diagnostics) {
+    const entry = byRule.get(diagnostic.ruleId) ?? { total: 0, warnings: 0, notices: 0 }
+    entry.total += 1
+    if (diagnostic.severity === "warn") entry.warnings += 1
+    if (diagnostic.severity === "info") entry.notices += 1
+    byRule.set(diagnostic.ruleId, entry)
+  }
+  if (byRule.size <= 1) return []
+  const rows = [...byRule.entries()].sort(
+    (left, right) => right[1].total - left[1].total || left[0].localeCompare(right[0]),
+  )
+  const width = Math.max(...rows.map(([id]) => id.length))
+  const lines = ["", "by rule:"]
+  for (const [id, counts] of rows) {
+    const detail = [
+      counts.warnings > 0 ? plural(counts.warnings, "warning") : "",
+      counts.notices > 0 ? plural(counts.notices, "notice") : "",
+    ]
+      .filter((part) => part !== "")
+      .join(", ")
+    const leading = String(counts.total).padStart(5) + "  " + id.padEnd(width)
+    lines.push(detail === "" ? leading : leading + "  " + detail)
+  }
+  return lines
+}
+
 const text = (report: Report): string => {
   const lines = report.diagnostics.map((d) => {
     const { file, line, column } = d.location
@@ -210,6 +247,7 @@ const text = (report: Report): string => {
     return `${file}:${line}:${column}: ${label(d.severity)} ${d.ruleId}${score}: ${d.message}${help}`
   })
   if (lines.length > 0) lines.push("")
+  lines.push(...census(report))
   lines.push(problemSummary(report))
   const provenanceLine = provenance(report)
   if (provenanceLine !== "") lines.push(provenanceLine)
