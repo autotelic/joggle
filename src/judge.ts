@@ -35,6 +35,22 @@ import {
 /* -------------------------------------------------------------------------- */
 
 export interface JudgeRequest {
+  /**
+   * The repository's declared architecture, if it has one.
+   *
+   * PART OF THE REQUEST, not a parameter beside it. It was a parameter, and
+   * `cacheKeyFor` had to be passed it separately -- so when I added it to the
+   * model's state and forgot the key, editing joggle.config.json replayed every
+   * verdict made under the previous architecture. I then wrote a comment saying
+   * it was in the key.
+   *
+   * The talk this comes from (docs/turbo.md) puts it plainly: "I don't really
+   * trust developers to write correct cache keys or track inputs by hand." An
+   * input that is part of the thing being keyed cannot be forgotten; one passed
+   * alongside it can. The judge layer stamps this onto every request it receives,
+   * so a rule does not have to know it exists.
+   */
+  readonly repository?: string | undefined
   /** The evidence panel, relative to ONE candidate. This is System One's `state`. */
   readonly evidence: unknown
   /**
@@ -129,7 +145,7 @@ const canonical = (value: unknown): string => {
  * transport concern; if it changed the key, the same candidate judged in a
  * different batch would miss its own cached answer.
  */
-export const cacheKeyFor = (request: JudgeRequest, evidenceContext?: string): string =>
+export const cacheKeyFor = (request: JudgeRequest): string =>
   canonical({
     questionVersion: policy.questionVersion,
     model: policy.model,
@@ -141,7 +157,7 @@ export const cacheKeyFor = (request: JudgeRequest, evidenceContext?: string): st
     // verdict made under the previous architecture. The values are compared as a
     // string against the empty one, so "declared nothing" and "declared the empty
     // architecture" are different requests too.
-    repository: evidenceContext ?? null,
+    repository: request.repository ?? null,
     evidence: request.evidence,
     questions: request.questions,
   })
@@ -311,11 +327,12 @@ export const layer = (
         apiKey: string,
         batch: ReadonlyArray<Miss>,
       ) {
+        // The context is read off the request it was stamped onto, so the state
+        // the model sees and the key it is cached under come from ONE place.
+        const repository = batch[0]?.request.repository
         const state = {
           candidates: batch.map((miss) => miss.request.evidence),
-          ...(options.evidenceContext === undefined
-            ? {}
-            : { repository: options.evidenceContext }),
+          ...(repository === undefined ? {} : { repository }),
         }
         const questions: Record<string, Question> = {}
         batch.forEach((miss, position) => {
@@ -381,8 +398,14 @@ export const layer = (
       })
 
       const askMany = Effect.fn("Judge.askMany")(function* (
-        requests: ReadonlyArray<JudgeRequest>,
+        incoming: ReadonlyArray<JudgeRequest>,
       ) {
+        // Stamped here, once, so no rule has to remember it and no key can miss
+        // it. A rule hands over evidence and questions; the layer owns the rest.
+        const requests: ReadonlyArray<JudgeRequest> =
+          options.evidenceContext === undefined
+            ? incoming
+            : incoming.map((request) => ({ ...request, repository: options.evidenceContext }))
         if (requests.length === 0) return []
         yield* Ref.update(stats, (current) => ({
           ...current,
@@ -390,7 +413,7 @@ export const layer = (
         }))
 
         const before = yield* Ref.get(entries)
-        const keys = requests.map((request) => cacheKeyFor(request, options.evidenceContext))
+        const keys = requests.map((request) => cacheKeyFor(request))
         const wasCached = keys.map((key) => before[key] !== undefined)
         const cachedCount = wasCached.filter(Boolean).length
         if (cachedCount > 0) {
