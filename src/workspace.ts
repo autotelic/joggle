@@ -3,7 +3,7 @@ import { parseSync } from "oxc-parser"
 import { policy } from "./policy.ts"
 import { buildImportGraph, importsIn, type ImportGraph, type ParsedImport } from "./imports.ts"
 import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
-import { shortHash } from "./state.ts"
+import { safeJson, shortHash } from "./state.ts"
 import { shinglesOf } from "./similarity.ts"
 import { WorkspaceError, type SourceLocation } from "./schema.ts"
 
@@ -104,6 +104,24 @@ export interface SourceFile {
  * cheap and high-recall; it makes no judgements.
  */
 /** A file that was read and could not be parsed, with the parser's own words. */
+/**
+ * What a package says about itself.
+ *
+ * A package's own manifest is the material a question about its dependencies
+ * needs. `packages/fasdentify` importing fastify is either a violation or the
+ * package's entire purpose, and only one field decides which:
+ *
+ *   "description": "A Fastify plugin for sending mail"
+ *
+ * The docs call state "the material you would present to a panel of experts". I
+ * asked the panel whether a package should import a framework without telling it
+ * what the package was, and it gave the only answer available from that material.
+ */
+export interface PackageManifest {
+  readonly name: string
+  readonly description: string | undefined
+}
+
 export interface UnparsedFile {
   readonly path: string
   readonly reason: string
@@ -129,6 +147,13 @@ export interface Workspace {
    * `errors` array was never read at all.
    */
   readonly unparsed: ReadonlyArray<UnparsedFile>
+  /**
+   * The nearest manifest above each analysed directory, keyed by that directory.
+   *
+   * Derived from the filesystem rather than declared, so it cannot go stale: move
+   * a package and its description travels with it.
+   */
+  readonly manifests: ReadonlyMap<string, PackageManifest>
   /**
    * Declarations that came from a test file.
    *
@@ -775,6 +800,34 @@ const COMPILER_HELPERS = new Set([
 
 const isCompilerHelper = (name: string): boolean => COMPILER_HELPERS.has(name)
 
+/**
+ * The package.json in one directory, if it names the package.
+ *
+ * Read from the filesystem rather than declared, for the same reason .gitignore
+ * is: it is already current, because whoever made the package wrote it. A name
+ * and a description are the two fields that say what a package IS.
+ */
+const manifestAt = (
+  directory: string,
+): Effect.Effect<PackageManifest | undefined, never, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const file = path.join(directory, "package.json")
+    const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
+    if (!exists) return undefined
+    const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
+    const decoded = safeJson(text)
+    if (!isRecord(decoded)) return undefined
+    const name = decoded["name"]
+    if (typeof name !== "string" || name.length === 0) return undefined
+    const description = decoded["description"]
+    return {
+      name,
+      description: typeof description === "string" ? description : undefined,
+    }
+  })
+
 const extensionOf = (file: string): string => {
   const cut = file.lastIndexOf(".")
   return cut === -1 ? "(no extension)" : file.slice(cut)
@@ -997,6 +1050,33 @@ export const loadWorkspace = (
     // Declarations from test files and from transpiler helpers are excluded
     // before any rule sees them, and counted, because a rule that silently
     // receives fewer candidates is a rule nobody can debug.
+    // The nearest package.json above each directory an analysed file sits in.
+    // Bounded to a few levels and cached per directory, so this is a handful of
+    // reads rather than one per file.
+    const manifests = new Map<string, PackageManifest>()
+    const directories = [
+      ...new Set(
+        parsed.map((file) => {
+          const cut = file.path.lastIndexOf("/")
+          return cut === -1 ? "." : file.path.slice(0, cut)
+        }),
+      ),
+    ]
+    for (const directory of directories) {
+      let cursor = directory
+      for (let depth = 0; depth < 6; depth += 1) {
+        if (cursor === "." || cursor === "") break
+        const manifest = yield* manifestAt(path.join(root, cursor))
+        if (manifest !== undefined) {
+          manifests.set(directory, manifest)
+          break
+        }
+        const parent = cursor.includes("/") ? cursor.slice(0, cursor.lastIndexOf("/")) : "."
+        if (parent === cursor) break
+        cursor = parent
+      }
+    }
+
     const allUnits = parsed.flatMap((file) => file.units)
     // Helpers go; test declarations stay and are marked, because whether they
     // should be compared depends on what they are compared AGAINST.
@@ -1016,6 +1096,7 @@ export const loadWorkspace = (
       byName,
       imports: graph,
       unparsed,
+      manifests,
       testDeclarations,
       excludedHelpers,
     }

@@ -40,6 +40,8 @@ const RULE_ID = "joggle/dependency-fit"
 interface Dependency {
   /** The module that reached for it, derived from the path. */
   readonly path: string
+  /** The directory of the file that reached for it, for the manifest lookup. */
+  readonly directory: string
   readonly specifier: string
   readonly count: number
   readonly examples: ReadonlyArray<string>
@@ -58,7 +60,7 @@ const moduleOf = (file: string): string => file.split("/").slice(0, 2).join("/")
 const dependenciesIn = (workspace: Workspace): ReadonlyArray<Dependency> => {
   const grouped = new Map<
     string,
-    { path: string; specifier: string; count: number; examples: Array<string> }
+    { path: string; directory: string; specifier: string; count: number; examples: Array<string> }
   >()
   for (const edge of workspace.imports.edges) {
     // Internal imports are `layer-direction`'s business, and a relative specifier
@@ -68,10 +70,18 @@ const dependenciesIn = (workspace: Workspace): ReadonlyArray<Dependency> => {
     if (edge.specifier.startsWith("node:")) continue
     const path = moduleOf(edge.from)
     if (path.length === 0) continue
+    const cut = edge.from.lastIndexOf("/")
+    const directory = cut === -1 ? "." : edge.from.slice(0, cut)
     const key = path + "\u0000" + edge.specifier
     const existing = grouped.get(key)
     if (existing === undefined) {
-      grouped.set(key, { path, specifier: edge.specifier, count: 1, examples: [edge.from] })
+      grouped.set(key, {
+        path,
+        directory,
+        specifier: edge.specifier,
+        count: 1,
+        examples: [edge.from],
+      })
       continue
     }
     existing.count += 1
@@ -91,7 +101,7 @@ const questions = {
       inspect: ["package", "dependency"],
       fallback: "Choose `belongs` unless something is clearly wrong. This rule is meant to be quiet.",
       focus:
-        "`repository` describes what this codebase is trying to be. Judge the dependency against THAT, not against a general preference: a web framework in a rendering package is expected, and the same framework in a domain package is the thing the architecture exists to prevent.",
+        "`package.describes_itself_as` is what this package says it is, and `repository` describes what the codebase is trying to be. Judge the dependency against BOTH: a Fastify plugin importing fastify is a package doing its job, and the same import in a domain package is the thing the architecture exists to prevent. Do not apply a constraint that belongs to one package to every package.",
     },
     criteria: dependencyVocabulary,
   },
@@ -112,18 +122,26 @@ export const dependencyFit = defineRule({
     const budget = policy.dependencyFit.maxDependencies
     const judged = dependencies.slice(0, budget)
 
-    const requests: Array<JudgeRequest> = judged.map((dependency) => ({
+    const requests: Array<JudgeRequest> = judged.map((dependency) => {
+      const manifest = workspace.manifests.get(dependency.directory)
+      return {
       evidence: {
         repository: context.config.evidence?.repository ?? null,
         package: {
           path: dependency.path,
+          // What the package says it IS. Without this the panel is asked whether a
+          // package should import a framework while being told nothing about the
+          // package -- and answers correctly for the wrong package.
+          name: manifest?.name ?? null,
+          describes_itself_as: manifest?.description ?? null,
           imports_this_in: dependency.count,
           examples: dependency.examples,
         },
         dependency: { specifier: dependency.specifier },
       },
       questions,
-    }))
+      }
+    })
 
     const judge = yield* Judge
     // A verdict here is a guess about someone else's design, so without one the

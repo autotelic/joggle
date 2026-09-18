@@ -40,6 +40,16 @@ const RULE_ID = "joggle/hoist-to-domain"
  * is by name and not by file.
  */
 const FRAMEWORK_EXPORTS = new Set([
+  // Migrations and seeds: the runner calls these by name, one per file, and
+  // there is no version of `up` that is not a migration's `up`.
+  "up",
+  "down",
+  "seed",
+  // Test runners. A hook is scaffolding for an assertion, not a rule.
+  "beforeAll",
+  "afterAll",
+  "beforeEach",
+  "afterEach",
   "loader",
   "action",
   "clientLoader",
@@ -56,6 +66,9 @@ const FRAMEWORK_EXPORTS = new Set([
 const isCandidate = (unit: Unit): boolean => {
   if (!unit.exported) return false
   if (unit.kind !== "function") return false
+  // Test declarations are compared against each other by the duplicate rules and
+  // are candidates for nothing here: a fixture is not a business rule.
+  if (unit.test) return false
   if (FRAMEWORK_EXPORTS.has(unit.name)) return false
   // A declaration with nothing in it has no rule in it either.
   if (unit.tokens.length < policy.hoistToDomain.minTokens) return false
