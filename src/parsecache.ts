@@ -1,8 +1,16 @@
-import { Effect, FileSystem, Path } from "effect"
+import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { safeJson, shortHash } from "./state.ts"
 import { shinglesOf } from "./similarity.ts"
-import { tokenize, type Parses, type SourceFile, type StructureFacts, type Unit } from "./workspace.ts"
-import type { ParsedImport } from "./imports.ts"
+import { ParsedImport } from "./imports.ts"
+import { SourceLocation } from "./schema.ts"
+import {
+  StructureFacts,
+  tokenize,
+  UnitKind,
+  type Parses,
+  type SourceFile,
+  type Unit,
+} from "./workspace.ts"
 
 /**
  * Parsing, as a cached unit of work keyed by its inputs.
@@ -42,11 +50,8 @@ export const CACHE_VERSION = "1"
 export const keyOf = (file: string, text: string): string =>
   file + "\u0000" + shortHash(text)
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
 /** A unit minus everything derivable from the file's text. */
-const encodeUnit = (unit: Unit): unknown => ({
+const encodeUnit = (unit: Unit): Schema.Schema.Type<typeof EncodedUnit> => ({
   kind: unit.kind,
   name: unit.name,
   start: unit.start,
@@ -63,96 +68,148 @@ const encodeUnit = (unit: Unit): unknown => ({
   ...(unit.doc === undefined ? {} : { doc: unit.doc }),
 })
 
-/** What a cache entry holds: the analysis, with nothing the text could give back. */
-interface Encoded {
-  readonly units: ReadonlyArray<unknown>
-  readonly imports: ReadonlyArray<ParsedImport>
-  readonly facts: StructureFacts
-}
-
-const encodeSourceFile = (file: SourceFile): Encoded => ({
+const encodeSourceFile = (file: SourceFile): Schema.Schema.Type<typeof EncodedFile> => ({
   units: file.units.map(encodeUnit),
   imports: file.imports,
   facts: file.facts,
 })
 
 /**
- * A cache entry that does not decode is ignored, not repaired.
+ * A cached parse: the analysis, and nothing the file's text can give back.
  *
- * The cache is an optimisation, so a miss costs time and a WRONG hit costs
- * correctness. Every field a rule reads is checked, and anything unexpected means
- * the file is parsed again.
+ * One Schema for the whole file rather than hand-written checks, because this is
+ * genuinely external. It is a file on disk that can be truncated by an interrupted
+ * write, edited by hand, or left over from a different tool -- so it is worth
+ * DECODING rather than casting, and every type here is derived from the decoder
+ * instead of declared beside it.
+ *
+ * The AST is not treated this way, and the reason is measured rather than
+ * assumed: decoding one node costs 213ns against 3ns for a typeof check, a factor
+ * of 73, and joggle walks millions of nodes per run. oxc produced that AST in this
+ * process and `parseSync` has a type for it, so validating it would be validating
+ * our own output at 73 times the price.
  */
-const decodeUnit = (raw: unknown, file: string, text: string): Unit | undefined => {
-  if (!isRecord(raw)) return undefined
-  for (const field of ["kind", "name", "shape", "shapeHash"]) {
-    if (typeof raw[field] !== "string") return undefined
-  }
-  for (const field of ["start", "end"]) if (typeof raw[field] !== "number") return undefined
-  for (const field of ["exported", "typed", "test"]) {
-    if (typeof raw[field] !== "boolean") return undefined
-  }
-  if (!isRecord(raw["location"])) return undefined
-  for (const field of ["typeRefs", "fields"]) if (!Array.isArray(raw[field])) return undefined
-  if (!isRecord(raw["fieldTypes"])) return undefined
+const EncodedUnit = Schema.Struct({
+  kind: UnitKind,
+  name: Schema.String,
+  start: Schema.Number,
+  end: Schema.Number,
+  location: SourceLocation,
+  exported: Schema.Boolean,
+  shape: Schema.String,
+  shapeHash: Schema.String,
+  typeRefs: Schema.Array(Schema.String),
+  typed: Schema.Boolean,
+  fields: Schema.Array(Schema.String),
+  fieldTypes: Schema.Record(Schema.String, Schema.String),
+  test: Schema.Boolean,
+  doc: Schema.optionalKey(Schema.String),
+})
 
-  const start = raw["start"] as number
-  const end = raw["end"] as number
-  if (start < 0 || start > end || end > text.length) return undefined
+const EncodedFile = Schema.Struct({
+  units: Schema.Array(EncodedUnit),
+  imports: Schema.Array(ParsedImport),
+  facts: StructureFacts,
+})
 
-  // Rebuilt, not stored: the text is a slice of the file, and the tokens and
-  // shingles are functions of the shape.
-  const shape = raw["shape"] as string
-  const tokens = tokenize(shape)
+const CacheFile = Schema.Struct({
+  version: Schema.String,
+  tool: Schema.String,
+  entries: Schema.Record(Schema.String, EncodedFile),
+})
+
+/**
+ * The decoder, chosen so that a failure is RECORDED.
+ *
+ * plumb's point is right and its remedy does not fit: this Effect version has no
+ * `decodeUnknownResult`, and `SchemaParser.decodeResult` takes a schema's ENCODED
+ * type rather than `unknown` -- which a JSON file read as `unknown` cannot supply
+ * without a cast. So the choice is the option form plus a recorded failure, which
+ * is the part that matters: a cache that has quietly stopped working used to look
+ * exactly like a cold one, forever.
+ */
+const decodeCache = Schema.decodeUnknownOption(CacheFile)
+
+/**
+ * The file a parse belongs to: which one, and what it said.
+ *
+ * One value rather than two adjacent strings, because `unitFrom(entry, text,
+ * file)` compiles and would produce a parse of the wrong file with the right
+ * contents. plumb reported exactly that against the two-string version, which is
+ * the ratchet catching code written the same hour.
+ */
+interface Source {
+  readonly file: string
+  readonly text: string
+}
+
+/**
+ * A unit, rebuilt from a decoded entry and the text the caller already has.
+ *
+ * The text is a slice of the file, and the tokens and shingles are functions of
+ * the shape, so none of the three are stored -- which is most of why the cache is
+ * 12 megabytes rather than 67.
+ *
+ * A span that does not fit the file it claims to come from is a corrupt entry, and
+ * a corrupt entry is a miss.
+ */
+const unitFrom = (
+  entry: Schema.Schema.Type<typeof EncodedUnit>,
+  source: Source,
+): Unit | undefined => {
+  const { file, text } = source
+  // A span that does not fit the file it claims to come from is a corrupt entry,
+  // and a corrupt entry is a miss.
+  if (entry.start < 0 || entry.start > entry.end || entry.end > text.length) return undefined
+  const tokens = tokenize(entry.shape)
   return {
-    kind: raw["kind"] as Unit["kind"],
-    name: raw["name"] as string,
+    kind: entry.kind,
+    name: entry.name,
     file,
-    start,
-    end,
-    location: raw["location"] as Unit["location"],
-    exported: raw["exported"] as boolean,
-    text: text.slice(start, end),
-    shape,
+    start: entry.start,
+    end: entry.end,
+    location: entry.location,
+    exported: entry.exported,
+    text: text.slice(entry.start, entry.end),
+    shape: entry.shape,
     tokens,
     shingles: shinglesOf(tokens),
-    shapeHash: raw["shapeHash"] as string,
-    typeRefs: raw["typeRefs"] as ReadonlyArray<string>,
-    typed: raw["typed"] as boolean,
-    fields: raw["fields"] as ReadonlyArray<string>,
-    fieldTypes: new Map(
-      Object.entries(raw["fieldTypes"] as Record<string, unknown>).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string",
-      ),
-    ),
-    test: raw["test"] as boolean,
+    shapeHash: entry.shapeHash,
+    typeRefs: entry.typeRefs,
+    typed: entry.typed,
+    fields: entry.fields,
+    fieldTypes: new Map(Object.entries(entry.fieldTypes)),
+    test: entry.test,
     // Resolved after every file is parsed, so a cached value is always rewritten.
     typeSignature: "",
-    doc: typeof raw["doc"] === "string" ? raw["doc"] : undefined,
+    doc: entry.doc,
   }
 }
 
-const decodeSourceFile = (raw: unknown, file: string, text: string): SourceFile | undefined => {
-  if (!isRecord(raw)) return undefined
-  if (!Array.isArray(raw["units"]) || !Array.isArray(raw["imports"])) return undefined
-  if (!isRecord(raw["facts"])) return undefined
+/** A whole file's parse, or undefined when any unit of it is unusable. */
+const sourceFileFrom = (
+  entry: Schema.Schema.Type<typeof EncodedFile>,
+  source: Source,
+): SourceFile | undefined => {
   const units: Array<Unit> = []
-  for (const entry of raw["units"]) {
-    const unit = decodeUnit(entry, file, text)
+  for (const raw of entry.units) {
+    const unit = unitFrom(raw, source)
     if (unit === undefined) return undefined
     units.push(unit)
   }
   return {
-    path: file,
-    text,
+    path: source.file,
+    text: source.text,
     units,
-    imports: raw["imports"] as ReadonlyArray<ParsedImport>,
-    facts: raw["facts"] as unknown as StructureFacts,
+    imports: entry.imports,
+    facts: entry.facts,
   }
 }
 
 export interface ParseCache {
   readonly parses: Parses
+  /** Why each cache file failed to decode. Reported, because silence looks cold. */
+  readonly issues: ReadonlyArray<string>
   readonly save: Effect.Effect<void, never, FileSystem.FileSystem | Path.Path>
 }
 
@@ -174,22 +231,22 @@ export const loadParses = (
 
     // The map holds the ENCODED form, so saving serializes what is already there
     // rather than walking every unit a second time to write it out.
-    const entries = new Map<string, Encoded>()
+    const issues: Array<string> = []
+    const entries = new Map<string, Schema.Schema.Type<typeof EncodedFile>>()
     const exists = yield* Effect.orElseSucceed(fs.exists(store), () => false)
     if (exists) {
       const body = yield* Effect.orElseSucceed(fs.readFileString(store), () => "")
-      const decoded = safeJson(body)
-      if (
-        isRecord(decoded) &&
-        decoded["version"] === CACHE_VERSION &&
-        decoded["tool"] === tool &&
-        isRecord(decoded["entries"])
-      ) {
-        for (const [key, value] of Object.entries(decoded["entries"])) {
-          if (isRecord(value) && Array.isArray(value["units"]) && Array.isArray(value["imports"])) {
-            entries.set(key, value as unknown as Encoded)
-          }
-        }
+      // One decode for the whole file. A cache from a different tool version is
+      // discarded whole rather than repaired: the parser is part of the tool, so
+      // an entry it did not produce is a wrong answer, not a slow one.
+      const decoded = Option.getOrUndefined(decodeCache(safeJson(body)))
+      if (decoded === undefined) {
+        // An empty or absent cache is not damage; a file that will not parse is.
+        if (body.trim() !== "") issues.push("the cache file did not match the expected shape")
+      } else if (decoded.version === CACHE_VERSION && decoded.tool === tool) {
+        // A version or tool mismatch is not damage either: the cache is discarded
+        // whole and rebuilt, which is what an upgrade is supposed to do.
+        for (const [key, value] of Object.entries(decoded.entries)) entries.set(key, value)
       }
     }
 
@@ -200,7 +257,8 @@ export const loadParses = (
         const stored = entries.get(keyOf(relative, text))
         // Decoded against the text the CALLER has, which is the whole reason the
         // text is not in the cache: it is already here.
-        const rebuilt = stored === undefined ? undefined : decodeSourceFile(stored, relative, text)
+        const rebuilt =
+          stored === undefined ? undefined : sourceFileFrom(stored, { file: relative, text })
         if (rebuilt === undefined) {
           misses += 1
           return undefined
@@ -217,6 +275,7 @@ export const loadParses = (
 
     return {
       parses,
+      issues,
       // Only when something was parsed. A run that read twenty thousand entries
       // and wrote them all back is a run where the cache costs more than it saves.
       save: Effect.gen(function* () {

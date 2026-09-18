@@ -3,7 +3,7 @@ import { policy } from "./policy.ts"
 import type { JoggleConfig } from "./config.ts"
 import type { Service as JudgeService } from "./judge.ts"
 import type { Answer, Diagnostic, Drop, JudgeError, Severity, SourceLocation } from "./schema.ts"
-import type { Unit, Workspace } from "./workspace.ts"
+import type { Workspace } from "./workspace.ts"
 
 /**
  * A rule is a function from the deterministic workspace index to diagnostics.

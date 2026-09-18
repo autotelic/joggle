@@ -1,11 +1,20 @@
+import { Schema } from "effect"
 import type { Path } from "effect"
 import type { SourceFile } from "./workspace.ts"
 
-/** One import or re-export statement, before resolution. */
-export interface ParsedImport {
-  readonly specifier: string
+/**
+ * One import or re-export statement, before resolution.
+ *
+ * Declared as a Schema first and derived from it, because a parsed import is
+ * written to the parse cache and read back from disk. That makes it an external
+ * payload -- a file that can be truncated, stale or edited by hand -- so it is
+ * worth decoding rather than casting, and the type comes from the decoder so the
+ * two cannot drift.
+ */
+export const ParsedImport = Schema.Struct({
+  specifier: Schema.String,
   /** Names taken from the target. Empty for a side-effect import. */
-  readonly names: ReadonlyArray<string>
+  names: Schema.Array(Schema.String),
   /**
    * `import type` and `export type` are erased at build time.
    *
@@ -14,8 +23,10 @@ export interface ParsedImport {
    * initialisation behind, so a loop through it has no load-order consequence.
    * Reporting both at the same volume is how a linter trains people to ignore it.
    */
-  readonly typeOnly: boolean
-}
+  typeOnly: Schema.Boolean,
+})
+
+export interface ParsedImport extends Schema.Schema.Type<typeof ParsedImport> {}
 
 /**
  * One resolved import: everything the statement said, plus where it went.

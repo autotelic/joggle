@@ -1,4 +1,4 @@
-import { Effect, Option } from "effect"
+import { Effect } from "effect"
 import { policy } from "../policy.ts"
 import { components, makeCluster, type Cluster } from "../cluster.ts"
 import { budgetNote, defineRule, inScope, outcome, type Scope } from "../rule.ts"

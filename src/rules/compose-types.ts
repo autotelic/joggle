@@ -30,11 +30,6 @@ const isTypeUnit = (unit: Unit): boolean =>
 /** A field set as a comparable key, order-insensitive. */
 const signatureOf = (unit: Unit): string => [...unit.fields].sort().join("\u0000")
 
-interface Pair {
-  readonly whole: Unit
-  readonly part: Unit
-}
-
 export const composeTypes = defineRule({
   id: RULE_ID,
   severity: "warn",

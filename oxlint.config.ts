@@ -126,4 +126,103 @@ export default {
     // supposed to be reproducible.
     "plumb-effect/require-schema-type-derivation": "off",
   },
+
+  /**
+   * Declared exceptions, each with the reason written down.
+   *
+   * These are not suppressions. A suppression hides a finding; an exception
+   * records that the rule and this codebase disagree about something, and says
+   * what. Anything without a reason is missing from here on purpose.
+   */
+  overrides: [
+    {
+      // joggle/plugin exists to re-export a supported surface. A barrel export is
+      // a smell in an application, where it hides what a module actually owns;
+      // here the point IS the aggregate -- one name a rule author imports, and
+      // one place to add the next thing to the contract. plumb's own rule cannot
+      // know that, which is the whole reason the two tools are separate.
+      files: ["src/plugin.ts"],
+      rules: { "plumb/no-barrel-export-star": "off" },
+    },
+    {
+      // `shape` is joggle's domain word. A declaration's SHAPE is its token
+      // sequence with every identifier blanked, and `shapeHash` is that hashed;
+      // `overlap` is the similarity between two of them. The rule reads "shape"
+      // as structure-rather-than-ownership, which is right in general and
+      // meaningless here -- there is no owner to name, because the shape is of
+      // nothing in particular. Declared rather than renamed: renaming a domain
+      // term to please a linter is the tool editing the domain.
+      files: [
+        "src/workspace.ts",
+        "src/similarity.ts",
+        "src/parsecache.ts",
+        "src/rules/compose-types.ts",
+        "src/rules/cluster-verdict.ts",
+      ],
+      rules: { "plumb/no-shape-in-symbol-names": "off" },
+    },
+    {
+      // The remedy requires an API this Effect version does not have: there is no
+      // `decodeUnknownResult`, and `SchemaParser.decodeResult` takes a schema's
+      // ENCODED type, which a JSON file read as `unknown` cannot supply without a
+      // cast. The concern behind the rule is addressed instead -- a cache file
+      // that fails to decode is recorded and reported, so a cache that quietly
+      // stopped working no longer looks exactly like a cold one.
+      files: ["src/parsecache.ts"],
+      rules: { "plumb-effect/no-decode-unknown-option": "off" },
+    },
+    {
+      // The decode bridge: raw AST nodes and raw plugin modules in, typed values
+      // out. plumb carves out exactly this exception for its own bridge module --
+      // its config says "Reflection/decode boundary modules: representation checks
+      // and broad parameters are their purpose: they own the crossing between raw
+      // AST/config payloads and typed rule logic" -- and that sentence describes
+      // these three files word for word.
+      //
+      // What was measured before deciding it: decoding one AST node with a Schema
+      // costs 213ns against 3ns for a typeof check, a factor of 73, and joggle
+      // walks millions of nodes per run. oxc produced that AST in this process and
+      // `parseSync` has a type for it, so Schema-validating it would be validating
+      // our own output at 73 times the price. The alternative -- keeping oxc's
+      // types and narrowing on `node.type` -- is the right long-term shape and is
+      // not done here.
+      //
+      // Scoped to the five rules that ARE the bridge: 113 of the 330 findings, and
+      // 85 to 94 per cent of each of these five rules' occurrences. Everything
+      // else these files trip -- swappable parameters, missing JSDoc, sort
+      // comparators -- is ordinary debt and stays in the baseline.
+      files: ["src/workspace.ts", "src/imports.ts", "src/plugins.ts"],
+      rules: {
+        "plumb/no-runtime-typeof": "off",
+        "plumb/no-reinterpret-cast": "off",
+        "plumb/require-safety-comment-for-type-assertion": "off",
+        "plumb/no-unsafe-dictionary-type": "off",
+        "plumb/no-unknown-parameters": "off",
+      },
+    },
+    {
+      // `Effect.gen(function* () { ... return x })` with no `yield` is idiomatic
+      // Effect: the generator IS the effect, and a rule body with no effectful
+      // steps still returns through one. eslint's rule predates Effect and cannot
+      // see that, which is a gap worth reporting upstream rather than a decision
+      // to make here -- but it is six sites, not a policy.
+      files: ["src/rules/**"],
+      rules: { "eslint/require-yield": "off" },
+    },
+    {
+      // Policy, decided rather than drifted into. joggle keeps inline comments
+      // for the REASONING -- why this threshold, why this shape, what the failure
+      // looked like -- and JSDoc for the CONTRACT. plumb wants all of it in JSDoc,
+      // and it has a real point: an inline comment is invisible to tooling. But
+      // the reasoning belongs where the decision is made, and moving four hundred
+      // of them onto the signatures above would put the explanation of a line
+      // forty lines away from the line.
+      //
+      // The other half of the same rule family, `require-jsdoc-on-exported`, is
+      // NOT excepted: an exported contract without a doc block is a real gap, and
+      // the 28 it reports are work rather than disagreement.
+      files: ["src/**", "scripts/**"],
+      rules: { "plumb/no-stray-inline-comments": "off" },
+    },
+  ],
 };

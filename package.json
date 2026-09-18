@@ -19,7 +19,7 @@
     "test": "vitest run",
     "lint": "node scripts/lint-baseline.mjs",
     "lint:update": "node scripts/lint-baseline.mjs --update",
-    "check": "pnpm typecheck && pnpm test"
+    "check": "pnpm typecheck && pnpm test && pnpm lint"
   },
   "dependencies": {
     "@effect/platform-node": "4.0.0-rc.115",

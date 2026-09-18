@@ -498,6 +498,12 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       reason: "plugin " + failure.specifier + " was not loaded: " + failure.reason,
     })
   }
+  if (parseCache.issues.length > 0) {
+    notes.push({
+      ruleId: "joggle",
+      reason: "the parse cache did not decode and was ignored: " + parseCache.issues[0],
+    })
+  }
   const parsedFromCache = workspace.parses.hits()
   const parsedAgain = workspace.parses.misses()
   if (parsedFromCache > 0 || parsedAgain > 0) {

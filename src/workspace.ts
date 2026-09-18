@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Path } from "effect"
+import { Effect, FileSystem, Path, Schema } from "effect"
 import { parseSync } from "oxc-parser"
 import { policy } from "./policy.ts"
 import {
@@ -18,7 +18,10 @@ import { WorkspaceError, type SourceLocation } from "./schema.ts"
 /* Vocabulary                                                                  */
 /* -------------------------------------------------------------------------- */
 
-export type UnitKind = "function" | "interface" | "type"
+/** What a declaration is. A Schema, so the cache decoder can be exact about it. */
+export const UnitKind = Schema.Literals(["function", "interface", "type"])
+
+export type UnitKind = Schema.Schema.Type<typeof UnitKind>
 
 /**
  * One addressable declaration. This is the closest thing joggle has to an
@@ -105,15 +108,22 @@ export interface Unit {
  * a context, a provider, blocks, and a dot-notation export -- and every part of
  * that convention is spelled somewhere in the source. These three lists are
  * enough to check it without a renderer, a bundler or a runtime.
+ *
+ * Declared as a Schema because it is written to the parse cache. Deriving the
+ * type from the decoder rather than declaring it beside one keeps a single source
+ * of truth: the cache file is external -- it can be truncated or edited by hand --
+ * so it is worth decoding, and the type follows from what the decoder accepts.
  */
-export interface StructureFacts {
+export const StructureFacts = Schema.Struct({
   /** Callee names, dotted for member calls: `createContext`, `React.useState`. */
-  readonly calls: ReadonlyArray<string>
+  calls: Schema.Array(Schema.String),
   /** Element names as written, dotted for member JSX: `Button`, `Counter.Provider`. */
-  readonly jsx: ReadonlyArray<string>
+  jsx: Schema.Array(Schema.String),
   /** Key names of every object literal, one entry per literal. */
-  readonly objects: ReadonlyArray<ReadonlyArray<string>>
-}
+  objects: Schema.Array(Schema.Array(Schema.String)),
+})
+
+export interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}
 
 export interface SourceFile {
   readonly path: string

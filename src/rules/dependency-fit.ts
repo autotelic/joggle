@@ -5,7 +5,6 @@ import { Service as Judge, type JudgeRequest } from "../judge.ts"
 import {
   budgetNote,
   choiceOf,
-  declined,
   defineRule,
   finding,
   marginOf,
@@ -253,12 +252,17 @@ export const dependencyFit = defineRule({
     })
 
     const diagnostics: Array<Diagnostic> = []
-    const drops: Array<Drop> = dependencies.slice(budget).map((dependency) => ({
+    // Declared dependencies are drops, not answers: the funnel has to account for
+    // every candidate, and 129 of 241 never reached the model. This was computed
+    // and then thrown away until plumb's no-unused-vars reported it, which is a
+    // per-file rule finding a bug in the cross-file tool's own reporting.
+    const drops: Array<Drop> = [...answeredItself]
+    for (const dependency of dependencies.slice(budget)) drops.push({
       ruleId: RULE_ID,
       subject: label(dependency),
       stage: "budget" as const,
       reason: "this run judged " + budget + " dependencies and this one was past the budget",
-    }))
+    })
 
     const judge = yield* Judge
     // A verdict here is a guess about someone else's design, so without one the

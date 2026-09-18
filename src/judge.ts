@@ -18,7 +18,6 @@ import { safeJson } from "./state.ts"
 import { isRecord } from "./workspace.ts"
 import {
   JudgeCacheFile,
-  JudgeCacheKey,
   JudgeMalformed,
   JudgeRejected,
   JudgeTransport,

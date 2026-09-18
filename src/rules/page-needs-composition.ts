@@ -1,8 +1,7 @@
 import { Effect } from "effect"
 import { policy } from "../policy.ts"
-import { Service as Judge, type JudgeRequest } from "../judge.ts"
+import { Service as Judge } from "../judge.ts"
 import {
-  budgetNote,
   choiceOf,
   declined,
   defineRule,
@@ -88,18 +87,6 @@ const gaps = (page: Page): ReadonlyArray<string> => {
     found.push(`${page.localState} useState calls that a provider would own`)
   }
   return found
-}
-
-/**
- * Exactly the questions this rule reads.
- *
- * The vocabulary module holds more than this rule asks -- `role` earns its place
- * as soon as the classification decides which question follows.
- */
-const questions = {
-  verdict: pageQuestions.verdict,
-  primary_gap: pageQuestions.primary_gap,
-  worth_fixing: pageQuestions.worth_fixing,
 }
 
 const findingFor = (
