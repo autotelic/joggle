@@ -17,7 +17,8 @@
     "joggle": "node src/main.ts",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run",
-    "lint": "oxlint --config oxlint.config.ts src",
+    "lint": "node scripts/lint-baseline.mjs",
+    "lint:update": "node scripts/lint-baseline.mjs --update",
     "check": "pnpm typecheck && pnpm test"
   },
   "dependencies": {
