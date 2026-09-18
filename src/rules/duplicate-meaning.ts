@@ -45,7 +45,19 @@ const candidatePair = (
  * could clear the threshold, and the only bound left is on how many clusters
  * are judged.
  */
-const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
+/**
+ * Candidates, and the clusters that are not questions.
+ *
+ * Split in two rather than filtered, because an oversized cluster is worth
+ * SAYING something about -- it is real evidence that N declarations were
+ * generated from one template -- while not being worth asking about.
+ */
+interface Candidates {
+  readonly clusters: ReadonlyArray<Cluster>
+  readonly oversized: ReadonlyArray<Cluster>
+}
+
+const find = (workspace: Workspace, scope: Scope): Candidates => {
   const { minSimilarity, maxSimilarity, minTokens } = policy.duplicateMeaning
 
   const units = workspace.units
@@ -88,7 +100,23 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
     if (members.every((unit) => unit.test)) return
     clusters.push(makeCluster(members, false, overlapOf.get(id) ?? 0))
   })
-  return clusters
+  // A cluster bigger than the evidence panel cannot be a question. Only
+  // `policy.evidence.maxMembers` of its members are ever shown, so the model is
+  // asked about 105 declarations while looking at 12 of them -- and its answer
+  // is the only one available: no. One repository produced "105 declarations
+  // that may be one thing: down": every migration's `down` function, chained by
+  // union-find, none of which can be deleted.
+  //
+  // The bound is not a new threshold. It is the size at which the evidence stops
+  // being complete, which is the point at which the question stops being
+  // answerable.
+  const answerable = clusters.filter(
+    (cluster) => cluster.members.length <= policy.evidence.maxMembers,
+  )
+  return {
+    clusters: answerable,
+    oversized: clusters.filter((cluster) => cluster.members.length > policy.evidence.maxMembers),
+  }
 }
 
 export const duplicateMeaning = defineRule({
@@ -97,8 +125,7 @@ export const duplicateMeaning = defineRule({
   description: "Near-duplicates where a judgement says one declaration replaces the other.",
   judged: true,
   run: Effect.fn("joggle/duplicate-meaning")(function* (workspace, scope) {
-    const clusters = find(workspace, scope)
-    if (clusters.length === 0) return outcome([])
+    const { clusters, oversized } = find(workspace, scope)
     const budget = policy.duplicateMeaning.maxClusters
     const { diagnostics: findings, drops } = yield* assessClusters(
       spec,
@@ -110,6 +137,35 @@ export const duplicateMeaning = defineRule({
       .sort((a, b) => b.members.length - a.members.length)
       .slice(0, 3)
       .map((cluster) => `${cluster.members.length}× ${spec.subject(cluster)}`)
-    return outcome(findings, budgetNote("clusters", budget, clusters.length, largest), drops)
+
+    // Reported as drops rather than dropped silently: "476 declarations across 9
+    // clusters were generated from one template" is a fact about the codebase,
+    // and the only thing wrong with it was asking the model to confirm it.
+    const tooManyToShow = oversized.map((cluster) => ({
+      ruleId: spec.ruleId,
+      subject: spec.subject(cluster),
+      stage: "no_evidence" as const,
+      reason:
+        cluster.members.length +
+        " declarations share a shape, which is more than the " +
+        policy.evidence.maxMembers +
+        " the evidence panel can show at once",
+    }))
+
+    return outcome(
+      findings,
+      [
+        ...budgetNote("clusters", budget, clusters.length, largest),
+        ...(oversized.length === 0
+          ? []
+          : [
+              oversized.length +
+                " cluster(s) were too large to be one decision (" +
+                oversized.reduce((sum, cluster) => sum + cluster.members.length, 0) +
+                " declarations): generated from one template rather than duplicated",
+            ]),
+      ],
+      [...tooManyToShow, ...drops],
+    )
   }),
 })
