@@ -31,8 +31,53 @@ import type { Unit, Workspace } from "./workspace.ts"
  * is the line being looked for.
  */
 export const moduleOf = (unit: Unit): string => {
-  const parts = unit.file.split("/")
-  return parts.length <= 4 ? parts.join("/") : parts.slice(0, 4).join("/")
+  // The DIRECTORY, never the file.
+  //
+  // Four segments was right about the depth -- it separates `services/rest/src/
+  // routes` from `services/rest/src/domain` inside one package -- and wrong about
+  // the last segment. Taking the whole path when it was short made a file its own
+  // module, so two files in one directory became an upward dependency between two
+  // modules: `src/shared/is-node.ts` importing `src/shared/structural.ts` was
+  // reported as utilities importing library core.
+  const directories = unit.file.split("/").slice(0, -1)
+  return directories.length <= 4 ? directories.join("/") : directories.slice(0, 4).join("/")
+}
+
+/**
+ * The package a specifier names: `react`, `@oxlint/plugins`, `effect/unstable/...`.
+ *
+ * Shared with the dependency check, which learned it first: `fastify-cli/start.js`
+ * is a path INTO `fastify-cli`, and comparing raw specifiers reports subpath
+ * imports as undeclared.
+ */
+export const packageNameOf = (specifier: string): string => {
+  const parts = specifier.split("/")
+  const [first, second] = parts
+  if (first === undefined) return specifier
+  return first.startsWith("@") && second !== undefined ? first + "/" + second : first
+}
+
+/**
+ * What the repository actually depends on, from its manifests and its imports.
+ *
+ * The material that separates `../react` from `@react`. A directory called
+ * `react` and the React framework have the same name and nothing else in common,
+ * and a model reading a path cannot tell which it is looking at -- but the
+ * repository can: the framework is a declared dependency, or an unresolved
+ * specifier some file imports, and a directory is neither.
+ */
+export const externalNames = (workspace: Workspace): ReadonlySet<string> => {
+  const names = new Set<string>()
+  for (const manifest of workspace.manifests.values()) {
+    for (const declared of manifest.declares) names.add(declared)
+  }
+  for (const edge of workspace.imports.edges) {
+    if (edge.resolved) continue
+    if (edge.specifier.startsWith(".") || edge.specifier.startsWith("/")) continue
+    if (edge.specifier.startsWith("node:")) continue
+    names.add(packageNameOf(edge.specifier))
+  }
+  return names
 }
 
 /** Every module in the workspace, with the declarations it holds. */
@@ -107,21 +152,55 @@ export const classifyModules = (
     }
 
     const judge = yield* Judge
+    const names = externalNames(workspace)
+
+    // Which file belongs to which module, so an import can be attributed to the
+    // module that makes it.
+    const ownerOf = new Map<string, string>()
+    for (const [path, units] of listed) {
+      for (const unit of units) ownerOf.set(unit.file, path)
+    }
+
+    // What each module imports from outside the repository. A module called
+    // `react` whose files import only type packages is not a rendering edge, and
+    // this is how the model can see that rather than infer it from the name.
+    const externalByModule = new Map<string, Set<string>>()
+    for (const edge of workspace.imports.edges) {
+      if (edge.resolved) continue
+      if (edge.specifier.startsWith(".") || edge.specifier.startsWith("/")) continue
+      if (edge.specifier.startsWith("node:")) continue
+      const module = ownerOf.get(edge.from)
+      if (module === undefined) continue
+      const found = externalByModule.get(module) ?? new Set<string>()
+      found.add(packageNameOf(edge.specifier))
+      externalByModule.set(module, found)
+    }
+
     const answered = yield* judge.askMany(
-      listed.map(([path, units]) => ({
-        evidence: {
-          repository: context.config.evidence?.repository ?? null,
-          module: {
-            path,
-            declarations: units.length,
-            examples: [...new Set(units.map((unit) => unit.file))].slice(
-              0,
-              policy.evidence.maxListedPaths,
-            ),
+      listed.map(([path, units]) => {
+        // A module whose last path segment matches something the repository
+        // depends on. `null` is the useful answer: nothing here is called that.
+        const last = path.split("/").at(-1) ?? path
+        const collision = names.has(last) ? last : null
+        return {
+          evidence: {
+            repository: context.config.evidence?.repository ?? null,
+            module: {
+              path,
+              declarations: units.length,
+              examples: [...new Set(units.map((unit) => unit.file))].slice(
+                0,
+                policy.evidence.maxListedPaths,
+              ),
+              imports: [...(externalByModule.get(path) ?? [])]
+                .sort()
+                .slice(0, policy.evidence.maxListedPaths),
+              shares_a_name_with_a_dependency: collision,
+            },
           },
-        },
-        questions: moduleQuestions,
-      })),
+          questions: moduleQuestions,
+        }
+      }),
     )
 
     const roles = new Map<string, string>()
