@@ -1,7 +1,7 @@
 import { expect, test } from "vitest"
 import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
-import { loadWorkspace } from "../src/workspace.ts"
+import { discoverFiles, loadWorkspace } from "../src/workspace.ts"
 
 const fixtures = "tests/fixtures/javascript"
 
@@ -36,6 +36,17 @@ test("a file the parser rejects is reported, not silently empty", async () => {
   expect(loaded.unparsed.length).toBe(1)
   expect(loaded.unparsed[0]?.path).toBe("broken.js")
   expect(loaded.unparsed[0]?.reason.length).toBeGreaterThan(0)
+})
+
+test("discovery reports what it did not parse", async () => {
+  const found = await Effect.runPromise(
+    discoverFiles(fixtures, ["."]).pipe(Effect.provide(NodeServices.layer)),
+  )
+  // Three source files are discovered; one of them then fails to parse, which is
+  // a different report. A non-source file is counted here instead.
+  expect(found.files.length).toBe(3)
+  expect(found.skipped).toEqual([{ extension: ".md", count: 1 }])
+  expect(found.truncated).toBe(false)
 })
 
 test("the rejection and the files it rejected are counted together", async () => {

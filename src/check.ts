@@ -274,7 +274,8 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       : undefined
 
   const discoverStarted = Date.now()
-  const files = yield* discoverFiles(options.cwd, options.paths, discovered)
+  const discovery = yield* discoverFiles(options.cwd, options.paths, discovered)
+  const files = discovery.files
 
   // A run that found no source files did not pass. Reporting "0 problems" for an
   // empty file set is the worst output this program can produce, because it looks
@@ -445,6 +446,45 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       skipped.push({ ruleId: rule.id, reason: reasonOf(result.error) })
     }
     timings.push({ phase: rule.id.replace("joggle/", ""), ms: Date.now() - ruleStarted })
+  }
+
+  // What the run did not look at.
+  //
+  // The funnel rule applied to the one bound that had no report: every bound in
+  // this program is a decision not to look at something, and a bound nobody can
+  // see is indistinguishable from a bug. Discovery used to drop non-source files
+  // inside its own loop, so "287 files" read as the repository rather than as a
+  // fifth of it.
+  if (discovery.truncated) {
+    notes.push({
+      ruleId: "joggle",
+      reason: "the file walk hit its own limit: this run saw only part of the tree",
+    })
+  }
+  if (discovery.skipped.length > 0) {
+    const total = discovery.skipped.reduce((sum, entry) => sum + entry.count, 0)
+    const shown = discovery.skipped.slice(0, 4).map((entry) => entry.extension + " " + entry.count)
+    const rest = discovery.skipped.length - shown.length
+    notes.push({
+      ruleId: "joggle",
+      reason:
+        "not parsed: " +
+        total +
+        " file(s) outside the parser's extensions (" +
+        shown.join(", ") +
+        (rest > 0 ? ", and " + rest + " more" : "") +
+        ")",
+    })
+  }
+  if (workspace.unparsed.length > 0) {
+    const example = workspace.unparsed[0]
+    notes.push({
+      ruleId: "joggle",
+      reason:
+        workspace.unparsed.length +
+        " file(s) failed to parse, e.g. " +
+        (example === undefined ? "" : example.path + ": " + example.reason),
+    })
   }
 
   // The funnel, in the report rather than in a debug log.

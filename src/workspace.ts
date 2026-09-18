@@ -691,15 +691,50 @@ const parseSourceFile = (file: string, text: string): ParseOutcome => {
 const ignored = new Set<string>(policy.ignoredDirectories)
 
 /** Insurance against symlink cycles and pathological trees. */
+/** What discovery saw, and what it declined to look at. */
+export interface Discovery {
+  readonly files: ReadonlyArray<string>
+  /**
+   * Files the walk saw and did not treat as source, by extension.
+   *
+   * A bound nobody can see is indistinguishable from a bug, and this was the one
+   * bound in the program with no report at all. Non-source files were dropped
+   * inside the walk loop, so "287 files" read as the repository rather than as a
+   * fifth of it, and an entire API written in JavaScript was invisible for as
+   * long as the extension list stayed the way it was.
+   */
+  readonly skipped: ReadonlyArray<SkippedExtension>
+  /** True when the walk stopped at its own limit rather than at the end. */
+  readonly truncated: boolean
+}
+
+export interface SkippedExtension {
+  readonly extension: string
+  readonly count: number
+}
+
+const extensionOf = (file: string): string => {
+  const cut = file.lastIndexOf(".")
+  return cut === -1 ? "(no extension)" : file.slice(cut)
+}
+
+const summarise = (counts: ReadonlyMap<string, number>): ReadonlyArray<SkippedExtension> =>
+  [...counts.entries()]
+    .map(([extension, count]) => ({ extension, count }))
+    .sort(
+      (left, right) => right.count - left.count || left.extension.localeCompare(right.extension),
+    )
+
 const walkLimits = { directories: 5000, files: 20000 }
 
 const walk = (
   dir: string,
-): Effect.Effect<ReadonlyArray<string>, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
+): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const found: Array<string> = []
+    const skipped = new Map<string, number>()
     const stack: Array<string> = []
     const seen = new Set<string>()
 
@@ -722,7 +757,12 @@ const walk = (
       const info = yield* Effect.orElseSucceed(fs.stat(current), () => undefined)
       if (info === undefined) continue
       if (info.type === "File") {
-        if (looksLikeSource(current)) found.push(current)
+        if (looksLikeSource(current)) {
+          found.push(current)
+        } else {
+          const extension = extensionOf(current)
+          skipped.set(extension, (skipped.get(extension) ?? 0) + 1)
+        }
         continue
       }
       if (info.type !== "Directory") continue
@@ -736,25 +776,38 @@ const walk = (
         if (!ignored.has(entry)) stack.push(path.join(current, entry))
       }
     }
-    return found.sort()
+    // Both limits are reported, not silently obeyed: reaching one means the run
+    // analysed part of the tree and said nothing about the rest.
+    return {
+      files: found.sort(),
+      skipped: summarise(skipped),
+      truncated: found.length >= walkLimits.files || seen.size >= walkLimits.directories,
+    }
   })
 
 const resolveInputs = (
   root: string,
   inputs: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
+): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const path = yield* Path.Path
     const files: Array<string> = []
+    const skipped = new Map<string, number>()
+    let truncated = false
     for (const input of inputs) {
       const absolute = path.isAbsolute(input) ? input : path.join(root, input)
-      if (looksLikeSource(absolute)) files.push(absolute)
-      else {
-        const nested = yield* walk(absolute)
-        for (const file of nested) files.push(file)
+      if (looksLikeSource(absolute)) {
+        files.push(absolute)
+        continue
+      }
+      const nested = yield* walk(absolute)
+      for (const file of nested.files) files.push(file)
+      truncated = truncated || nested.truncated
+      for (const entry of nested.skipped) {
+        skipped.set(entry.extension, (skipped.get(entry.extension) ?? 0) + entry.count)
       }
     }
-    return files
+    return { files, skipped: summarise(skipped), truncated }
   })
 
 /**
@@ -768,9 +821,9 @@ export const discoverFiles = (
   root: string,
   inputs: ReadonlyArray<string>,
   discovered?: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
+): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   discovered !== undefined
-    ? Effect.succeed(discovered)
+    ? Effect.succeed({ files: discovered, skipped: [], truncated: false })
     : resolveInputs(root, inputs.length > 0 ? inputs : ["."])
 
 export const loadWorkspace = (
@@ -784,7 +837,7 @@ export const loadWorkspace = (
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const files =
-      discovered ?? (yield* resolveInputs(root, inputs.length > 0 ? inputs : ["."]))
+      discovered ?? (yield* resolveInputs(root, inputs.length > 0 ? inputs : ["."])).files
     const parsed: Array<SourceFile> = []
     const unparsed: Array<UnparsedFile> = []
     for (const absolute of files) {
