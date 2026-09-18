@@ -10,6 +10,7 @@ import {
 } from "./imports.ts"
 import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
 import { safeJson, shortHash } from "./state.ts"
+
 import { shinglesOf } from "./similarity.ts"
 import { WorkspaceError, type SourceLocation } from "./schema.ts"
 
@@ -181,6 +182,8 @@ export interface Workspace {
   readonly manifests: ReadonlyMap<string, PackageManifest>
   /** What the load cost, phase by phase. Printed with the rule timings. */
   readonly phases: ReadonlyArray<{ readonly phase: string; readonly ms: number }>
+  /** How much of the parse came from the cache. Reported, never assumed. */
+  readonly parses: Parses
   /**
    * Declarations that came from a test file.
    *
@@ -1075,12 +1078,41 @@ export const discoverFiles = (
       })
     : resolveInputs(root, inputs.length > 0 ? inputs : ["."])
 
+/**
+ * Parses to reuse, keyed by a file and its content.
+ *
+ * Declared here rather than in the module that persists it, so the direction is
+ * one-way: the cache knows what a parse is, and the parser does not know there is
+ * a cache on disk.
+ */
+export interface Parses {
+  readonly get: (file: string, text: string) => SourceFile | undefined
+  readonly set: (file: string, text: string, parsed: SourceFile) => void
+  readonly hits: () => number
+  readonly misses: () => number
+}
+
+export const noParses = (): Parses => ({
+  get: () => undefined,
+  set: () => undefined,
+  hits: () => 0,
+  misses: () => 0,
+})
+
 export const loadWorkspace = (
   root: string,
   inputs: ReadonlyArray<string>,
   discovered?: ReadonlyArray<string>,
   /** Source text already read by the caller, keyed by absolute path. */
   contents?: ReadonlyMap<string, string>,
+  /**
+   * Parses to reuse, keyed by file and content.
+   *
+   * A parse depends on exactly two things -- the text and the parser -- and this
+   * is where the first of those becomes a key. The second is the tool's own
+   * fingerprint, checked when the cache is opened.
+   */
+  parses: Parses = noParses(),
 ): Effect.Effect<Workspace, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1111,9 +1143,18 @@ export const loadWorkspace = (
       // Diagnostics carry paths relative to the root, so output is stable and
       // hosts such as GitHub Actions can annotate the right file.
       const relative = path.relative(root, absolute)
+      const cached = parses.get(relative, text)
+      if (cached !== undefined) {
+        parsed.push(cached)
+        continue
+      }
       const outcome = parseSourceFile(relative, text)
-      if (outcome.ok) parsed.push(outcome.file)
-      else unparsed.push({ path: relative, reason: outcome.reason })
+      if (outcome.ok) {
+        parsed.push(outcome.file)
+        parses.set(relative, text, outcome.file)
+      } else {
+        unparsed.push({ path: relative, reason: outcome.reason })
+      }
     }
     clock = mark("read+parse", clock)
     const graph = buildImportGraph(parsed, path)
@@ -1208,6 +1249,7 @@ export const loadWorkspace = (
       byName,
       imports: graph,
       phases,
+      parses,
       unparsed,
       manifests,
       testDeclarations,

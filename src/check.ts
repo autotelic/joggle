@@ -1,6 +1,7 @@
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { safeJson, shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
+import { loadParses } from "./parsecache.ts"
 import { Service as Judge } from "./judge.ts"
 import { policy } from "./policy.ts"
 import { finding } from "./rule.ts"
@@ -312,14 +313,19 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   }
   const discoverMs = Date.now() - discoverStarted
 
+  // The tool's own source, which is also the parse cache's version: the parser is
+  // part of the tool, so an entry produced by a different parser is not a cache
+  // hit, it is a wrong answer.
+  const toolFingerprint = [
+    yield* sourceFingerprint(policy.analysisVersion),
+    ...(options.plugins?.fingerprints ?? []),
+  ].join("\u0000")
   const manifest = manifestOf(
     options.cwd,
     files,
     contents,
     selected.map((rule) => rule.id),
-    [yield* sourceFingerprint(policy.analysisVersion), ...(options.plugins?.fingerprints ?? [])].join(
-      "\u0000",
-    ),
+    toolFingerprint,
   )
   const hashOf = new Map(
     files.map((file) => [path.relative(options.cwd, file), shortHash(contents.get(file) ?? "")]),
@@ -378,7 +384,16 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   }
 
   const workspaceStarted = Date.now()
-  const workspace = yield* loadWorkspace(options.cwd, options.paths, files, contents)
+  const parseCache = yield* loadParses(options.cacheDir, toolFingerprint)
+  const workspace = yield* loadWorkspace(
+    options.cwd,
+    options.paths,
+    files,
+    contents,
+    parseCache.parses,
+  )
+  // Written after the load, and only when something was actually parsed.
+  yield* parseCache.save
   const timings: Array<{ phase: string; ms: number }> = [
     { phase: "workspace", ms: Date.now() - workspaceStarted },
   ]
@@ -481,6 +496,19 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     notes.push({
       ruleId: "joggle",
       reason: "plugin " + failure.specifier + " was not loaded: " + failure.reason,
+    })
+  }
+  const parsedFromCache = workspace.parses.hits()
+  const parsedAgain = workspace.parses.misses()
+  if (parsedFromCache > 0 || parsedAgain > 0) {
+    notes.push({
+      ruleId: "joggle",
+      reason:
+        "parsed " +
+        parsedAgain +
+        " file(s) and reused " +
+        parsedFromCache +
+        " parse(s) from the cache",
     })
   }
   if (workspace.testDeclarations > 0) {
