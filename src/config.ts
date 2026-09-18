@@ -67,7 +67,23 @@ export const JoggleConfig = Schema.Struct({
    * Relative specifiers resolve against the analysed root, so a repository's own
    * rules live with the repository's own config. A module exports `rules`.
    */
+  /**
+   * Rule modules to load from the repository, in addition to the built-in set.
+   *
+   * Relative specifiers resolve against the analysed root, so a repository's own
+   * rules live with the repository's own config. A module exports `rules`.
+   */
   plugins: Schema.optionalKey(Schema.Array(Schema.String)),
+  /**
+   * Packages of opinions: rule modules that also carry default severities.
+   *
+   * Mechanically identical to `plugins` -- the same loader, the same module shape
+   * -- and listed separately because the intent is different. A plugin is code
+   * someone wrote for their repository. A preset is a coherent position about how
+   * code should be organised, which arrives with the severities it was designed
+   * to run at and which the repository may override.
+   */
+  presets: Schema.optionalKey(Schema.Array(Schema.String)),
   /**
    * The repository's layering, if it has one.
    *

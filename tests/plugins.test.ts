@@ -35,5 +35,5 @@ test("a module that exports no rules says so", async () => {
 
 test("no plugins is not a failure", async () => {
   const loaded = await run(loadPlugins([], cwd))
-  expect(loaded).toEqual({ rules: [], failures: [], fingerprints: [] })
+  expect(loaded).toEqual({ rules: [], failures: [], fingerprints: [], config: {} })
 })

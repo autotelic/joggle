@@ -33,8 +33,8 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
 
     // A breach withholds every JUDGED rule, because their evidence would cross
     // repositories. The structural rules persist nothing, so they still run:
-    // four bundle checks, three architecture checks and field-set composition.
-    expect(report.rules).toBe(9)
+    // three architecture checks and two field-set analyses.
+    expect(report.rules).toBe(5)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/dependency-fit",
@@ -42,7 +42,6 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       "joggle/duplicate-meaning",
       "joggle/hoist-to-domain",
       "joggle/naming-drift",
-      "joggle/page-needs-composition",
     ])
     expect(report.skipped.every((skip) => skip.reason.includes("cache boundary"))).toBe(true)
   }),
@@ -70,9 +69,11 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     )
 
     expect(report.files).toBe(2)
-    // Nine structural rules -- four bundle checks, three architecture checks and
-    // two field-set analyses -- plus five judged ones.
-    expect(report.rules).toBe(15)
+    // Five structural rules -- three architecture checks and two field-set
+    // analyses -- plus five judged ones. The composition rules are a preset and
+    // are not in this run at all, which is what makes them an opinion rather than
+    // an inheritance.
+    expect(report.rules).toBe(10)
     expect(report.diagnostics.length).toBe(1)
     // The fixture has no bundles, pages or modals, so the structural rules find
     // nothing and the page rule produces no candidates. A rule with nothing to

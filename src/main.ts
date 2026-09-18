@@ -6,7 +6,7 @@ import { runCheck } from "./check.ts"
 import { layer as judgeLayer } from "./judge.ts"
 import { runCacheDirFor } from "./state.ts"
 import { loadConfig } from "./config.ts"
-import { loadPlugins } from "./plugins.ts"
+import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
 import { allRules } from "./rules/index.ts"
@@ -61,10 +61,17 @@ const check = Command.make(
         ),
       )
 
-      const loaded = yield* loadPlugins(settings.plugins ?? [], cwd)
+      const loaded = yield* loadPlugins(
+        [...(settings.presets ?? []), ...(settings.plugins ?? [])],
+        cwd,
+      )
+      // A preset's severities and scoping sit under the repository's own, per rule:
+      // enabling twenty opinions and then turning one off should not mean
+      // restating the other nineteen.
+      const effective = withDefaults(loaded.config, settings)
 
       const report = yield* runCheck({
-        config: settings,
+        config: effective,
         plugins: loaded,
         cwd,
         paths: config.paths,
@@ -87,7 +94,7 @@ const check = Command.make(
             cacheDir,
             offline: config.offline,
             apiKey,
-            evidenceContext: settings.evidence?.repository,
+            evidenceContext: effective.evidence?.repository,
           }),
         ),
         Effect.provide(tsgoLayer(cwd)),

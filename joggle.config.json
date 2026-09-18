@@ -1,5 +1,6 @@
 {
   "$schema": "./schema/config.json",
+  "presets": ["joggle/presets/composition"],
   "rules": {
     "joggle/bundle-dot-notation": "warn",
     "joggle/bundle-tripartite-value": "warn",

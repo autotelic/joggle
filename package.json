@@ -7,7 +7,8 @@
   "license": "MIT",
   "exports": {
     "./plugin": "./src/plugin.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./presets/composition": "./src/presets/composition.ts"
   },
   "bin": {
     "joggle": "./bin/joggle.js"
