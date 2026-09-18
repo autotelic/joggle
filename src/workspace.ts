@@ -125,6 +125,12 @@ export interface Unit {
  * of truth: the cache file is external -- it can be truncated or edited by hand --
  * so it is worth decoding, and the type follows from what the decoder accepts.
  */
+/** One object literal: what it holds, and where it is. */
+export const ObjectSite = Schema.Struct({
+  keys: Schema.Array(Schema.String),
+  start: Schema.Number,
+})
+
 /** One call, where it is, and what it names. */
 export const CallSite = Schema.Struct({
   /** Callee name, dotted for member calls: `createContext`, `React.useState`. */
@@ -144,8 +150,8 @@ export const StructureFacts = Schema.Struct({
   callSites: Schema.Array(CallSite),
   /** Element names as written, dotted for member JSX: `Button`, `Counter.Provider`. */
   jsx: Schema.Array(Schema.String),
-  /** Key names of every object literal, one entry per literal. */
-  objects: Schema.Array(Schema.Array(Schema.String)),
+  /** Every object literal: its key names, and where it starts. */
+  objects: Schema.Array(ObjectSite),
 })
 
 export interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}
@@ -719,7 +725,7 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
 const structureIn = (root: unknown): StructureFacts => {
   const callSites: Array<Schema.Schema.Type<typeof CallSite>> = []
   const jsx = new Set<string>()
-  const objects: Array<ReadonlyArray<string>> = []
+  const objects: Array<Schema.Schema.Type<typeof ObjectSite>> = []
 
   const nameOf = (node: unknown): string | undefined => {
     if (!isRecord(node)) return undefined
@@ -780,7 +786,8 @@ const structureIn = (root: unknown): StructureFacts => {
             if (isRecord(key) && typeof key["name"] === "string") keys.push(key["name"])
             else if (isRecord(key) && typeof key["value"] === "string") keys.push(key["value"])
           }
-          objects.push(keys)
+          const start = node["start"]
+          if (typeof start === "number") objects.push({ keys, start })
         }
         break
       }

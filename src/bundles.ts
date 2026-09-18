@@ -80,7 +80,7 @@ const declares = (file: SourceFile): ReadonlyArray<string> =>
 /** The object literal that looks like the index's dot-notation export. */
 const dotExport = (file: SourceFile | undefined): ReadonlyArray<string> => {
   if (file === undefined) return []
-  for (const keys of file.facts.objects) {
+  for (const keys of file.facts.objects.map((site) => site.keys)) {
     if (keys.includes("Provider")) return keys
   }
   return []
@@ -100,7 +100,7 @@ const providerValue = (file: SourceFile | undefined): ReadonlyArray<string> | un
   if (file === undefined) return undefined
   let best: ReadonlyArray<string> | undefined
   let score = 0
-  for (const keys of file.facts.objects) {
+  for (const keys of file.facts.objects.map((site) => site.keys)) {
     const hits = TRIPARTITE.filter((key) => keys.includes(key)).length
     if (hits > score) {
       score = hits

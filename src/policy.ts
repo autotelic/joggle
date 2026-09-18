@@ -185,7 +185,31 @@ export const policy = {
   ],
 
   /**
-   * Orchestration comparison.
+   * Name retrieval cost.
+   *
+   * `minFiles` is where a name stops being an address: a single generic word
+   * reached from this many files is not findable by search. A search bound, and
+   * measured rather than guessed.
+   */
+  nameAsAddress: {
+    minFiles: 12,
+    maxFindings: 200,
+  },
+
+  /**
+   * Name retrieval cost.
+   *
+   * `minFiles` was chosen from the distribution rather than guessed. Measured
+   * across four repositories, the reach of a single-word export is bimodal: one
+   * name at 14 files and everything else at 4 or fewer. `cn`, the classname
+   * helper, is that one name -- and a two-letter export used in twenty-one files
+   * is precisely the address the reference material describes as unsearchable.
+   * Twelve sits in the empty middle of the distribution, where the two modes
+   * separate and no threshold in between would change the answer.
+   */
+
+  /**
+   * Orchestration comparison (kept for the call-pattern rule below).
    *
    * `minCalls` is what makes a shared call sequence mean something: two functions
    * that each make one call are not "the same orchestration", they are two
@@ -194,6 +218,17 @@ export const policy = {
   callPattern: {
     minCalls: 4,
     maxFindings: 400,
+  },
+
+  /**
+   * Object literals that should be a named type.
+   *
+   * `minKeys` is what separates a shape from a coincidence: two literals sharing
+   * one key are two literals, not a missing type.
+   */
+  objectShape: {
+    minKeys: 3,
+    maxFindings: 300,
   },
 
   /**
