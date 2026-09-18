@@ -1,5 +1,6 @@
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { safeJson, shortHash } from "./state.ts"
+import { sourceFingerprint } from "./fingerprint.ts"
 import { Service as Judge } from "./judge.ts"
 import { policy } from "./policy.ts"
 import { finding } from "./rule.ts"
@@ -102,14 +103,18 @@ const typecheckFindings = (output: ReadonlyArray<{ readonly file: string; readon
  * a filter or a clustering rule can change every finding while leaving every
  * question byte-identical. Bump it when the rules move.
  */
-const manifestOf = (
+export const manifestOf = (
   root: string,
   files: ReadonlyArray<string>,
   contents: ReadonlyMap<string, string>,
   ruleIds: ReadonlyArray<string>,
+  toolFingerprint: string,
 ): string =>
   shortHash(
     [
+      // The tool's own source, so a rule change cannot be forgotten. The declared
+      // version stays beside it as the documented fallback.
+      `tool=${toolFingerprint}`,
       `analysis=${policy.analysisVersion}`,
       `questions=${policy.questionVersion}`,
       `model=${policy.model}`,
@@ -300,6 +305,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     files,
     contents,
     selected.map((rule) => rule.id),
+    yield* sourceFingerprint(policy.analysisVersion),
   )
   const hashOf = new Map(
     files.map((file) => [path.relative(options.cwd, file), shortHash(contents.get(file) ?? "")]),

@@ -29,11 +29,27 @@ export const policy = {
   questionVersion: "2026-09-06",
 
   /**
-   * Bump this when rule LOGIC changes. Question versioning covers the wording of
-   * a question; it cannot cover a candidate filter, a clustering rule or a
-   * threshold, and those change the output while leaving every question byte
-   * identical. The unchanged-run short-circuit keys on this, so failing to bump
-   * it means a stale report is replayed after the rules have moved.
+   * The declared analysis version: a FALLBACK and an OVERRIDE, not the gate.
+   *
+   * This used to be the gate, and a hand-bumped gate is a promise to remember.
+   * Forgetting it means the next run replays a report produced by rules that no
+   * longer exist -- which happened twice in one session, and both times the output
+   * looked entirely plausible, because a stale report is not malformed, it is just
+   * wrong.
+   *
+   * The unchanged-run short-circuit now keys on a hash of the tool's own source
+   * (see fingerprint.ts), so a change to a rule, a threshold or a question cannot
+   * be missed. Question versioning still covers question WORDING, because the
+   * judgement cache keys on it directly.
+   *
+   * This string survives for the case a hash cannot serve: when the sources cannot
+   * be read, so a run in an unusual installation degrades to the old behaviour
+   * rather than breaking.
+   *
+   * There is deliberately no way to opt out of the hash yet. A cosmetic edit
+   * therefore invalidates the run cache, which is the conservative direction: the
+   * cost is re-analysis, the cost of the other direction is a wrong report. An
+   * override that skips the hash is the obvious next step and does not exist.
    */
   analysisVersion: "2026-09-05",
 
