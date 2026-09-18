@@ -74,6 +74,25 @@ export const policy = {
     batchCandidates: 1,
     /** Independent requests in flight at once. */
     requestConcurrency: 16,
+    /**
+     * How good an answer has to be before a rule may act on it.
+     *
+     * A Noul is a yes/no question, so its probability is a VERDICT, not a
+     * ranking: 0.2 is the model saying no. Nothing read that. `worth_fixing` and
+     * `one_concept` and `redundant` were kept only as sort keys while the Choice
+     * decided, so on Shakti 237 findings were reported where the model had
+     * already answered "not worth a reviewer's time" and been overruled by a
+     * different question.
+     *
+     * The margin is winner minus runner-up in the Choice's own distribution:
+     * whether the model picked an option or shrugged across two. Raw `confidence`
+     * measured uninformative here and is still only reported, but `probabilities`
+     * arrived with every answer from the first day and nothing ever read it.
+     */
+    gates: {
+      noulFloor: 0.5,
+      minMargin: 0.25,
+    },
     /** Token budget for one request when batching is used. Around 32,000 is the
      *  API limit, shared between state and questions. */
     batchTokens: 20000,

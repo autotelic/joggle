@@ -1,7 +1,19 @@
 import { Effect } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge, type JudgeRequest } from "../judge.ts"
-import { budgetNote, choiceOf, declined, defineRule, finding, inScope, noulOf, outcome, type Scope } from "../rule.ts"
+import {
+  budgetNote,
+  choiceOf,
+  declined,
+  defineRule,
+  finding,
+  inScope,
+  marginOf,
+  noulOf,
+  outcome,
+  qualityOf,
+  type Scope,
+} from "../rule.ts"
 import type { Diagnostic, Question } from "../schema.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
 
@@ -137,6 +149,14 @@ const findingFor = (
 ): Diagnostic | undefined => {
   const verdict = choiceOf(answers, "verdict")
   if (verdict === undefined || declined(verdict.choice)) return undefined
+  // The yes/no question is a verdict, not a ranking: when it says the extraction
+  // is not worth a reviewer's time, there is no finding, however loudly the
+  // Choice said `extract_to_bundle`.
+  const quality = qualityOf({
+    score: noulOf(answers, "worth_fixing") ?? verdict.confidence,
+    margin: marginOf(answers, "verdict"),
+  })
+  if (!quality.usable) return undefined
   const gap = choiceOf(answers, "primary_gap")
   const missing = gaps(page)
   return finding({

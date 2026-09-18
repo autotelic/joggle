@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge, type JudgeRequest, type JudgeResult } from "../judge.ts"
-import { choiceOf, declined, finding, noulOf } from "../rule.ts"
+import { choiceOf, declined, finding, marginOf, noulOf, qualityOf } from "../rule.ts"
 import type { Answer, Diagnostic, Question, Severity } from "../schema.ts"
 import { namesOf, type Cluster } from "../cluster.ts"
 import type { ImportGraph } from "../imports.ts"
@@ -13,6 +13,8 @@ export interface ClusterVerdict {
   readonly keep: number | undefined
   readonly confidence: number
   readonly score: number
+  /** Winner minus runner-up in the verdict's own distribution. */
+  readonly margin: number
 }
 
 /**
@@ -145,16 +147,22 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
       const redundant = noulOf(answers, "redundant")
       if (verdict === undefined) return undefined
       const score = redundant ?? verdict.confidence
+      const margin = marginOf(answers, "verdict") ?? 1
       // `keep_variants` is a decision about the declarations; a decline is a
       // decision about the question. Both suppress the finding, and only the
       // second says the rule should not have asked.
       if (verdict.choice === "keep_variants" || declined(verdict.choice)) {
-        return { keep: undefined, confidence: verdict.confidence, score }
+        return { keep: undefined, confidence: verdict.confidence, score, margin }
       }
       const canonical = choiceOf(answers, "canonical")
       const index =
         canonical === undefined ? 0 : Number.parseInt(canonical.choice.replace("member_", ""), 10)
-      return { keep: Number.isNaN(index) ? 0 : index, confidence: verdict.confidence, score }
+      return {
+        keep: Number.isNaN(index) ? 0 : index,
+        confidence: verdict.confidence,
+        score,
+        margin,
+      }
     },
   }
 }
@@ -176,7 +184,11 @@ const identityOf = (ruleId: string, cluster: Cluster, keep: Unit): string =>
   [ruleId, keep.name, ...[...new Set(cluster.members.map((m) => m.file))].sort()].join("\u0000")
 
 /** No judgement available: report the fact, say so, and never guess a canonical. */
-export const unverifiedFinding = (rule: ClusterRule, cluster: Cluster): Diagnostic | undefined => {
+export const unverifiedFinding = (
+  rule: ClusterRule,
+  cluster: Cluster,
+  reason = "no judgement was available",
+): Diagnostic | undefined => {
   const keep = cluster.members[0]
   const drops = cluster.members.slice(1)
   const first = drops[0]
@@ -185,7 +197,7 @@ export const unverifiedFinding = (rule: ClusterRule, cluster: Cluster): Diagnost
     ruleId: rule.ruleId,
     severity: rule.severity,
     message: `${rule.subject(cluster)}.`,
-    help: `Keep \`${keep.name}\` (${keep.file}:${keep.location.line}) and import it elsewhere. Not verified: no judgement was available. Duplicates: ${memberList(drops)}.`,
+    help: `Keep \`${keep.name}\` (${keep.file}:${keep.location.line}) and import it elsewhere. Not verified: ${reason}. Duplicates: ${memberList(drops)}.`,
     location: first.location,
     identity: identityOf(rule.ruleId, cluster, keep),
     judged: false,
@@ -248,6 +260,18 @@ export const findingFor = (
     return fallback === undefined ? Option.none<Diagnostic>() : Option.some(fallback)
   }
   if (verdict.keep === undefined) return Option.none<Diagnostic>()
+
+  // A verdict that fails its gates is not a worse verdict, it is not a verdict.
+  // Handling it exactly like an absent answer means one gate serves every rule,
+  // and each rule keeps the degrade behaviour it already declared: a provable
+  // finding is still reported, marked unverified with the reason; a guessed one
+  // stays silent. The gate never has to know which rule it is in.
+  const quality = qualityOf(verdict)
+  if (!quality.usable) {
+    const fallback =
+      rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster, quality.reason) : undefined
+    return fallback === undefined ? Option.none<Diagnostic>() : Option.some(fallback)
+  }
 
   const keep = cluster.members[verdict.keep] ?? cluster.members[0]
   if (keep === undefined) return Option.none<Diagnostic>()

@@ -1,4 +1,5 @@
 import type { Effect } from "effect"
+import { policy } from "./policy.ts"
 import type { Service as JudgeService } from "./judge.ts"
 import type { Answer, Diagnostic, JudgeError, Severity, SourceLocation } from "./schema.ts"
 import type { Unit, Workspace } from "./workspace.ts"
@@ -228,6 +229,54 @@ export const noulOf = (
 ): number | undefined => {
   const answer = answers[id]
   return answer !== undefined && answer.type === "noul" ? answer.noul : undefined
+}
+
+/**
+ * Winner minus runner-up in a Choice's own distribution.
+ *
+ * A single option has nothing to be uncertain between, so its margin is 1; an
+ * answer with no distribution at all has no margin, and a gate that cannot
+ * measure should not fire.
+ */
+export const marginOf = (
+  answers: Readonly<Record<string, Answer>>,
+  id: string,
+): number | undefined => {
+  const answer = answers[id]
+  if (answer === undefined || answer.type !== "choice") return undefined
+  const ranked = Object.values(answer.probabilities).sort((left, right) => right - left)
+  const [first, second] = ranked
+  if (first === undefined) return undefined
+  return second === undefined ? 1 : first - second
+}
+
+/** Why a judgement was not good enough to act on, or that it was. */
+export interface JudgementQuality {
+  readonly usable: boolean
+  readonly reason: string
+}
+
+/**
+ * Whether an answer may be acted on.
+ *
+ * A judgement that fails its gates is not a worse judgement, it is not a
+ * judgement: callers treat it exactly as they treat an absent answer, which is
+ * what keeps one gate from having to know how each rule degrades. A rule whose
+ * finding is provable still reports it, marked unverified; a rule whose finding
+ * is a guess stays silent.
+ */
+export const qualityOf = (input: {
+  readonly score: number
+  readonly margin: number | undefined
+}): JudgementQuality => {
+  const round = (value: number): string => value.toFixed(2)
+  if (input.score < policy.judge.gates.noulFloor) {
+    return { usable: false, reason: `the yes/no question answered no (${round(input.score)})` }
+  }
+  if (input.margin !== undefined && input.margin < policy.judge.gates.minMargin) {
+    return { usable: false, reason: `the choice was not decisive (margin ${round(input.margin)})` }
+  }
+  return { usable: true, reason: "" }
 }
 
 /** Short, human-readable "file:line:col" for messages. */

@@ -1,7 +1,17 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { makeCluster, nameList, type Cluster } from "../cluster.ts"
-import { budgetNote, choiceOf, declined, defineRule, inScope, noulOf, outcome, type Scope } from "../rule.ts"
+import {
+  budgetNote,
+  choiceOf,
+  declined,
+  defineRule,
+  inScope,
+  marginOf,
+  noulOf,
+  outcome,
+  type Scope,
+} from "../rule.ts"
 import { assessClusters, type ClusterRule } from "./cluster-verdict.ts"
 import type { Answer } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
@@ -65,10 +75,16 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
       const oneConcept = noulOf(answers, "one_concept")
       if (verdict === undefined) return undefined
       const score = oneConcept ?? verdict.confidence
+      const margin = marginOf(answers, "verdict") ?? 1
       if (declined(verdict.choice)) {
-        return { keep: undefined, confidence: verdict.confidence, score }
+        return { keep: undefined, confidence: verdict.confidence, score, margin }
       }
-      return { keep: verdict.choice === "same_use_right" ? 1 : 0, confidence: verdict.confidence, score }
+      return {
+        keep: verdict.choice === "same_use_right" ? 1 : 0,
+        confidence: verdict.confidence,
+        score,
+        margin,
+      }
     },
   }
 }
