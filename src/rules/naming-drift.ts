@@ -237,6 +237,8 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
         if (one.name === two.name) continue
         if (one.file === two.file) continue
         if (one.kind !== two.kind) continue
+        // Test fixtures are compared only against each other.
+        if (one.test && two.test) continue
         if (sharedWords(one.name, two.name) < minSharedWords) continue
         // A new pair of spellings has to include the spelling that changed.
         if (!inScope(scope, one.file) && !inScope(scope, two.file)) continue

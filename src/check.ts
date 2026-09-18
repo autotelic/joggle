@@ -461,12 +461,12 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       reason: "the file walk hit its own limit: this run saw only part of the tree",
     })
   }
-  if (workspace.excludedTestFiles > 0) {
+  if (workspace.testDeclarations > 0) {
     notes.push({
       ruleId: "joggle",
       reason:
-        workspace.excludedTestFiles +
-        " declaration(s) in test files were not analysed: a factory is supposed to be repeated",
+        workspace.testDeclarations +
+        " declaration(s) in test files are compared only against each other: a factory is supposed to be repeated",
     })
   }
   if (workspace.excludedHelpers > 0) {

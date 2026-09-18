@@ -84,6 +84,8 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
       .map((index) => workspace.units[index])
       .filter((unit): unit is Unit => unit !== undefined)
     if (members.length < 2) return
+    // Test fixtures are compared only against each other.
+    if (members.every((unit) => unit.test)) return
     clusters.push(makeCluster(members, false, overlapOf.get(id) ?? 0))
   })
   return clusters

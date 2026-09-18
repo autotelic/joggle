@@ -139,9 +139,19 @@ export const policy = {
     maxClusters: 400,
   },
 
-  /** Clusters sent for judgement in one run. Overflow is reported unverified. */
   duplicateImplementation: {
     maxClusters: 500,
+    /**
+     * Tokens below which a declaration is too small to be a duplicate of
+     * anything.
+     *
+     * Shape equality is exact, so this rule had no floor at all and grouped
+     * `type ErrorResponse = any` with `type ShippingTax = any` -- three
+     * one-line placeholders in two different apps, reported as "they are one
+     * thing". They are not; they are both `any`. The near-duplicate rule has
+     * carried a floor for this reason from the start.
+     */
+    minTokens: 8,
   },
 
   /**

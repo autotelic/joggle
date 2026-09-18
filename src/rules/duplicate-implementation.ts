@@ -26,7 +26,9 @@ const spec: ClusterRule = {
  */
 const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
   const groups = new Map<string, Array<Unit>>()
+  const { minTokens } = policy.duplicateImplementation
   for (const unit of workspace.units) {
+    if (unit.tokens.length < minTokens) continue
     // Resolved types are part of the key: two helpers that read identically but
     // reference different declared types are not the same helper.
     const key = `${unit.kind}:${unit.shapeHash}:${unit.typeSignature}`
@@ -38,6 +40,8 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
   const clusters: Array<Cluster> = []
   for (const group of groups.values()) {
     if (new Set(group.map((unit) => unit.file)).size < 2) continue
+    // Test fixtures are compared only against each other.
+    if (group.every((unit) => unit.test)) continue
     // A new duplicate always has at least one changed member: nothing else can
     // have created it, so a group nobody touched cannot produce a new finding.
     if (!group.some((unit) => inScope(scope, unit.file))) continue

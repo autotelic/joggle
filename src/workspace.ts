@@ -49,6 +49,17 @@ export interface Unit {
    */
   readonly typed: boolean
   /**
+   * Whether this declaration came from a test file.
+   *
+   * Kept on the unit rather than used to exclude it, because the two cases are
+   * not the same: a helper duplicated between two spec files is a factory doing
+   * its job, while a helper duplicated between a spec and the code it tests means
+   * the spec is asserting against its own copy. The first should be silence; the
+   * second is one of the more valuable things this tool can say, and excluding
+   * test files wholesale threw it away.
+   */
+  readonly test: boolean
+  /**
    * The same names after following this file's imports to where each is
    * declared. Two declarations whose shape matches but whose resolved types
    * differ are not the same thing, however alike they read.
@@ -119,13 +130,13 @@ export interface Workspace {
    */
   readonly unparsed: ReadonlyArray<UnparsedFile>
   /**
-   * Declarations not analysed because they came from a test file.
+   * Declarations that came from a test file.
    *
-   * Test files were 24 of 196 findings on one real repository, and the worst were
-   * not wrong: a factory is SUPPOSED to be repeated, because that is what makes
-   * it a factory. Reporting it reports the technique.
+   * They are analysed, but only against each other: a factory repeated in two
+   * spec files is doing its job, while a helper repeated between a spec and the
+   * code it tests means the spec asserts against its own copy.
    */
-  readonly excludedTestFiles: number
+  readonly testDeclarations: number
   /**
    * Declarations not analysed because a transpiler emitted them.
    *
@@ -667,6 +678,7 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         shapeHash: shortHash(shape),
         typeRefs,
         typed: typeRefs.length > 0,
+        test: policy.testFiles.test(file),
         typeSignature: "",
         doc: docFor(site.start),
       })
@@ -986,10 +998,10 @@ export const loadWorkspace = (
     // before any rule sees them, and counted, because a rule that silently
     // receives fewer candidates is a rule nobody can debug.
     const allUnits = parsed.flatMap((file) => file.units)
-    const units = allUnits.filter(
-      (unit) => !policy.testFiles.test(unit.file) && !isCompilerHelper(unit.name),
-    )
-    const excludedTestFiles = allUnits.filter((unit) => policy.testFiles.test(unit.file)).length
+    // Helpers go; test declarations stay and are marked, because whether they
+    // should be compared depends on what they are compared AGAINST.
+    const units = allUnits.filter((unit) => !isCompilerHelper(unit.name))
+    const testDeclarations = units.filter((unit) => unit.test).length
     const excludedHelpers = allUnits.filter((unit) => isCompilerHelper(unit.name)).length
     const byName = new Map<string, Array<Unit>>()
     for (const unit of units) {
@@ -1004,7 +1016,7 @@ export const loadWorkspace = (
       byName,
       imports: graph,
       unparsed,
-      excludedTestFiles,
+      testDeclarations,
       excludedHelpers,
     }
   })
