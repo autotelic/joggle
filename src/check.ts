@@ -5,6 +5,8 @@ import { Service as Judge } from "./judge.ts"
 import { policy } from "./policy.ts"
 import { finding } from "./rule.ts"
 import { allRules } from "./rules/index.ts"
+import type { Rule } from "./rule.ts"
+import type { Loaded } from "./plugins.ts"
 import { funnelNotes, rankDiagnostics, type Report, type Skipped } from "./report.ts"
 import { everyFile, type Scope } from "./rule.ts"
 import { isEnabled, isIgnored, severityFor, type JoggleConfig } from "./config.ts"
@@ -48,6 +50,8 @@ export interface Options {
   readonly runCacheDir?: string | undefined
   /** Rules, severities and exceptions, from joggle.config.json. */
   readonly config: JoggleConfig
+  /** Rules loaded from `plugins`, fingerprinted. */
+  readonly plugins?: Loaded | undefined
   /** Replay the stored run when nothing the output depends on has changed. */
   readonly replayUnchanged: boolean
   /**
@@ -255,10 +259,17 @@ const writeBaseline = (
  */
 export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   const started = Date.now()
+  // Built-in rules plus the repository's own. A plugin rule is not special: it
+  // is selectable, configurable, severable and ignorable like any other, which is
+  // the whole point of it being a registry rather than an array.
+  const universe: ReadonlyArray<Rule> = [
+    ...allRules,
+    ...(options.plugins?.rules ?? []),
+  ]
   const selected = (
     options.rules === undefined
-      ? allRules
-      : allRules.filter((rule) => options.rules?.includes(rule.id) === true)
+      ? universe
+      : universe.filter((rule) => options.rules?.includes(rule.id) === true)
   ).filter((rule) => isEnabled(options.config, rule.id, rule.severity))
 
   const judge = yield* Judge
@@ -306,7 +317,9 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     files,
     contents,
     selected.map((rule) => rule.id),
-    yield* sourceFingerprint(policy.analysisVersion),
+    [yield* sourceFingerprint(policy.analysisVersion), ...(options.plugins?.fingerprints ?? [])].join(
+      "\u0000",
+    ),
   )
   const hashOf = new Map(
     files.map((file) => [path.relative(options.cwd, file), shortHash(contents.get(file) ?? "")]),
@@ -459,6 +472,15 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     notes.push({
       ruleId: "joggle",
       reason: "the file walk hit its own limit: this run saw only part of the tree",
+    })
+  }
+  // A plugin that did not load is reported, not logged and forgotten. A rule
+  // that is silently absent makes the report look clean, which is the one
+  // failure mode this program keeps having to design against.
+  for (const failure of options.plugins?.failures ?? []) {
+    notes.push({
+      ruleId: "joggle",
+      reason: "plugin " + failure.specifier + " was not loaded: " + failure.reason,
     })
   }
   if (workspace.testDeclarations > 0) {

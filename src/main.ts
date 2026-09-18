@@ -6,6 +6,7 @@ import { runCheck } from "./check.ts"
 import { layer as judgeLayer } from "./judge.ts"
 import { runCacheDirFor } from "./state.ts"
 import { loadConfig } from "./config.ts"
+import { loadPlugins } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
 import { allRules } from "./rules/index.ts"
@@ -60,8 +61,11 @@ const check = Command.make(
         ),
       )
 
+      const loaded = yield* loadPlugins(settings.plugins ?? [], cwd)
+
       const report = yield* runCheck({
         config: settings,
+        plugins: loaded,
         cwd,
         paths: config.paths,
         rules,

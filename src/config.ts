@@ -42,6 +42,13 @@ export const JoggleConfig = Schema.Struct({
     ),
   ),
   /**
+   * Rule modules to load from the repository, in addition to the built-in set.
+   *
+   * Relative specifiers resolve against the analysed root, so a repository's own
+   * rules live with the repository's own config. A module exports `rules`.
+   */
+  plugins: Schema.optionalKey(Schema.Array(Schema.String)),
+  /**
    * The repository's layering, if it has one.
    *
    * Listed from most depended-upon to least, so a later layer may import an
