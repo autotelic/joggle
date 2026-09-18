@@ -2,7 +2,7 @@ import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { duplicateImplementation } from "../src/rules/duplicate-implementation.ts"
 import { duplicateMeaning } from "../src/rules/duplicate-meaning.ts"
-import { namingDrift } from "../src/rules/naming-drift.ts"
+import { namingDrift, worthJudging } from "../src/rules/naming-drift.ts"
 import { everyFile } from "../src/rule.ts"
 import { choice, judgeFailing, judgeStub, noul, withWorkspace, noConfig } from "./support.ts"
 
@@ -115,6 +115,22 @@ it.effect("naming drift collapses to the spelling the model chose", () =>
     ),
   ),
 )
+
+it("a filter that admits near-misses pays to be told it was close", () => {
+  // The pair that made up a whole repository's 87 candidates, all declined with
+  // `one_concept` between 0.37 and 0.44: the extra word changes what the function
+  // DOES, so these are two operations that share a tail.
+  expect(
+    worthJudging("convertUtcDateToFormattedLocalizedDateTime", "convertUtcDateToLocalizedDateTime"),
+  ).toBe(false)
+  // And a word that adds nothing is not a difference at all.
+  expect(worthJudging("getUserProfile", "userProfile")).toBe(true)
+  expect(worthJudging("calculateOrderTotal", "orderTotal")).toBe(true)
+  // Identical words, different spelling: the rule's best bucket.
+  expect(worthJudging("userId", "userIdentifier")).toBe(true)
+  // A name against itself is not a pair.
+  expect(worthJudging("parsePrice", "parsePrice")).toBe(false)
+})
 
 it.effect("two distinct concepts are silence", () =>
   withWorkspace((workspace) =>

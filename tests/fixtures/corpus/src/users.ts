@@ -11,6 +11,6 @@ export function activeUsers(users: User[]): User[] {
   return users.filter((user) => user.name.length > 0)
 }
 
-export function fetchUserProfile(id: string): string {
+export function userProfile(id: string): string {
   return `/users/${id}`
 }

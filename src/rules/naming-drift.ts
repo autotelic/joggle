@@ -146,6 +146,54 @@ const nameScore = (left: string, right: string): number => {
   return union === 0 ? 0 : intersection / union
 }
 
+/**
+ * Words that do not distinguish one concept from another when they differ.
+ *
+ * The note on the filter has always said this is the discriminator -- "case,
+ * word order and an accessor verb like `get` or `calculate` do not distinguish
+ * anything" -- and the CODE admitted any single extra word, which is how
+ * `convertUtcDateToLocalizedDateTime` and `convertUtcDateToFormatted
+ * LocalizedDateTime` got in. On one repository that bucket was the whole of the
+ * rule's 87 candidates, and the model declined all 87 with `one_concept` between
+ * 0.37 and 0.44: not "no", but "not quite". A filter that produces near-misses
+ * at 0.42 is paying to be told it was close.
+ *
+ * The distinction is not the size of the difference but its kind. `get` in front
+ * of a name adds nothing; `formatted` in the middle of one changes what the
+ * function does, and two functions that do different things are two concepts no
+ * matter how much of their names they share.
+ */
+const NON_DISTINGUISHING = new Set([
+  "get", "fetch", "load", "read", "find", "lookup", "resolve", "query",
+  "calculate", "compute", "derive", "make", "build", "create", "do",
+  "the", "a", "an", "of", "for", "by", "with", "to", "from", "on",
+])
+
+/**
+ * Whether a pair of names is worth asking the model about.
+ *
+ * Exported so the filter can be tested as a rule of its own. It is the whole
+ * difference between a rule that costs money and one that spends it.
+ */
+export const worthJudging = (left: string, right: string): boolean => {
+  if (left === right) return false
+  const words = new Set(expanded(left))
+  const other = new Set(expanded(right))
+  let common = 0
+  for (const word of words) if (other.has(word)) common += 1
+  const differs = words.size - common + (other.size - common)
+  // Identical expanded words: the spellings differ and nothing else does.
+  if (differs === 0) return true
+  // One side inside the other, by exactly one word, and that word carries no
+  // meaning of its own.
+  const nested = common === words.size || common === other.size
+  if (!nested || differs !== 1) return false
+  const extra = words.size > other.size
+    ? [...words].filter((word) => !other.has(word))
+    : [...other].filter((word) => !words.has(word))
+  return extra.every((word) => NON_DISTINGUISHING.has(word))
+}
+
 const sharedWords = (left: string, right: string): number => {
   const a = new Set(expanded(left))
   let shared = 0
@@ -207,13 +255,7 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
         // an accessor verb like `get` or `calculate` do not distinguish anything.
         // That is a judgement the filter may make, because it is about shape
         // rather than about which of two names is right.
-        const words = new Set(expanded(one.name))
-        const other = new Set(expanded(two.name))
-        let common = 0
-        for (const word of words) if (other.has(word)) common += 1
-        const differs = words.size - common + (other.size - common)
-        const nested = common === words.size || common === other.size
-        if (differs !== 0 && !(nested && differs === 1)) continue
+        if (!worthJudging(one.name, two.name)) continue
 
         pairs.push({ left, right, score })
       }
