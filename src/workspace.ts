@@ -120,6 +120,16 @@ export interface SourceFile {
 export interface PackageManifest {
   readonly name: string
   readonly description: string | undefined
+  /**
+   * What the package declares that it depends on.
+   *
+   * The field that cannot be vacuous, and the reason `description` was not
+   * enough. `"fasdentify core package"` says nothing; `"dependencies": {
+   * "fastify": "^4" }` says everything. A package that declares a dependency has
+   * already answered whether importing it is intended, so the question never
+   * needs asking -- a fact, not a judgement.
+   */
+  readonly declares: ReadonlyArray<string>
 }
 
 export interface UnparsedFile {
@@ -822,9 +832,21 @@ const manifestAt = (
     const name = decoded["name"]
     if (typeof name !== "string" || name.length === 0) return undefined
     const description = decoded["description"]
+    // Every kind of dependency, because the question this answers is "has the
+    // package declared it?" and a devDependency is a declaration. Restricting
+    // this to runtime dependencies flagged `chai` and `@faker-js/faker` as
+    // undeclared imports, which they are not -- the distinction between runtime
+    // and development belongs to the judgement about whether an import FITS, and
+    // that is the model's question, not this one's.
+    const declares: Array<string> = []
+    for (const field of ["dependencies", "peerDependencies", "devDependencies"]) {
+      const block = decoded[field]
+      if (isRecord(block)) declares.push(...Object.keys(block))
+    }
     return {
       name,
       description: typeof description === "string" ? description : undefined,
+      declares,
     }
   })
 
@@ -1064,15 +1086,20 @@ export const loadWorkspace = (
     ]
     for (const directory of directories) {
       let cursor = directory
-      for (let depth = 0; depth < 6; depth += 1) {
-        if (cursor === "." || cursor === "") break
-        const manifest = yield* manifestAt(path.join(root, cursor))
+      // Bounded by the path itself rather than by a constant. Six levels is
+      // nothing in a monorepo: a file eight directories deep sits above its own
+      // manifest, and was grouped under a different name than its siblings.
+      for (let depth = 0; depth <= directory.split("/").length + 1; depth += 1) {
+        // The root has a manifest too, and it is the one that governs a file
+        // sitting at the top of the repository. Breaking before reading it made
+        // every dependency of `app.ts` and `index.ts` look undeclared.
+        const manifest = yield* manifestAt(cursor === "." ? root : path.join(root, cursor))
         if (manifest !== undefined) {
           manifests.set(directory, manifest)
           break
         }
         const parent = cursor.includes("/") ? cursor.slice(0, cursor.lastIndexOf("/")) : "."
-        if (parent === cursor) break
+        if (parent === cursor || cursor === ".") break
         cursor = parent
       }
     }
