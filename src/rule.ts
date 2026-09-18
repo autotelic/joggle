@@ -170,6 +170,41 @@ export const finding = (input: {
  * times. That is the tool working: the shape was identical, the names were
  * identical, and nothing about the three copies was intentional.
  */
+/**
+ * The names a judged question uses to decline, and the only two there are.
+ *
+ * The TypeSafe docs put `noIssue` in the mechanism map for EVERY dimension --
+ * "The selected evidence does not support a concrete correctness issue". It sits
+ * beside `condition` and `state` as a member of the vocabulary the model chooses
+ * from, not as a low score or an absent answer. So a decline is an ANSWER, and
+ * code can read it as one; that is the whole point. A question with no way to
+ * decline still gets answered, just with a small number that means nothing.
+ *
+ * This rule set had four names for two ideas -- `not_duplication`, `distinct`,
+ * `keep_local`, `none` -- which meant no shared reader, and no place to see that
+ * a question could not say "this is fine". Two names now, used everywhere:
+ *
+ *   no_issue        there is no problem here
+ *   not_applicable  the rule is looking at the wrong kind of thing
+ *
+ * A question that offers either documents it in `instructions.fallback`, so the
+ * decline is stated rather than left to be inferred from the option list.
+ */
+export const decline = { noIssue: "no_issue", notApplicable: "not_applicable" } as const
+
+/** Every name that means "no finding", for tests and for reading a vocabulary. */
+export const declineNames: ReadonlyArray<string> = [decline.noIssue, decline.notApplicable]
+
+/**
+ * True when a Choice declined.
+ *
+ * An absent choice is NOT a decline: it is silence, and the two are treated
+ * differently downstream -- a decline means the rule looked and found nothing,
+ * silence means the rule never got an answer.
+ */
+export const declined = (choice: string | undefined): boolean =>
+  choice === decline.noIssue || choice === decline.notApplicable
+
 export const choiceOf = (
   answers: Readonly<Record<string, Answer>>,
   id: string,

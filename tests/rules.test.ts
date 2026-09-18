@@ -42,9 +42,9 @@ it.effect("the model picks which member survives", () =>
   ),
 )
 
-it.effect("keep_variants and not_duplication are both silence", () =>
+it.effect("keep_variants and no_issue are both silence", () =>
   Effect.all(
-    ["keep_variants", "not_duplication"].map((verdict) =>
+    ["keep_variants", "no_issue"].map((verdict) =>
       withWorkspace((workspace) =>
         Effect.gen(function* () {
           const findings = (yield* duplicateImplementation.run(workspace, everyFile)).diagnostics
@@ -96,7 +96,7 @@ it.effect("near-duplicates stay quiet when the cluster is unrelated", () =>
     Effect.gen(function* () {
       const findings = (yield* duplicateMeaning.run(workspace, everyFile)).diagnostics
       expect(findings.length).toBe(0)
-    }).pipe(Effect.provide(judgeStub({ verdict: choice("not_duplication", 0.9) }))),
+    }).pipe(Effect.provide(judgeStub({ verdict: choice("no_issue", 0.9) }))),
   ),
 )
 
@@ -123,7 +123,7 @@ it.effect("two distinct concepts are silence", () =>
       expect(findings.length).toBe(0)
     }).pipe(
       Effect.provide(
-        judgeStub({ verdict: choice("distinct", 0.9), one_concept: noul(0.1) }),
+        judgeStub({ verdict: choice("no_issue", 0.9), one_concept: noul(0.1) }),
       ),
     ),
   ),

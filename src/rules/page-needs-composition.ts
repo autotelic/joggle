@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge, type JudgeRequest } from "../judge.ts"
-import { budgetNote, choiceOf, defineRule, finding, inScope, noulOf, outcome, type Scope } from "../rule.ts"
+import { budgetNote, choiceOf, declined, defineRule, finding, inScope, noulOf, outcome, type Scope } from "../rule.ts"
 import type { Diagnostic, Question } from "../schema.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
 
@@ -91,6 +91,7 @@ const questions = {
     instructions: {
       question: "Should this page's state and markup live in a composition bundle instead?",
       inspect: "`page`",
+      fallback: "Choose \`no_issue\` when the state is this page's own and nothing is shared.",
       focus:
         "The pattern earns its keep when several blocks share state that this file currently threads itself. A page with its own state and no sharing between pieces does not need it.",
       note: "Judge whether a bundle would remove real duplication of state, not whether this file is long.",
@@ -100,7 +101,7 @@ const questions = {
         "Its state and its pieces belong in a bundle with `{ state, actions, meta }`, exported by dot notation.",
       extract_some:
         "Part of it does, such as a repeated block or a group of elements that always travel together.",
-      keep_local:
+      no_issue:
         "No. The state is genuinely this page's own and a provider would be ceremony.",
     },
   },
@@ -114,7 +115,7 @@ const questions = {
       state_belongs_in_provider: "State threaded here belongs in a provider the pieces read directly.",
       markup_belongs_in_blocks: "Markup inlined here belongs in named blocks, one per file.",
       no_provider_root: "It needs the bundle's provider at its composition root.",
-      none: "Nothing; leave this page as it is.",
+      no_issue: "Nothing; leave this page as it is.",
     },
   },
   worth_fixing: {
@@ -135,7 +136,7 @@ const findingFor = (
   answers: Readonly<Record<string, import("../schema.ts").Answer>>,
 ): Diagnostic | undefined => {
   const verdict = choiceOf(answers, "verdict")
-  if (verdict === undefined || verdict.choice === "keep_local") return undefined
+  if (verdict === undefined || declined(verdict.choice)) return undefined
   const gap = choiceOf(answers, "primary_gap")
   const missing = gaps(page)
   return finding({
@@ -145,7 +146,7 @@ const findingFor = (
     help:
       missing.length === 0
         ? "See the composition pattern guide: a provider owns `{ state, actions, meta }` and blocks are exported by dot notation."
-        : `Gaps: ${missing.join("; ")}.${gap === undefined || gap.choice === "none" ? "" : ` Start with: ${gap.choice.replace(/_/g, " ")}.`}`,
+        : `Gaps: ${missing.join("; ")}.${gap === undefined || declined(gap.choice) ? "" : ` Start with: ${gap.choice.replace(/_/g, " ")}.`}`,
     location: { file: page.file.path, line: 1, column: 1 },
     identity: [RULE_ID, page.file.path].join("\u0000"),
     confidence: verdict.confidence,

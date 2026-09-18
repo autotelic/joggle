@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { makeCluster, nameList, type Cluster } from "../cluster.ts"
-import { budgetNote, choiceOf, defineRule, inScope, noulOf, outcome, type Scope } from "../rule.ts"
+import { budgetNote, choiceOf, declined, defineRule, inScope, noulOf, outcome, type Scope } from "../rule.ts"
 import { assessClusters, type ClusterRule } from "./cluster-verdict.ts"
 import type { Answer } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
@@ -48,6 +48,7 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
         type: "choice",
         instructions: {
           question: "What should happen to these two names?",
+          fallback: "Choose \`no_issue\` when the names denote two different concepts.",
           compare: ["{candidate}left.symbol", "{candidate}right.symbol"],
           focus:
             "{candidate}left.words and {candidate}right.words are what each name means; {candidate}same_words is true when only the spelling differs.",
@@ -55,7 +56,7 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
         criteria: {
           same_use_left: `One concept, two spellings. Standardize on \`${left?.name ?? "left"}\`.`,
           same_use_right: `One concept, two spellings. Standardize on \`${right?.name ?? "right"}\`.`,
-          distinct: "Two different concepts. Both names are correct. Change nothing.",
+          no_issue: "Two different concepts. Both names are correct. Change nothing.",
         },
       },
     },
@@ -64,7 +65,7 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
       const oneConcept = noulOf(answers, "one_concept")
       if (verdict === undefined) return undefined
       const score = oneConcept ?? verdict.confidence
-      if (verdict.choice === "distinct") {
+      if (declined(verdict.choice)) {
         return { keep: undefined, confidence: verdict.confidence, score }
       }
       return { keep: verdict.choice === "same_use_right" ? 1 : 0, confidence: verdict.confidence, score }

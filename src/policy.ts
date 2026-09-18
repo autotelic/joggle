@@ -26,7 +26,7 @@ export const policy = {
    * or evidence change, so verdicts produced by older questions are not replayed
    * against newer ones.
    */
-  questionVersion: "2026-09-02",
+  questionVersion: "2026-09-06",
 
   /**
    * Bump this when rule LOGIC changes. Question versioning covers the wording of

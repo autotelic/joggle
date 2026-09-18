@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge, type JudgeRequest, type JudgeResult } from "../judge.ts"
-import { choiceOf, finding, noulOf } from "../rule.ts"
+import { choiceOf, declined, finding, noulOf } from "../rule.ts"
 import type { Answer, Diagnostic, Question, Severity } from "../schema.ts"
 import { namesOf, type Cluster } from "../cluster.ts"
 import type { ImportGraph } from "../imports.ts"
@@ -118,6 +118,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         type: "choice",
         instructions: {
           question: "What should happen to these declarations?",
+          fallback: "Choose \`no_issue\` when the similarity is coincidence rather than repetition.",
           compare: ["{candidate}declarations"],
           focus: cluster.identical
             ? `They are syntactically identical, including property names and types.${note}`
@@ -127,7 +128,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
           collapse: "They are one thing. Keep one of them and delete the rest.",
           keep_variants:
             "Related but deliberately separate, such as a special case of a general routine. Keep them all.",
-          not_duplication: "Coincidentally similar. They are different things. Change nothing.",
+          no_issue: "Coincidentally similar. They are different things. Change nothing.",
         },
       },
       canonical: {
@@ -144,7 +145,10 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
       const redundant = noulOf(answers, "redundant")
       if (verdict === undefined) return undefined
       const score = redundant ?? verdict.confidence
-      if (verdict.choice === "keep_variants" || verdict.choice === "not_duplication") {
+      // `keep_variants` is a decision about the declarations; a decline is a
+      // decision about the question. Both suppress the finding, and only the
+      // second says the rule should not have asked.
+      if (verdict.choice === "keep_variants" || declined(verdict.choice)) {
         return { keep: undefined, confidence: verdict.confidence, score }
       }
       const canonical = choiceOf(answers, "canonical")
