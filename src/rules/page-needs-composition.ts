@@ -15,7 +15,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop, DropStage } from "../schema.ts"
-import { pageQuestions } from "../vocabulary.ts"
+import { pageQuestions, pageVerdictByRole } from "../vocabulary.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/page-needs-composition"
@@ -167,36 +167,88 @@ export const pageNeedsComposition = defineRule({
 
     const budget = policy.pageNeedsComposition.maxPages
     const judged = pages.slice(0, budget)
-    const requests: Array<JudgeRequest> = judged.map((page) => ({
-      evidence: {
-        page: {
-          path: page.file.path,
-          lines: page.lines,
-          local_state_calls: page.localState,
-          inline_elements: page.inlineElements,
-          imports_from_pattern_bundles: page.importsBundles,
-          renders_a_provider: page.rendersProvider,
-        },
-        gaps: gaps(page),
+    const evidenceFor = (page: Page) => ({
+      page: {
+        path: page.file.path,
+        lines: page.lines,
+        local_state_calls: page.localState,
+        inline_elements: page.inlineElements,
+        imports_from_pattern_bundles: page.importsBundles,
+        renders_a_provider: page.rendersProvider,
       },
-      questions,
-    }))
+      gaps: gaps(page),
+    })
 
     const judge = yield* Judge
-    // A verdict here is a guess, so without a judgement the rule is silent and
-    // the engine records it as skipped.
-    const results = yield* judge.askMany(requests)
 
-    const diagnostics: Array<Diagnostic> = []
-    // Pages past the budget are dropped candidates like any other, and saying so
-    // is the whole point: a cap that discards silently reads as a clean rule.
+    // ROUND ONE: what is this file?
+    //
+    // Cheaper and more useful than asking the real question directly, because the
+    // answer decides which real question to ask. The first version of this rule
+    // asked every file under routes/ whether it should be a bundle, produced
+    // 1,216 candidates, and got 237 shrugs -- a model asked a question that does
+    // not apply to the thing in front of it does not say so, it says 0.2.
+    const classified = yield* judge.askMany(
+      judged.map((page) => ({
+        evidence: evidenceFor(page),
+        questions: { role: pageQuestions.role },
+      })),
+    )
+
+    const roles: Array<{ page: Page; role: string }> = []
     const drops: Array<Drop> = pages.slice(budget).map((page) => ({
       ruleId: RULE_ID,
       subject: page.file.path,
       stage: "budget" as const,
       reason: `the run judged ${budget} page(s) and this one was past the budget`,
     }))
+
     judged.forEach((page, index) => {
+      const answer = classified[index]?.answers ?? {}
+      const role = choiceOf(answer, "role")
+      if (role === undefined) {
+        drops.push({
+          ruleId: RULE_ID,
+          subject: page.file.path,
+          stage: "unreadable",
+          reason: "the response did not classify this file",
+        })
+        return
+      }
+      if (declined(role.choice)) {
+        drops.push({
+          ruleId: RULE_ID,
+          subject: page.file.path,
+          stage: "declined",
+          reason: "the model classified it as not a page, modal or layout",
+        })
+        return
+      }
+      roles.push({ page, role: role.choice })
+    })
+
+    if (roles.length === 0) return outcome([], [], drops)
+
+    // ROUND TWO: the question the classification selected, with the vocabulary
+    // that kind of file is judged by.
+    const results = yield* judge.askMany(
+      roles.map(({ page, role }) => ({
+        evidence: { ...evidenceFor(page), role },
+        questions: {
+          verdict: {
+            ...pageQuestions.verdict,
+            criteria: pageVerdictByRole[role] ?? pageQuestions.verdict.criteria,
+          },
+          primary_gap: pageQuestions.primary_gap,
+          worth_fixing: pageQuestions.worth_fixing,
+        },
+      })),
+    )
+
+    const diagnostics: Array<Diagnostic> = []
+    // Only the files that survived classification are read here, and the index
+    // is into THAT list: round two asked about a different, shorter set.
+    roles.forEach(({ page }, index) => {
       const result = results[index]
       if (result === undefined) {
         drops.push({

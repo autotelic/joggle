@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, test } from "vitest"
 import { decline, declineNames, declined } from "../src/rule.ts"
-import { duplicateVocabulary, nameVocabulary, pageQuestions } from "../src/vocabulary.ts"
+import {
+  duplicateVocabulary,
+  nameVocabulary,
+  pageQuestions,
+  pageVerdictByRole,
+} from "../src/vocabulary.ts"
 
 const sourceOf = (file: string): string => readFileSync(new URL("../" + file, import.meta.url), "utf8")
 
@@ -42,6 +47,20 @@ describe("the decline vocabulary", () => {
       expect(offers, label + " has no decline option").toBe(true)
     }
     expect(nameVocabulary.noIssue.length).toBeGreaterThan(0)
+  })
+
+  test("every role is either judged by its own vocabulary or declined", () => {
+    // The classification SELECTS the next question's options, so the two cannot
+    // be allowed to drift: a role added without a verdict vocabulary would be
+    // judged by criteria written for a different kind of file, and the answer
+    // would be true of neither.
+    const verdictOptions = Object.keys(pageQuestions.verdict.criteria).sort()
+    for (const role of Object.keys(pageQuestions.role.criteria)) {
+      if (declineNames.includes(role)) continue
+      const criteria = pageVerdictByRole[role]
+      expect(criteria, role + " has no verdict vocabulary").toBeDefined()
+      expect(Object.keys(criteria ?? {}).sort(), role).toEqual(verdictOptions)
+    }
   })
 
   test("a question that offers a decline states it", () => {

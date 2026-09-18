@@ -47,6 +47,42 @@ export const nameVocabulary = {
 } as const
 
 /**
+ * What "extract this into a bundle" means, per kind of file.
+ *
+ * This is the `mechanisms[dimension]` shape from the TypeSafe docs: the first
+ * question's ANSWER selects the OPTIONS of the second. A route page and a modal
+ * are both worth asking about, but a bundle means a different thing to each -- a
+ * route owns a screen and its navigation state, a modal owns one interaction and
+ * its dismissal. Asking both with one vocabulary is how a question gets an answer
+ * that is true of neither.
+ */
+export const pageVerdictByRole: Record<string, Record<string, string>> = {
+  route_page: {
+    extract_to_bundle:
+      "Its state and its screen-wide pieces belong in a bundle with `{ state, actions, meta }`, exported by dot notation.",
+    extract_some:
+      "Part of it does, such as the panel that always travels with the data it reads.",
+    no_issue:
+      "No. This page's state is genuinely its own and a provider would be ceremony between it and its children.",
+  },
+  modal: {
+    extract_to_bundle:
+      "Its draft state and its steps belong in a bundle, so the form and its actions are not threaded through each step.",
+    extract_some:
+      "Part of it does, such as the step controls that repeat per field.",
+    no_issue:
+      "No. A modal with one piece of state and one submit needs no provider to share anything.",
+  },
+  layout: {
+    extract_to_bundle:
+      "It owns state that its children read, which is a bundle's job rather than a layout's.",
+    extract_some:
+      "Part of it does, such as the chrome that several children configure.",
+    no_issue: "No. A layout that renders children and owns nothing is exactly what a layout should be.",
+  },
+}
+
+/**
  * The page rule's questions, whole.
  *
  * Every string here is fixed, so there is nothing to build per candidate and
@@ -73,11 +109,11 @@ export const pageQuestions = {
   verdict: {
     type: "choice",
     instructions: {
-      question: "Should this page's state and markup live in a composition bundle instead?",
+      question: "Should this file's state and markup live in a composition bundle instead?",
       inspect: "`page`",
-      fallback: "Choose `no_issue` when the state is this page's own and nothing is shared.",
+      fallback: "Choose `no_issue` when the state is this file's own and nothing is shared.",
       focus:
-        "The pattern earns its keep when several blocks share state that this file currently threads itself. A page with its own state and no sharing between pieces does not need it.",
+        "The pattern earns its keep when several blocks share state that this file currently threads itself. A file with its own state and no sharing between pieces does not need it.",
       note: "Judge whether a bundle would remove real duplication of state, not whether this file is long.",
     },
     criteria: {
@@ -85,7 +121,7 @@ export const pageQuestions = {
         "Its state and its pieces belong in a bundle with `{ state, actions, meta }`, exported by dot notation.",
       extract_some:
         "Part of it does, such as a repeated block or a group of elements that always travel together.",
-      no_issue: "No. The state is genuinely this page's own and a provider would be ceremony.",
+      no_issue: "No. The state is genuinely this file's own and a provider would be ceremony.",
     },
   },
   primary_gap: {
