@@ -31,12 +31,14 @@ export interface Bundle {
   readonly hookFiles: ReadonlyArray<SourceFile>
 }
 
-const dirOf = (file: string): string => {
+/** The directory part of a path, or "." when there is none. */
+export const dirOf = (file: string): string => {
   const cut = file.lastIndexOf("/")
   return cut === -1 ? "." : file.slice(0, cut)
 }
 
-const baseOf = (file: string): string => {
+/** The last segment of a path. */
+export const baseOf = (file: string): string => {
   const cut = file.lastIndexOf("/")
   return cut === -1 ? file : file.slice(cut + 1)
 }

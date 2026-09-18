@@ -69,9 +69,17 @@ export const composeTypes = defineRule({
         // composition, and "B = A & { twenty-five more }" is a worse description
         // of B than B's own declaration is.
         if (whole.fields.length - part.fields.length > part.fields.length) continue
+        // Same NAME is not the same field. `SourceFile.units` is
+        // `ReadonlyArray<Unit>` and `Encoded.units` is `ReadonlyArray<unknown>`;
+        // composing one into the other on the strength of the name would have been
+        // wrong, and it is what the first version of this rule reported.
         const contained = signature
           .split("\u0000")
-          .every((field) => wholeFields.has(field))
+          .every(
+            (field) =>
+              wholeFields.has(field) &&
+              (whole.fieldTypes.get(field) ?? "") === (part.fieldTypes.get(field) ?? ""),
+          )
         if (contained) best = part
       }
       if (best === undefined) continue

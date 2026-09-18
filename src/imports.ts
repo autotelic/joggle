@@ -17,17 +17,20 @@ export interface ParsedImport {
   readonly typeOnly: boolean
 }
 
-export interface ImportEdge {
+/**
+ * One resolved import: everything the statement said, plus where it went.
+ *
+ * Composed rather than re-listed, which is what `joggle/compose-types` reported
+ * against this file. The three fields it shares with `ParsedImport` are the same
+ * three with the same declarations, so repeating them is a second place to change
+ * `typeOnly` and a second chance to disagree about it.
+ */
+export interface ImportEdge extends ParsedImport {
   /** Importing file, workspace-relative. */
   readonly from: string
-  /** The specifier as written, so a finding can be pointed at its own line. */
-  readonly specifier: string
   /** Resolved workspace-relative path, or the raw specifier when unresolved. */
   readonly to: string
   readonly resolved: boolean
-  readonly names: ReadonlyArray<string>
-  /** Erased at build time, so it cannot create a runtime cycle. */
-  readonly typeOnly: boolean
 }
 
 export interface ImportGraph {

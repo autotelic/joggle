@@ -58,6 +58,7 @@ const encodeUnit = (unit: Unit): unknown => ({
   typeRefs: unit.typeRefs,
   typed: unit.typed,
   fields: unit.fields,
+  fieldTypes: Object.fromEntries(unit.fieldTypes),
   test: unit.test,
   ...(unit.doc === undefined ? {} : { doc: unit.doc }),
 })
@@ -93,6 +94,7 @@ const decodeUnit = (raw: unknown, file: string, text: string): Unit | undefined 
   }
   if (!isRecord(raw["location"])) return undefined
   for (const field of ["typeRefs", "fields"]) if (!Array.isArray(raw[field])) return undefined
+  if (!isRecord(raw["fieldTypes"])) return undefined
 
   const start = raw["start"] as number
   const end = raw["end"] as number
@@ -118,6 +120,11 @@ const decodeUnit = (raw: unknown, file: string, text: string): Unit | undefined 
     typeRefs: raw["typeRefs"] as ReadonlyArray<string>,
     typed: raw["typed"] as boolean,
     fields: raw["fields"] as ReadonlyArray<string>,
+    fieldTypes: new Map(
+      Object.entries(raw["fieldTypes"] as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    ),
     test: raw["test"] as boolean,
     // Resolved after every file is parsed, so a cached value is always rewritten.
     typeSignature: "",

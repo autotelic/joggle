@@ -16,6 +16,8 @@ import {
 } from "../rule.ts"
 import type { Diagnostic, Drop, DropStage } from "../schema.ts"
 import { pageQuestions, pageVerdictByRole } from "../vocabulary.ts"
+import { baseOf, dirOf } from "../bundles.ts"
+import type { Result } from "./cluster-verdict.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/page-needs-composition"
@@ -35,18 +37,8 @@ const RULE_ID = "joggle/page-needs-composition"
  * local state and inline markup that a bundle would pay for itself.
  */
 
-const baseOf = (file: string): string => {
-  const cut = file.lastIndexOf("/")
-  return cut === -1 ? file : file.slice(cut + 1)
-}
-
 /** A page is a route, a page, or a modal -- not merely something under routes/. */
 const isPage = (file: string): boolean => /^(route|page)\.tsx?$/.test(baseOf(file)) || /modal/i.test(baseOf(file))
-
-const dirOf = (file: string): string => {
-  const cut = file.lastIndexOf("/")
-  return cut === -1 ? "." : file.slice(0, cut)
-}
 
 interface Page {
   readonly file: SourceFile
@@ -108,12 +100,6 @@ const questions = {
   verdict: pageQuestions.verdict,
   primary_gap: pageQuestions.primary_gap,
   worth_fixing: pageQuestions.worth_fixing,
-}
-
-/** Either a finding, or the reason there is none. Never both. */
-interface Result {
-  readonly diagnostic?: Diagnostic
-  readonly drop?: Drop
 }
 
 const findingFor = (

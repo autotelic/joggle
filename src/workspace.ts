@@ -65,6 +65,16 @@ export interface Unit {
    */
   readonly fields: ReadonlyArray<string>
   /**
+   * Each field's own declaration, normalised: `id: string`, `name?: string`.
+   *
+   * The set comparison in `compose-types` compared field NAMES, and two types can
+   * share a name with a different type behind it. `SourceFile.units` is
+   * `ReadonlyArray<Unit>`; `Encoded.units` is `ReadonlyArray<unknown>`. Reporting
+   * those as one type containing the other was wrong, and the fix is to keep what
+   * the field actually says.
+   */
+  readonly fieldTypes: ReadonlyMap<string, string>
+  /**
    * Whether this declaration came from a test file.
    *
    * Kept on the unit rather than used to exclude it, because the two cases are
@@ -463,6 +473,7 @@ interface DeclarationSite extends Span {
   readonly name: string
   readonly exported: boolean
   readonly fields: ReadonlyArray<string>
+  readonly fieldTypes: ReadonlyMap<string, string>
 }
 
 /**
@@ -473,7 +484,12 @@ interface DeclarationSite extends Span {
  * has no single field set and returns nothing -- `A & B` states its composition
  * already, which is the thing this is looking for.
  */
-const fieldsOf = (node: Record<string, unknown>): ReadonlyArray<string> => {
+interface FieldSet {
+  readonly names: ReadonlyArray<string>
+  readonly declarations: ReadonlyMap<string, string>
+}
+
+const fieldsOf = (node: Record<string, unknown>, text: string): FieldSet => {
   const members =
     node["type"] === "TSInterfaceDeclaration"
       ? isRecord(node["body"])
@@ -482,19 +498,33 @@ const fieldsOf = (node: Record<string, unknown>): ReadonlyArray<string> => {
       : node["type"] === "TSTypeAliasDeclaration" && isRecord(node["typeAnnotation"])
         ? (node["typeAnnotation"] as Record<string, unknown>)["members"]
         : undefined
-  if (!Array.isArray(members)) return []
+  if (!Array.isArray(members)) return { names: [], declarations: new Map() }
   const names: Array<string> = []
+  const declarations = new Map<string, string>()
   for (const member of members) {
     if (!isRecord(member)) continue
     const key = member["key"]
     if (!isRecord(key)) continue
-    if (typeof key["name"] === "string") names.push(key["name"])
-    else if (typeof key["value"] === "string") names.push(key["value"])
+    const name =
+      typeof key["name"] === "string"
+        ? key["name"]
+        : typeof key["value"] === "string"
+          ? key["value"]
+          : undefined
+    if (name === undefined || declarations.has(name)) continue
+    const start = member["start"]
+    const end = member["end"]
+    const declaration =
+      typeof start === "number" && typeof end === "number"
+        ? text.slice(start, end).replace(/\s+/g, " ").trim()
+        : name
+    names.push(name)
+    declarations.set(name, declaration)
   }
-  return [...new Set(names)]
+  return { names, declarations }
 }
 
-const sitesIn = (program: Record<string, unknown>): ReadonlyArray<DeclarationSite> => {
+const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<DeclarationSite> => {
   const body = program["body"]
   if (!Array.isArray(body)) return []
   const sites: Array<DeclarationSite> = []
@@ -505,7 +535,16 @@ const sitesIn = (program: Record<string, unknown>): ReadonlyArray<DeclarationSit
     const start = node["start"]
     const end = node["end"]
     if (typeof start !== "number" || typeof end !== "number") return
-    sites.push({ kind, name, start, end, exported, fields: fieldsOf(node) })
+    const fieldSet = fieldsOf(node, text)
+    sites.push({
+      kind,
+      name,
+      start,
+      end,
+      exported,
+      fields: fieldSet.names,
+      fieldTypes: fieldSet.declarations,
+    })
   }
 
   const fromDeclaration = (declaration: unknown, exported: boolean): void => {
@@ -572,6 +611,7 @@ const sitesIn = (program: Record<string, unknown>): ReadonlyArray<DeclarationSit
               end: value["end"],
               exported,
               fields: [],
+              fieldTypes: new Map(),
             })
           } else {
             push(member, "function", name, exported)
@@ -735,7 +775,7 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
 
   const units: Array<Unit> = []
   if (isRecord(program)) {
-    for (const site of sitesIn(program)) {
+    for (const site of sitesIn(program, text)) {
       const shape = normalize(text, site, identifiers, comments)
       const tokens = tokenize(shape)
       const from = locate(starts, site.start)
@@ -772,6 +812,7 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         typeRefs,
         typed: typeRefs.length > 0,
         fields: site.fields,
+        fieldTypes: site.fieldTypes,
         test: policy.testFiles.test(file),
         typeSignature: "",
         doc: docFor(site.start),
