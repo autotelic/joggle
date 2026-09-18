@@ -221,6 +221,17 @@ export const policy = {
   },
 
   /**
+   * How many modules one run will classify.
+   *
+   * One question per module, batched, and content-addressed, so a second rule
+   * asking about the same modules replays rather than calls. The bound is against
+   * a pathological repository rather than a budget anybody should reach.
+   */
+  moduleRoles: {
+    maxModules: 600,
+  },
+
+  /**
    * Object literals that should be a named type.
    *
    * `minKeys` is what separates a shape from a coincidence: two literals sharing

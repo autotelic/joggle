@@ -42,6 +42,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       "joggle/duplicate-implementation",
       "joggle/duplicate-meaning",
       "joggle/hoist-to-domain",
+      "joggle/module-direction",
       "joggle/naming-drift",
     ])
     expect(report.skipped.every((skip) => skip.reason.includes("cache boundary"))).toBe(true)
@@ -74,7 +75,7 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     // and call-pattern comparison -- plus five judged ones. The composition rules are a preset and
     // are not in this run at all, which is what makes them an opinion rather than
     // an inheritance.
-    expect(report.rules).toBe(13)
+    expect(report.rules).toBe(14)
     expect(report.diagnostics.length).toBe(1)
     // The fixture has no bundles, pages or modals, so the structural rules find
     // nothing and the page rule produces no candidates. A rule with nothing to
@@ -82,8 +83,12 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     // dependency-fit is absent rather than skipped: the fixture imports nothing
     // external, so it has no candidates and never reaches the judge. Idle, not
     // skipped -- the same distinction the page rule makes.
+    // module-direction is here because the fixture HAS modules: it classifies them
+    // before it can say anything about direction, so it reaches the judge on a
+    // repository that declares no layers.
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/duplicate-meaning",
+      "joggle/module-direction",
       "joggle/naming-drift",
     ])
     for (const skip of report.skipped) {
