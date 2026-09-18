@@ -83,6 +83,12 @@ export interface SourceFile {
  * The deterministic substrate. Its only job is to make candidate generation
  * cheap and high-recall; it makes no judgements.
  */
+/** A file that was read and could not be parsed, with the parser's own words. */
+export interface UnparsedFile {
+  readonly path: string
+  readonly reason: string
+}
+
 export interface Workspace {
   readonly root: string
   readonly files: ReadonlyArray<SourceFile>
@@ -316,12 +322,41 @@ const locate = (starts: ReadonlyArray<number>, offset: number): { line: number; 
 /* Extraction                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * What counts as source.
+ *
+ * This used to be TypeScript only, and it was never a decision: the extension
+ * list arrived with the first rebuild and nobody revisited it. On one real
+ * repository that meant 1,457 JavaScript files -- an entire API and an entire
+ * admin UI -- were never read, while the report said "287 files" with no hint
+ * that four fifths of the tree was missing. A partial analysis that looks
+ * complete is the worst output this program can produce.
+ *
+ * Declarations stay out: a `.d.ts` describes a build's output rather than a
+ * source file, and analysing one reports on code nobody wrote.
+ */
 const looksLikeSource = (file: string): boolean => {
   if (file.endsWith(".d.ts") || file.endsWith(".d.mts") || file.endsWith(".d.cts")) return false
-  return file.endsWith(".ts") || file.endsWith(".tsx") || file.endsWith(".mts") || file.endsWith(".cts")
+  return /\.(?:[cm]?[jt]sx?)$/.test(file)
 }
 
-const langOf = (file: string): "ts" | "tsx" => (file.endsWith(".tsx") ? "tsx" : "ts")
+type Lang = "js" | "jsx" | "ts" | "tsx"
+
+/**
+ * The language of a file, from its extension.
+ *
+ * `.js` is the interesting one. JSX in a `.js` file is legal under the configs
+ * most React applications use, and oxc parses `lang: "js"` strictly enough to
+ * reject it. So the extension gives a first guess and the parser gets the last
+ * word -- see `parseSourceFile`, which gives a `.js` file a second reading as
+ * JSX when the first one reports errors, rather than guessing from the contents.
+ */
+const langOf = (file: string): Lang => {
+  if (file.endsWith(".tsx")) return "tsx"
+  if (file.endsWith(".jsx")) return "jsx"
+  if (file.endsWith(".ts") || file.endsWith(".mts") || file.endsWith(".cts")) return "ts"
+  return "js"
+}
 
 interface DeclarationSite extends Span {
   readonly kind: UnitKind
@@ -525,8 +560,21 @@ const structureIn = (root: unknown): StructureFacts => {
   return { calls: [...calls], jsx: [...jsx], objects }
 }
 
-const parseSourceFile = (file: string, text: string): SourceFile => {
-  const parsed = parseSync(file, text, { sourceType: "module", lang: langOf(file) })
+/** A parse result, whichever language produced it. */
+type ParsedSource = ReturnType<typeof parseSync>
+
+const describeParseErrors = (errors: ReadonlyArray<unknown>): string => {
+  const first = errors[0]
+  const message =
+    typeof first === "object" &&
+    first !== null &&
+    typeof (first as Record<string, unknown>)["message"] === "string"
+      ? ((first as Record<string, unknown>)["message"] as string)
+      : "the parser rejected this file"
+  return errors.length > 1 ? message + " (and " + (errors.length - 1) + " more)" : message
+}
+
+const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): SourceFile => {
   const program: unknown = parsed.program
   const identifiers = collectIdentifiers(program)
   const comments = parsed.comments.map((comment) => ({
@@ -587,6 +635,31 @@ const parseSourceFile = (file: string, text: string): SourceFile => {
   }
   const imports = isRecord(program) ? importsIn(program) : []
   return { path: file, text, units, imports, facts: structureIn(program) }
+}
+
+/** A file we read, and either parsed or could not. */
+export type ParseOutcome =
+  | { readonly ok: true; readonly file: SourceFile }
+  | { readonly ok: false; readonly reason: string }
+
+/**
+ * Parse a file, giving `.js` a second reading as JSX.
+ *
+ * One retry, and then the file is REPORTED as unparsed rather than silently
+ * contributing nothing. The `errors` array was never read here, so a file the
+ * parser rejected looked exactly like a file with no declarations in it -- and
+ * every rule's view of the repository had a hole nobody could see.
+ */
+const parseSourceFile = (file: string, text: string): ParseOutcome => {
+  const lang = langOf(file)
+  const first = parseSync(file, text, { sourceType: "module", lang })
+  if (first.errors.length === 0) return { ok: true, file: sourceFileFrom(file, text, first) }
+
+  if (lang === "js") {
+    const retry = parseSync(file, text, { sourceType: "module", lang: "jsx" })
+    if (retry.errors.length === 0) return { ok: true, file: sourceFileFrom(file, text, retry) }
+  }
+  return { ok: false, reason: describeParseErrors(first.errors) }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -691,6 +764,7 @@ export const loadWorkspace = (
     const files =
       discovered ?? (yield* resolveInputs(root, inputs.length > 0 ? inputs : ["."]))
     const parsed: Array<SourceFile> = []
+    const unparsed: Array<UnparsedFile> = []
     for (const absolute of files) {
       const preloaded = contents?.get(absolute)
       const text =
@@ -702,7 +776,10 @@ export const loadWorkspace = (
         ))
       // Diagnostics carry paths relative to the root, so output is stable and
       // hosts such as GitHub Actions can annotate the right file.
-      parsed.push(parseSourceFile(path.relative(root, absolute), text))
+      const relative = path.relative(root, absolute)
+      const outcome = parseSourceFile(relative, text)
+      if (outcome.ok) parsed.push(outcome.file)
+      else unparsed.push({ path: relative, reason: outcome.reason })
     }
     const graph = buildImportGraph(parsed, path)
     // Resolution happens here, not at parse time, because it needs the whole
@@ -731,5 +808,5 @@ export const loadWorkspace = (
       if (existing === undefined) byName.set(unit.name, [unit])
       else existing.push(unit)
     }
-    return { root, files: parsed, units, byName, imports: graph }
+    return { root, files: parsed, units, byName, imports: graph, unparsed }
   })
