@@ -149,7 +149,9 @@ export const contextHook = ruleFor({
       return [`no \`use${bundle.name}\` hook, so blocks cannot read the context without importing it directly`]
     }
     const readsContext = bundle.hookFiles.some((file) =>
-      file.facts.calls.some((call) => call === "useContext" || call.endsWith(".useContext")),
+      file.facts.callSites.some(
+        (site) => site.name === "useContext" || site.name.endsWith(".useContext"),
+      ),
     )
     if (!readsContext) {
       return [`${bundle.hookNames.join(", ")} does not call \`useContext\`, so it is not the bundle's context hook`]

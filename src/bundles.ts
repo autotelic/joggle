@@ -51,7 +51,8 @@ export const bundleNameOf = (dir: string): string =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("")
 
-const calls = (file: SourceFile): ReadonlyArray<string> => file.facts.calls
+const calls = (file: SourceFile): ReadonlyArray<string> =>
+  file.facts.callSites.map((site) => site.name)
 
 /** Test files are not part of a bundle's surface. */
 const isTest = (file: string): boolean => /\.(test|spec)\.[jt]sx?$/.test(file)

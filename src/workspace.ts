@@ -78,6 +78,17 @@ export interface Unit {
    */
   readonly fieldTypes: ReadonlyMap<string, string>
   /**
+   * Every call this declaration makes, resolved to where the callee is declared.
+   *
+   * Ordered, with repeats: two calls to the same function are two calls. This is
+   * the second signal a body carries -- what it DOES, against what it looks like
+   * -- and it is the one that survives a rewrite, since a re-implementation can
+   * have a different shape and the same orchestration.
+   */
+  calls: ReadonlyArray<string>
+  /** `calls` joined, so two declarations can be compared as sequences. */
+  callSignature: string
+  /**
    * Whether this declaration came from a test file.
    *
    * Kept on the unit rather than used to exclude it, because the two cases are
@@ -114,9 +125,23 @@ export interface Unit {
  * of truth: the cache file is external -- it can be truncated or edited by hand --
  * so it is worth decoding, and the type follows from what the decoder accepts.
  */
+/** One call, where it is, and what it names. */
+export const CallSite = Schema.Struct({
+  /** Callee name, dotted for member calls: `createContext`, `React.useState`. */
+  name: Schema.String,
+  start: Schema.Number,
+  end: Schema.Number,
+})
+
 export const StructureFacts = Schema.Struct({
-  /** Callee names, dotted for member calls: `createContext`, `React.useState`. */
-  calls: Schema.Array(Schema.String),
+  /**
+   * Every call site in the file, in order.
+   *
+   * Ordered and not deduplicated, because both properties are load-bearing: a
+   * count needs multiplicity and a PATTERN is a sequence. The span is what lets a
+   * call be attributed to the declaration that makes it.
+   */
+  callSites: Schema.Array(CallSite),
   /** Element names as written, dotted for member JSX: `Button`, `Counter.Provider`. */
   jsx: Schema.Array(Schema.String),
   /** Key names of every object literal, one entry per literal. */
@@ -692,7 +717,7 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
  * `state`, `actions` and `meta` among its keys.
  */
 const structureIn = (root: unknown): StructureFacts => {
-  const calls = new Set<string>()
+  const callSites: Array<Schema.Schema.Type<typeof CallSite>> = []
   const jsx = new Set<string>()
   const objects: Array<ReadonlyArray<string>> = []
 
@@ -726,7 +751,17 @@ const structureIn = (root: unknown): StructureFacts => {
     switch (node["type"]) {
       case "CallExpression": {
         const called = nameOf(node["callee"])
-        if (called !== undefined) calls.add(called)
+        const start = node["start"]
+        const end = node["end"]
+        // Every call site, in order, with its span.
+        //
+        // This was a Set, so a file calling useState thirty-four times reported
+        // one -- and a rule whose TRIGGER counted those calls could never fire.
+        // Order is kept because a call PATTERN is a sequence, and the span is
+        // kept so a call can be attributed to the declaration that makes it.
+        if (called !== undefined && typeof start === "number" && typeof end === "number") {
+          callSites.push({ name: called, start, end })
+        }
         break
       }
       case "JSXOpeningElement":
@@ -756,7 +791,7 @@ const structureIn = (root: unknown): StructureFacts => {
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
-  return { calls: [...calls], jsx: [...jsx], objects }
+  return { callSites, jsx: [...jsx], objects }
 }
 
 /** A parse result, whichever language produced it. */
@@ -835,6 +870,8 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         typed: typeRefs.length > 0,
         fields: site.fields,
         fieldTypes: site.fieldTypes,
+        calls: [],
+        callSignature: "",
         test: policy.testFiles.test(file),
         typeSignature: "",
         doc: docFor(site.start),
@@ -1250,6 +1287,14 @@ export const loadWorkspace = (
     }
     parsed.forEach((file) => {
       file.units.forEach((unit) => {
+        // Calls made inside this declaration's span, in the order they are made,
+        // resolved to the declaration they reach. `resolveRef` is the same
+        // function the type pass uses: a name is a name, whether it appears in
+        // type position or before a pair of parentheses.
+        unit.calls = file.facts.callSites
+          .filter((site) => site.start >= unit.start && site.end <= unit.end)
+          .map((site) => resolveRef(file.path, site.name))
+        unit.callSignature = unit.calls.join("|")
         unit.typeSignature = unit.typeRefs
           .map((name) => resolveRef(file.path, name))
           .sort()

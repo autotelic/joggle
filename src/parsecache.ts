@@ -180,8 +180,12 @@ const unitFrom = (
     fields: entry.fields,
     fieldTypes: new Map(Object.entries(entry.fieldTypes)),
     test: entry.test,
-    // Resolved after every file is parsed, so a cached value is always rewritten.
+    // Three fields the resolution pass fills in, so none is stored: the calls a
+    // declaration makes depend on the whole file set, exactly as its resolved
+    // types do.
     typeSignature: "",
+    calls: [],
+    callSignature: "",
     doc: entry.doc,
   }
 }

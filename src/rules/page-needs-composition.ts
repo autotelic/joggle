@@ -51,7 +51,11 @@ interface Page {
 const candidatesIn = (workspace: Workspace): ReadonlyArray<Page> => {
   const bundleDirs = new Set<string>()
   for (const file of workspace.files) {
-    if (file.facts.calls.some((call) => call === "createContext" || call.endsWith(".createContext"))) {
+    if (
+      file.facts.callSites.some(
+        (site) => site.name === "createContext" || site.name.endsWith(".createContext"),
+      )
+    ) {
       bundleDirs.add(dirOf(file.path))
     }
   }
@@ -60,8 +64,11 @@ const candidatesIn = (workspace: Workspace): ReadonlyArray<Page> => {
   const pages: Array<Page> = []
   for (const file of workspace.files) {
     if (!isPage(file.path)) continue
-    const localState = file.facts.calls.filter(
-      (call) => call === "useState" || call.endsWith(".useState"),
+    // Call SITES, not distinct names. This was counting a deduplicated set, so a
+    // file with thirty-four useState calls reported one and the gate below --
+    // which wants three -- could never be satisfied. The rule had never fired.
+    const localState = file.facts.callSites.filter(
+      (site) => site.name === "useState" || site.name.endsWith(".useState"),
     ).length
     const inlineElements = file.facts.jsx.length
     if (localState < minLocalState || inlineElements < minInlineElements) continue
