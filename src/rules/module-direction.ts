@@ -64,6 +64,11 @@ export const moduleDirection = defineRule({
       const to = classified.roles.get(moduleKey(edge.to, workspace))
       if (from === undefined || to === undefined) continue
       if (from === to) continue
+      // A module and its own subdirectory are not two layers. `src/react/rules`
+      // importing from `src/react` is a child reaching into its parent area,
+      // which is what nesting is for, and reporting it as an architectural
+      // violation is how a direction check becomes noise.
+      if (from.startsWith(to + "/") || to.startsWith(from + "/")) continue
       const fromRank = roleRank[from]
       const toRank = roleRank[to]
       // A role with no rank is not part of the architecture: a test may import
