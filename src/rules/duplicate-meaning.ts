@@ -56,6 +56,8 @@ const candidatePair = (
 interface Candidates {
   readonly clusters: ReadonlyArray<Cluster>
   readonly oversized: ReadonlyArray<Cluster>
+  /** Members left out because their group was a chain rather than a family. */
+  readonly chained: number
 }
 
 const find = (workspace: Workspace, scope: Scope): Candidates => {
@@ -75,32 +77,79 @@ const find = (workspace: Workspace, scope: Scope): Candidates => {
     (pair) => pair.score <= maxSimilarity && candidatePair(units, scope, pair),
   )
 
+  // Similarity is NOT transitive, and union-find over a non-transitive relation
+  // does not produce concepts. If A resembles B and B resembles C, A and C can
+  // have nothing in common -- and across a codebase that chains hundreds of
+  // declarations into one "concept". One repository produced:
+  //
+  //   105 declarations that may be one thing: down
+  //
+  // which was every migration's `down` function: each one differs from its
+  // neighbours by a table name, so each pair cleared the threshold and the chain
+  // closed around all of them.
+  //
+  // The model cannot answer that, and the answer it gives is the only one
+  // available. So a cluster now has to be a CLIQUE: every member similar to every
+  // other member, which is the condition that makes "these N are one thing" a
+  // question rather than a path through a graph.
+  const scoreOf = new Map<string, number>()
+  const adjacency = new Map<number, Set<number>>()
+  const link = (from: number, to: number): void => {
+    const existing = adjacency.get(from)
+    if (existing === undefined) adjacency.set(from, new Set([to]))
+    else existing.add(to)
+  }
+  for (const pair of pairs) {
+    scoreOf.set(pair.left + ":" + pair.right, pair.score)
+    scoreOf.set(pair.right + ":" + pair.left, pair.score)
+    link(pair.left, pair.right)
+    link(pair.right, pair.left)
+  }
+  const adjacent = (one: number, other: number): boolean =>
+    adjacency.get(one)?.has(other) === true
+
   const groups = components(
     workspace.units.length,
     pairs.map((pair) => [pair.left, pair.right] as const),
   )
-  const groupOf = new Map<number, number>()
-  groups.forEach((group, id) => {
-    for (const index of group) groupOf.set(index, id)
-  })
-  const overlapOf = new Map<number, number>()
-  for (const pair of pairs) {
-    const id = groupOf.get(pair.left)
-    if (id === undefined) continue
-    if ((overlapOf.get(id) ?? 0) < pair.score) overlapOf.set(id, pair.score)
-  }
 
+  let chained = 0
   const clusters: Array<Cluster> = []
-  groups.forEach((group, id) => {
-    if (group.length < 2) return
-    const members = group
+  for (const group of groups) {
+    if (group.length < 2) continue
+    // Largest-clique-first: the member with the most neighbours starts, and a
+    // member joins only if it is adjacent to everything already chosen. Greedy
+    // rather than maximal, which is enough -- the alternative is a smaller
+    // cluster, not a wrong one.
+    const ordered = [...group].sort(
+      (left, right) => (adjacency.get(right)?.size ?? 0) - (adjacency.get(left)?.size ?? 0),
+    )
+    const clique: Array<number> = []
+    for (const index of ordered) {
+      if (clique.every((member) => adjacent(index, member))) clique.push(index)
+    }
+    chained += group.length - clique.length
+    if (clique.length < 2) continue
+
+    const members = clique
       .map((index) => workspace.units[index])
       .filter((unit): unit is Unit => unit !== undefined)
-    if (members.length < 2) return
+    if (members.length < 2) continue
     // Test fixtures are compared only against each other.
-    if (members.every((unit) => unit.test)) return
-    clusters.push(makeCluster(members, false, overlapOf.get(id) ?? 0))
-  })
+    if (members.every((unit) => unit.test)) continue
+
+    let overlap = 0
+    for (let a = 0; a < clique.length; a += 1) {
+      for (let b = a + 1; b < clique.length; b += 1) {
+        const left = clique[a]
+        const right = clique[b]
+        if (left === undefined || right === undefined) continue
+        const score = scoreOf.get(left + ":" + right) ?? 0
+        if (score > overlap) overlap = score
+      }
+    }
+    clusters.push(makeCluster(members, false, overlap))
+  }
   // A cluster bigger than the evidence panel cannot be a question. Only
   // `policy.evidence.maxMembers` of its members are ever shown, so the model is
   // asked about 105 declarations while looking at 12 of them -- and its answer
@@ -117,6 +166,7 @@ const find = (workspace: Workspace, scope: Scope): Candidates => {
   return {
     clusters: answerable,
     oversized: clusters.filter((cluster) => cluster.members.length > policy.evidence.maxMembers),
+    chained,
   }
 }
 
@@ -126,7 +176,7 @@ export const duplicateMeaning = defineRule({
   description: "Near-duplicates where a judgement says one declaration replaces the other.",
   judged: true,
   run: Effect.fn("joggle/duplicate-meaning")(function* (workspace, scope, context) {
-    const { clusters, oversized } = find(workspace, scope)
+    const { clusters, oversized, chained } = find(workspace, scope)
     const budget = policy.duplicateMeaning.maxClusters
     const { diagnostics: findings, drops } = yield* assessClusters(
       spec,
@@ -165,6 +215,15 @@ export const duplicateMeaning = defineRule({
                 " cluster(s) were too large to be one decision (" +
                 oversized.reduce((sum, cluster) => sum + cluster.members.length, 0) +
                 " declarations): generated from one template rather than duplicated",
+            ]),
+        // What the clique requirement left out, because a silent narrowing is the
+        // thing this program keeps having to design against. These are members
+        // that resembled their neighbours without resembling each other.
+        ...(chained === 0
+          ? []
+          : [
+              chained +
+                " declaration(s) were left out of a cluster: they resembled a neighbour without resembling every member, so grouping them would have made a chain rather than a family",
             ]),
       ],
       [...tooManyToShow, ...drops],

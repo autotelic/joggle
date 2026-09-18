@@ -131,6 +131,31 @@ export const pageVerdictByRole: Record<string, Record<string, string>> = {
 }
 
 /**
+ * What a module is FOR, asked once per module rather than once per declaration.
+ *
+ * The same classification-first move as the page rule and the dependency check,
+ * one level up: "business logic at the edge" only means something at an edge, so
+ * the first question is whether this is one. On one repository this separated
+ * 1,259 declarations into the modules that could contain a hoist candidate and the
+ * modules that could not, and it gives every later question the context it was
+ * previously missing.
+ */
+export const moduleRoles = {
+  domain_core:
+    "The rules and shapes the business is about. Other modules depend on it and it depends on nothing internal.",
+  transport_edge:
+    "HTTP: handlers, routes, request parsing, response shaping, status codes.",
+  rendering_edge: "A user interface: components, routes, forms, view state.",
+  infrastructure:
+    "A database, a queue, a mail sender, or a client for a third party.",
+  utilities: "Generic helpers that would make sense in any codebase.",
+  not_applicable: "Tests, scripts, migrations, seeds or configuration.",
+}
+
+/** Whether a module can hold a declaration that has crept out of the core. */
+export const EDGE_ROLES: ReadonlySet<string> = new Set(["transport_edge", "rendering_edge"])
+
+/**
  * What a declaration is doing, which decides whether its location is a problem.
  *
  * The same distinction the duplicate rule needs, one level up. A calculation is a
