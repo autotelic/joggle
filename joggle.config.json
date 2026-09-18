@@ -7,8 +7,8 @@
     "joggle/bundle-one-file-per-block": "warn",
     "joggle/bundle-context-hook": "warn",
     "joggle/page-needs-composition": "warn",
-    "joggle/naming-drift": "off",
-    "joggle/duplicate-meaning": "off",
+    "joggle/naming-drift": "warn",
+    "joggle/duplicate-meaning": "warn",
     "joggle/layer-direction": "warn",
     "joggle/import-cycle": "warn"
   },
