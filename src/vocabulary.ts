@@ -148,6 +148,19 @@ export const moduleRoles = {
   rendering_edge: "A user interface: components, routes, forms, view state.",
   infrastructure:
     "A database, a queue, a mail sender, or a client for a third party.",
+  /**
+   * The machinery of the tool or library itself.
+   *
+   * Added because running joggle against its own source put `check.ts`,
+   * `report.ts`, `judge.ts` and `rule.ts` in `not_applicable` -- the bucket meant
+   * for tests, scripts and configuration. Nothing should be hoisted out of an
+   * engine either, so the outcome was right, but it was right by accident: the
+   * model reached for the nearest option because the vocabulary had none for a
+   * repository that IS the application. `not_applicable` is where a mistake hides,
+   * since a declaration wrongly put there is silently never a candidate.
+   */
+  library_core:
+    "The machinery of this tool or library itself, which exists to serve code outside it.",
   utilities: "Generic helpers that would make sense in any codebase.",
   not_applicable: "Tests, scripts, migrations, seeds or configuration.",
 }

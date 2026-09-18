@@ -23,7 +23,13 @@
     "layers": [
       {
         "name": "contract",
-        "include": ["src/schema.ts", "src/state.ts", "src/policy.ts", "src/config.ts"]
+        "include": [
+          "src/schema.ts",
+          "src/state.ts",
+          "src/policy.ts",
+          "src/config.ts",
+          "src/vocabulary.ts"
+        ]
       },
       {
         "name": "kernel",
@@ -36,12 +42,23 @@
           "src/architecture.ts",
           "src/workspace.ts",
           "src/tsgo.ts",
-          "src/judge.ts"
+          "src/judge.ts",
+          "src/gitignore.ts",
+          "src/fingerprint.ts",
+          "src/parsecache.ts",
+          "src/plugins.ts",
+          "src/testing.ts"
         ]
       },
-      { "name": "rules", "include": ["src/rules/**"] },
+      {
+        "name": "rules",
+        "include": ["src/rules/**", "src/presets/**"]
+      },
       { "name": "engine", "include": ["src/check.ts", "src/report.ts"] },
-      { "name": "entry", "include": ["src/main.ts"] }
+      {
+        "name": "entry",
+        "include": ["src/main.ts", "src/plugin.ts"]
+      }
     ]
   },
   "evidence": {
