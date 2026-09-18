@@ -8,6 +8,7 @@ import {
   declined,
   defineRule,
   finding,
+  marginOf,
   outcome,
   type Scope,
 } from "../rule.ts"
@@ -251,11 +252,6 @@ export const dependencyFit = defineRule({
       }
     })
 
-    const judge = yield* Judge
-    // A verdict here is a guess about someone else's design, so without one the
-    // rule stays silent rather than inventing a finding.
-    const results = yield* judge.askMany(requests)
-
     const diagnostics: Array<Diagnostic> = []
     const drops: Array<Drop> = dependencies.slice(budget).map((dependency) => ({
       ruleId: RULE_ID,
@@ -264,8 +260,40 @@ export const dependencyFit = defineRule({
       reason: "this run judged " + budget + " dependencies and this one was past the budget",
     }))
 
+    const judge = yield* Judge
+    // A verdict here is a guess about someone else's design, so without one the
+    // rule stays silent rather than inventing a finding. It still reports what it
+    // looked at: the candidate count is how you decide whether to make the run
+    // that needs a key.
+    const asked = yield* judge.askMany(requests).pipe(
+      Effect.map((results) => ({ ok: true as const, results })),
+      Effect.catch((error) =>
+        Effect.succeed({
+          ok: false as const,
+          reason:
+            typeof error === "object" && error !== null && "reason" in error
+              ? String((error as { reason: unknown }).reason)
+              : String(error),
+        }),
+      ),
+    )
+    if (!asked.ok) {
+      return outcome([], [], [
+        ...drops,
+        ...judged.map((dependency) => ({
+          ruleId: RULE_ID,
+          subject: label(dependency),
+          stage: "unreadable" as const,
+          reason: "no judgement available: " + asked.reason,
+        })),
+      ])
+    }
+    const results = asked.results
+
+
     judged.forEach((dependency, index) => {
-      const verdict = choiceOf(results[index]?.answers ?? {}, "fit")
+      const answers = results[index]?.answers ?? {}
+      const verdict = choiceOf(answers, "fit")
       if (verdict === undefined) {
         drops.push({
           ruleId: RULE_ID,
@@ -280,6 +308,11 @@ export const dependencyFit = defineRule({
       // common one: `@autotelic/fasdentify` imports `fastify` in 29 files and its
       // manifest has no `fastify` entry. That works on a developer's machine and
       // fails on a clean install, because it is only there by hoisting.
+      // A Choice that barely won is not a decision, and a package that imports
+      // something it does not declare is a fact regardless of what the model
+      // thinks of it -- so the gate decides the QUALIFIER, not the finding.
+      const margin = marginOf(answers, "fit")
+      const decisive = margin === undefined || margin >= policy.judge.gates.minMargin
       // The FACT leads and the judgement qualifies it. That the package imports
       // something it does not declare is derived, not decided -- and it is the
       // finding that matters most here, because it works on a developer's machine
@@ -300,7 +333,7 @@ export const dependencyFit = defineRule({
             "Add " +
             packageNameOf(dependency.specifier) +
             " to the package's manifest: an undeclared import resolves only because something else hoisted it into the tree. " +
-            (misplaced
+            (misplaced && decisive
               ? "It also does not appear to fit what this package is for, so consider removing it instead."
               : "The dependency itself fits what this package does."),
           location: { file: dependency.examples[0] ?? dependency.path, line: 1, column: 1 },

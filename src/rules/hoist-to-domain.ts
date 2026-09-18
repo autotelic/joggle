@@ -7,6 +7,7 @@ import {
   declined,
   defineRule,
   finding,
+  marginOf,
   outcome,
   type Scope,
 } from "../rule.ts"
@@ -79,10 +80,66 @@ const isCandidate = (unit: Unit): boolean => {
   return true
 }
 
+/**
+ * How much this looks like a rule, from signals the code already has.
+ *
+ * The docs' Composite Scoring pattern: break a complex judgment into atomic
+ * scores and combine them with weights you control in code. The point is not to
+ * decide with the score -- it is to decide WHAT TO ASK ABOUT, so that a budget
+ * takes the most promising candidates instead of the alphabetically first ones.
+ *
+ * Every signal is derived, and every one is cheap:
+ *
+ *   somebody else imports it      a local helper is not a rule; a shared thing is
+ *   it names types                a rule operates on things that have names
+ *   it compares against a value   a threshold is a policy, and policies are rules
+ *   it carries a non-trivial number  a rate, a limit, a percentage
+ *   it is documented              somebody thought it was worth explaining
+ *
+ * None of these proves anything. Together they rank, and ranking is all that is
+ * needed: the model still answers the actual question about whatever is asked.
+ */
+export const ruleLikeness = (unit: Unit, workspace: Workspace): number => {
+  let score = 0
+  if (workspace.imports.importersOfName(unit.file, unit.name).length > 0) score += 3
+  if (unit.typeRefs.length > 0) score += 2
+  if (/[<>]=?|===|!==/.test(unit.text)) score += 2
+  if (/\b(?!0\b|1\b)\d{2,}(\.\d+)?\b/.test(unit.text)) score += 1
+  if (unit.doc !== undefined) score += 1
+  return score
+}
+
+/**
+ * Whether everything that uses this declaration is a test.
+ *
+ * A helper only tests reach for is test support, whatever directory it sits in.
+ * `services/db/src/support/seed-kit.js` is not in a test folder and every one of
+ * its declarations exists for tests -- and it ranked FIRST, because a seed helper
+ * names types, compares values and is imported widely.
+ *
+ * Derived from the import graph, which already knows who imports what, so this
+ * cannot go stale and needs no list of support directories.
+ */
+const onlyTestsUse = (unit: Unit, workspace: Workspace): boolean => {
+  const importers = workspace.imports.importersOfName(unit.file, unit.name)
+  if (importers.length === 0) return false
+  return importers.every((edge) => policy.testFiles.test(edge.from))
+}
+
 const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Unit> =>
   workspace.units
     .filter(isCandidate)
+    .filter((unit) => !onlyTestsUse(unit, workspace))
     .filter((unit) => scope.changed === undefined || scope.changed.has(unit.file))
+    // Ordered by path, NOT by rule-likeness. I built that score and it was worse
+    // than nothing: "somebody else imports it" promoted a CRUD delete above an
+    // authorization rule, because such a function is imported widely, names types
+    // and compares values -- every signal I chose. What separates a rule from a
+    // query is what the body DOES, and that is a judgement rather than a shape.
+    // Ranking by a guess about it spent the budget on the wrong end of the list.
+    //
+    // `ruleLikeness` stays because it is honest about what it measures and the
+    // drop reason reports it. It is not trusted to order anything.
     .sort((left, right) => left.file.localeCompare(right.file) || left.start - right.start)
 
 const questions = {
@@ -142,18 +199,50 @@ export const hoistToDomain = defineRule({
       questions,
     }))
 
-    const judge = yield* Judge
-    // A verdict here is an opinion about where code should live, so without one
-    // the rule stays silent rather than claiming a finding.
-    const results = yield* judge.askMany(requests)
-
     const diagnostics: Array<Diagnostic> = []
     const drops: Array<Drop> = candidates.slice(budget).map((unit) => ({
       ruleId: RULE_ID,
       subject: label(unit),
       stage: "budget" as const,
-      reason: "this run judged " + budget + " declarations and this one was past the budget",
+      reason:
+        "past the budget of " +
+        budget +
+        "; rule-likeness " +
+        ruleLikeness(unit, workspace) +
+        " (the budget takes the highest scores first)",
     }))
+
+    const judge = yield* Judge
+    // A verdict here is an opinion about where code should live, so without one
+    // the rule stays silent rather than claiming a finding -- but silence is not
+    // the same as saying nothing. The funnel is reported either way, because the
+    // candidate count is exactly what you need in order to decide whether a run
+    // with a key is worth making.
+    const asked = yield* judge.askMany(requests).pipe(
+      Effect.map((results) => ({ ok: true as const, results })),
+      Effect.catch((error) =>
+        Effect.succeed({
+          ok: false as const,
+          reason:
+            typeof error === "object" && error !== null && "reason" in error
+              ? String((error as { reason: unknown }).reason)
+              : String(error),
+        }),
+      ),
+    )
+    if (!asked.ok) {
+      return outcome([], [], [
+        ...drops,
+        ...judged.map((unit) => ({
+          ruleId: RULE_ID,
+          subject: label(unit),
+          stage: "unreadable" as const,
+          reason: "no judgement available: " + asked.reason,
+        })),
+      ])
+    }
+    const results = asked.results
+
 
     judged.forEach((unit, index) => {
       const answers = results[index]?.answers ?? {}
@@ -165,6 +254,20 @@ export const hoistToDomain = defineRule({
           subject: label(unit),
           stage: "unreadable",
           reason: "the response did not classify this declaration",
+        })
+        return
+      }
+      // A Choice that barely won is not a decision. The duplicate rules have had
+      // this gate since it was shown to withhold 11 clusters of unrelated `db*`
+      // functions; these two rules were built without it, which is how one of them
+      // produced 199 findings on a single repository.
+      const margin = marginOf(answers, "duty")
+      if (margin !== undefined && margin < policy.judge.gates.minMargin) {
+        drops.push({
+          ruleId: RULE_ID,
+          subject: label(unit),
+          stage: "gated" as const,
+          reason: "the choice was not decisive (margin " + margin.toFixed(2) + ")",
         })
         return
       }
