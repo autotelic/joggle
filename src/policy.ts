@@ -139,6 +139,17 @@ export const policy = {
     maxClusters: 400,
   },
 
+  /**
+   * Package-and-dependency pairs sent for judgement in one run.
+   *
+   * The candidate set is small by construction -- distinct pairs, not import
+   * statements -- so this is a ceiling against a pathological repository rather
+   * than a budget anybody should reach.
+   */
+  dependencyFit: {
+    maxDependencies: 400,
+  },
+
   duplicateImplementation: {
     maxClusters: 500,
     /**

@@ -131,6 +131,19 @@ export const pageVerdictByRole: Record<string, Record<string, string>> = {
 }
 
 /**
+ * Whether a dependency fits what a module is for.
+ *
+ * Its own export rather than a corner of another purpose's vocabulary, because
+ * this rule is its own opinion: a repository that enables duplication checks and
+ * not this one should never see these words.
+ */
+export const dependencyVocabulary = {
+  belongs: "This dependency fits what this module is for.",
+  framework_expected: "This module is exactly where that framework belongs.",
+  violates: "This module should not depend on that, and the architecture says why.",
+} as const
+
+/**
  * The page rule's questions, whole.
  *
  * Every string here is fixed, so there is nothing to build per candidate and

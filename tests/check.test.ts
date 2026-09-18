@@ -37,6 +37,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     expect(report.rules).toBe(7)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
+      "joggle/dependency-fit",
       "joggle/duplicate-implementation",
       "joggle/duplicate-meaning",
       "joggle/naming-drift",
@@ -70,11 +71,14 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     expect(report.files).toBe(2)
     // Seven structural rules -- four bundle checks, three architecture checks --
     // plus four judged ones.
-    expect(report.rules).toBe(11)
+    expect(report.rules).toBe(12)
     expect(report.diagnostics.length).toBe(1)
     // The fixture has no bundles, pages or modals, so the structural rules find
     // nothing and the page rule produces no candidates. A rule with nothing to
     // look at never reaches the judge, so it is idle rather than skipped.
+    // dependency-fit is absent rather than skipped: the fixture imports nothing
+    // external, so it has no candidates and never reaches the judge. Idle, not
+    // skipped -- the same distinction the page rule makes.
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/duplicate-meaning",
       "joggle/naming-drift",
