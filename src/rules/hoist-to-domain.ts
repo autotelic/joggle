@@ -207,7 +207,11 @@ export const hoistToDomain = defineRule({
     // the type checker cannot see the temporal dead zone that produced
     // "Cannot access 'label' before initialization" at runtime.
     const label = (unit: Unit): string => unit.name + " (" + unit.file + ")"
-    if (all.length === 0) return outcome([])
+    if (all.length === 0) {
+      return outcome([], [
+        "no exported declaration was long enough to hold a business rule, so nothing was a hoist candidate",
+      ])
+    }
 
     // ROUND ONE: what is each module for?
     //

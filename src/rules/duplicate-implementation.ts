@@ -65,7 +65,9 @@ export const duplicateImplementation = defineRule({
   judged: true,
   run: Effect.fn("joggle/duplicate-implementation")(function* (workspace, scope, context) {
     const clusters = find(workspace, scope)
-    if (clusters.length === 0) return outcome([])
+    if (clusters.length === 0) {
+      return outcome([], ["no two declarations share a shape, so there was nothing to compare"])
+    }
     const budget = policy.duplicateImplementation.maxClusters
     const shapeOnly = clusters.filter((cluster) => !cluster.typed).length
     const reported = yield* assessClusters(

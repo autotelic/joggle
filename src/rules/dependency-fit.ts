@@ -215,7 +215,11 @@ export const dependencyFit = defineRule({
     context,
   ) {
     const { dependencies, declared } = dependenciesIn(workspace)
-    if (dependencies.length === 0 && declared.length === 0) return outcome([])
+    if (dependencies.length === 0 && declared.length === 0) {
+      return outcome([], [
+        "no external dependency needed judging: everything imported is declared by its package or built into node",
+      ])
+    }
     const budget = policy.dependencyFit.maxDependencies
     const judged = dependencies.slice(0, budget)
     const label = (dependency: Dependency): string =>

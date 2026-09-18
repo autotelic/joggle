@@ -34,7 +34,13 @@ export const nameThePrimitive = defineRule({
   run: Effect.fn("joggle/name-the-primitive")(function* (workspace: Workspace, scope: Scope) {
     const { minFields, minOccurrences, maxFindings } = policy.nameThePrimitive
     const types = workspace.units.filter(isTypeUnit)
-    if (types.length === 0) return outcome([])
+    if (types.length === 0) {
+      return outcome([], [
+        "no type declaration has " +
+          minFields +
+          " or more fields, so there was nothing to mine for repeated groups",
+      ])
+    }
 
     // Every field set that already has a name, so a group that is one of them is
     // not reported: that is `compose-types`' finding, and it is the better one.

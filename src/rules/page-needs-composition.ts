@@ -136,7 +136,15 @@ export const pageNeedsComposition = defineRule({
   judged: true,
   run: Effect.fn("joggle/page-needs-composition")(function* (workspace: Workspace, scope: Scope) {
     const pages = candidatesIn(workspace).filter((page) => inScope(scope, page.file.path))
-    if (pages.length === 0) return outcome([])
+    if (pages.length === 0) {
+      return outcome([], [
+        "no file looks like a page under state pressure: the trigger is " +
+          policy.pageNeedsComposition.minLocalState +
+          " or more useState calls and " +
+          policy.pageNeedsComposition.minInlineElements +
+          " or more inline elements",
+      ])
+    }
 
     const budget = policy.pageNeedsComposition.maxPages
     const judged = pages.slice(0, budget)
@@ -200,7 +208,13 @@ export const pageNeedsComposition = defineRule({
       roles.push({ page, role: role.choice })
     })
 
-    if (roles.length === 0) return outcome([], [], drops)
+    if (roles.length === 0) {
+      return outcome(
+        [],
+        ["every candidate was classified as something other than a page, modal or layout"],
+        drops,
+      )
+    }
 
     // ROUND TWO: the question the classification selected, with the vocabulary
     // that kind of file is judged by.

@@ -292,7 +292,11 @@ export const namingDrift = defineRule({
   judged: true,
   run: Effect.fn("joggle/naming-drift")(function* (workspace, scope, context) {
     const clusters = find(workspace, scope)
-    if (clusters.length === 0) return outcome([])
+    if (clusters.length === 0) {
+      return outcome([], [
+        "no two exported names were near enough to be worth judging",
+      ])
+    }
     const budget = policy.namingDrift.maxClusters
     const { diagnostics: findings, drops } = yield* assessClusters(
       spec,

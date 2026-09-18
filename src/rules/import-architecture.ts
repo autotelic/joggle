@@ -59,7 +59,11 @@ export const layerDirection = defineRule({
     context: RunContext,
   ) {
     const layers = layersFrom(context.config)
-    if (layers.length === 0) return outcome([])
+    if (layers.length === 0) {
+      return outcome([], [
+        "no layers are declared in the config, so there is no direction to check -- not the same as finding none",
+      ])
+    }
 
     const violations = directionViolations(workspace.imports, layers)
     const files = filesByPath(workspace)
@@ -155,7 +159,11 @@ export const layerPurity = defineRule({
   ) {
     const layers = layersFrom(context.config)
     const constrained = layers.filter((layer) => layer.forbid.length > 0)
-    if (constrained.length === 0) return outcome([])
+    if (constrained.length === 0) {
+      return outcome([], [
+        "no layer declares a forbidden import, so there was nothing to check -- not the same as finding none",
+      ])
+    }
 
     const violations = purityViolations(workspace.imports, layers)
     const files = filesByPath(workspace)

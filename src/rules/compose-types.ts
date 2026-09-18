@@ -62,7 +62,13 @@ export const composeTypes = defineRule({
   judged: false,
   run: Effect.fn("joggle/compose-types")(function* (workspace: Workspace, scope: Scope) {
     const all = workspace.units.filter(isTypeUnit)
-    if (all.length === 0) return outcome([])
+    if (all.length === 0) {
+      return outcome([], [
+        "no type declaration has " +
+          policy.composeTypes.minFields +
+          " or more fields, so nothing had a field set to compare",
+      ])
+    }
 
     const bounded = all.slice(0, policy.composeTypes.maxTypes)
     // One representative per distinct field set. A field set repeated twenty
