@@ -220,6 +220,13 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
   const units = workspace.units
   const byHead = new Map<string, Array<number>>()
   units.forEach((unit, index) => {
+    // Exported names only, and the number is why: on one 2,456-file application
+    // removing this filter takes the candidate set from 23 to 77, three times the
+    // cost, and the recall it buys is unmeasured. The argument FOR removing it is
+    // real -- an agent greps a file-local name as readily as an exported one, and
+    // the two duplications joggle found in a 110-file library were both
+    // file-local -- but those were found by the near-duplicate rule, which has no
+    // such filter, so nothing is lost by leaving this one in place.
     if (!unit.exported) return
     const head = expanded(unit.name).at(-1)
     if (head === undefined) return

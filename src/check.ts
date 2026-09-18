@@ -498,6 +498,36 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       reason: "plugin " + failure.specifier + " was not loaded: " + failure.reason,
     })
   }
+  // What the run extracted, before a single rule filtered it.
+  //
+  // This note exists because its absence made a clean report unreadable. Run
+  // against a 110-file library, joggle reported "2 problems" and nothing else,
+  // and there was no way to tell whether the rules had looked at a clean codebase
+  // or at almost nothing. The extraction was fine -- 257 declarations -- but the
+  // only counts in the report were the FILTERED ones each rule chose to mention,
+  // so "11 type declaration(s)" read as the population when it was 11 of 53.
+  const kinds = new Map<string, number>()
+  for (const unit of workspace.units) kinds.set(unit.kind, (kinds.get(unit.kind) ?? 0) + 1)
+  const exported = workspace.units.filter((unit) => unit.exported).length
+  notes.push({
+    ruleId: "joggle",
+    reason:
+      "extracted " +
+      workspace.units.length +
+      " declaration(s) from " +
+      workspace.files.length +
+      " file(s): " +
+      [...kinds.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .map(([kind, count]) => count + " " + kind)
+        .join(", ") +
+      "; " +
+      exported +
+      " exported, " +
+      (workspace.units.length - exported) +
+      " file-local",
+  })
+
   if (parseCache.issues.length > 0) {
     notes.push({
       ruleId: "joggle",
