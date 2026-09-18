@@ -84,7 +84,13 @@ export const composeTypes = defineRule({
       findings.push(
         finding({
           ruleId: RULE_ID,
-          severity: "warn",
+          // Two different things in one rule, and they are not equally urgent. A
+          // name declared twice with different fields is a defect: code that
+          // moves between the declarations depends on which one it imported. A
+          // type that could compose another is advice, and 177 pieces of advice
+          // at warning level is how a report becomes a wall. The severity follows
+          // the finding, decided here rather than by whoever reads it.
+          severity: drifted ? "warn" : "info",
           message: drifted
             ? whole.name +
               " is declared in two places and they differ by " +
