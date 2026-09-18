@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Opinionated cross-file idiom rules for TypeScript — a layer above the linter and the typechecker.",
   "license": "MIT",
+  "exports": {
+    "./plugin": "./src/plugin.ts",
+    "./testing": "./src/testing.ts"
+  },
   "bin": {
     "joggle": "./bin/joggle.js"
   },
