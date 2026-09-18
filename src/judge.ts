@@ -129,10 +129,19 @@ const canonical = (value: unknown): string => {
  * transport concern; if it changed the key, the same candidate judged in a
  * different batch would miss its own cached answer.
  */
-export const cacheKeyFor = (request: JudgeRequest): string =>
+export const cacheKeyFor = (request: JudgeRequest, evidenceContext?: string): string =>
   canonical({
     questionVersion: policy.questionVersion,
     model: policy.model,
+    // The repository's declared architecture is part of the key, because it is
+    // part of the request: the same candidate judged under "pages compose
+    // bundles" and under "there is no React here" is not one judgement replayed,
+    // it is two judgements. It was passed to the model and stored in the state
+    // WITHOUT being in the key, so editing joggle.config.json replayed every
+    // verdict made under the previous architecture. The values are compared as a
+    // string against the empty one, so "declared nothing" and "declared the empty
+    // architecture" are different requests too.
+    repository: evidenceContext ?? null,
     evidence: request.evidence,
     questions: request.questions,
   })
@@ -381,7 +390,7 @@ export const layer = (
         }))
 
         const before = yield* Ref.get(entries)
-        const keys = requests.map(cacheKeyFor)
+        const keys = requests.map((request) => cacheKeyFor(request, options.evidenceContext))
         const wasCached = keys.map((key) => before[key] !== undefined)
         const cachedCount = wasCached.filter(Boolean).length
         if (cachedCount > 0) {
