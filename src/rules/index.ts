@@ -2,6 +2,7 @@ import { duplicateImplementation } from "./duplicate-implementation.ts"
 import { duplicateMeaning } from "./duplicate-meaning.ts"
 import { importArchitectureRules } from "./import-architecture.ts"
 import { dependencyFit } from "./dependency-fit.ts"
+import { callPattern } from "./call-pattern.ts"
 import { composeTypes } from "./compose-types.ts"
 import { nameThePrimitive } from "./name-the-primitive.ts"
 import { hoistToDomain } from "./hoist-to-domain.ts"
@@ -31,6 +32,7 @@ import type { Rule } from "../rule.ts"
 export const allRules: ReadonlyArray<Rule> = [
   ...importArchitectureRules,
   composeTypes,
+  callPattern,
   nameThePrimitive,
   dependencyFit,
   hoistToDomain,

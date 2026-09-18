@@ -153,6 +153,50 @@ export const policy = {
   },
 
   /**
+   * Export names a framework calls by file.
+   *
+   * A `loader` is not a hoist candidate and two `loader`s are not shared logic,
+   * whatever they contain: the framework asks for one per route and calls it by
+   * name, so there is nothing to consolidate and nothing to move. Kept here rather
+   * than in a rule because two rules need it and a second copy is a second thing
+   * to update.
+   */
+  frameworkExports: [
+    "loader",
+    "action",
+    "clientLoader",
+    "clientAction",
+    "meta",
+    "links",
+    "headers",
+    "ErrorBoundary",
+    "HydrateFallback",
+    "shouldRevalidate",
+    "middleware",
+    // Migrations and seeds: the runner calls these by name, one per file.
+    "up",
+    "down",
+    "seed",
+    // Test runners. A hook is scaffolding for an assertion, not a rule.
+    "beforeAll",
+    "afterAll",
+    "beforeEach",
+    "afterEach",
+  ],
+
+  /**
+   * Orchestration comparison.
+   *
+   * `minCalls` is what makes a shared call sequence mean something: two functions
+   * that each make one call are not "the same orchestration", they are two
+   * functions with one call. It is a search bound, and the only number here.
+   */
+  callPattern: {
+    minCalls: 4,
+    maxFindings: 400,
+  },
+
+  /**
    * Field-set composition analysis.
    *
    * Both numbers bound SEARCH, not judgement: this rule is deterministic and

@@ -40,37 +40,16 @@ const RULE_ID = "joggle/hoist-to-domain"
  * for it by name. Everything a loader CALLS is fair game, which is why the filter
  * is by name and not by file.
  */
-const FRAMEWORK_EXPORTS = new Set([
-  // Migrations and seeds: the runner calls these by name, one per file, and
-  // there is no version of `up` that is not a migration's `up`.
-  "up",
-  "down",
-  "seed",
-  // Test runners. A hook is scaffolding for an assertion, not a rule.
-  "beforeAll",
-  "afterAll",
-  "beforeEach",
-  "afterEach",
-  "loader",
-  "action",
-  "clientLoader",
-  "clientAction",
-  "meta",
-  "links",
-  "headers",
-  "ErrorBoundary",
-  "HydrateFallback",
-  "shouldRevalidate",
-  "middleware",
-])
-
 const isCandidate = (unit: Unit): boolean => {
   if (!unit.exported) return false
   if (unit.kind !== "function") return false
+  // Names a framework calls by file. Nothing to hoist and nothing to merge,
+  // whatever the declaration contains -- the list lives in policy because two
+  // rules need it and a second copy is a second thing to update.
+  if (policy.frameworkExports.some((name) => name === unit.name)) return false
   // Test declarations are compared against each other by the duplicate rules and
   // are candidates for nothing here: a fixture is not a business rule.
   if (unit.test) return false
-  if (FRAMEWORK_EXPORTS.has(unit.name)) return false
   // A declaration with nothing in it has no rule in it either.
   if (unit.tokens.length < policy.hoistToDomain.minTokens) return false
   // A React component renders; it does not decide. Components are recognised by
