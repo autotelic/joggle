@@ -288,6 +288,11 @@ const json = (report: Report): string =>
         replayed: report.replayed,
         timings: report.timings,
         elapsedMs: report.elapsedMs,
+        // The funnel, in the machine-readable format too. It was in the report and
+        // not in the JSON, which made the one artifact a script can read the one
+        // artifact that hid where the candidates went -- and reading it is how the
+        // gated band below was found.
+        drops: report.drops,
       },
     },
     null,
