@@ -40,6 +40,51 @@ export const layerOf = (
   file: string,
 ): Layer | undefined => layers.find((layer) => layer.include.some((glob) => matchesGlob(glob, file)))
 
+/**
+ * Whether `from` may import `to`: downward, or sideways inside one layer.
+ *
+ * A file that belongs to no declared layer is not constrained: the layering
+ * describes what someone wrote down, and inventing a rule for the rest would be
+ * reporting an architecture nobody declared.
+ */
+export const canImport = (
+  layers: ReadonlyArray<Layer>,
+  from: string,
+  to: string,
+): boolean => {
+  const source = layerOf(layers, from)
+  const target = layerOf(layers, to)
+  if (source === undefined || target === undefined) return true
+  return target.rank <= source.rank
+}
+
+/**
+ * The nearest layer that every one of these files may import, if there is one.
+ *
+ * This is where duplicated declarations should end up. Nearest rather than
+ * lowest, because hoisting one level is a smaller change than hoisting four, and
+ * the ordering of the declared layers is what decides which is which.
+ */
+export const sharedLayerFor = (
+  layers: ReadonlyArray<Layer>,
+  files: ReadonlyArray<string>,
+): Layer | undefined => {
+  const ranks: Array<number> = []
+  for (const file of files) {
+    const layer = layerOf(layers, file)
+    if (layer === undefined) return undefined
+    ranks.push(layer.rank)
+  }
+  if (ranks.length === 0) return undefined
+  const limit = Math.min(...ranks)
+  let best: Layer | undefined
+  for (const layer of layers) {
+    if (layer.rank >= limit) continue
+    if (best === undefined || layer.rank > best.rank) best = layer
+  }
+  return best
+}
+
 export interface DirectionViolation {
   readonly from: string
   readonly to: string

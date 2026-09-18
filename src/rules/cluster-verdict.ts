@@ -1,6 +1,7 @@
 import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge, type JudgeRequest, type JudgeResult } from "../judge.ts"
+import { canImport, sharedLayerFor, type Layer } from "../architecture.ts"
 import { choiceOf, declined, finding, marginOf, noulOf, qualityOf } from "../rule.ts"
 import { duplicateVocabulary } from "../vocabulary.ts"
 import type { Answer, Diagnostic, Drop, DropStage, Question, Severity } from "../schema.ts"
@@ -182,6 +183,40 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
   }
 }
 
+/**
+ * What to do about it, given who may import whom.
+ *
+ * "Delete the copies and import one" is only advice if the copies can reach the
+ * one being kept, and across a package boundary they usually cannot. On one
+ * repository 78 of 261 duplicate findings told a Remix app to import a type from
+ * a Fastify service, and 67 of those were the frontend and the backend pointing
+ * at each other. The duplication was real and the prescription was impossible,
+ * which is the worst combination: a reader who tries it learns to ignore the
+ * tool.
+ *
+ * The relationship is decidable from the declared layers, so it is decided here
+ * rather than asked about. The model answers whether the declarations are one
+ * thing; where the one thing should LIVE is a fact about the repository.
+ */
+const prescription = (
+  layers: ReadonlyArray<Layer>,
+  cluster: Cluster,
+  keep: Unit,
+  drops: ReadonlyArray<Unit>,
+): string => {
+  if (drops.every((unit) => canImport(layers, unit.file, keep.file))) {
+    return `Delete or import instead of redeclaring: ${memberList(drops)}.`
+  }
+  const shared = sharedLayerFor(
+    layers,
+    cluster.members.map((member) => member.file),
+  )
+  if (shared !== undefined) {
+    return `None of these may import the others, so hoist the declaration into ${shared.name} and import it from all of them: ${memberList(drops)}.`
+  }
+  return `These sit in layers that cannot see each other and share nothing below them. Extract a shared package, or accept the duplication as a contract: ${memberList(drops)}.`
+}
+
 const memberList = (units: ReadonlyArray<Unit>): string => {
   const shown = units.slice(0, policy.evidence.maxListedPaths)
   const rest = units.length - shown.length
@@ -304,6 +339,7 @@ export const findingFor = (
   imports: ImportGraph,
   cluster: Cluster,
   verdict: ClusterVerdict | undefined,
+  layers: ReadonlyArray<Layer>,
 ): Result => {
   if (verdict === undefined) {
     const fallback = rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster) : undefined
@@ -347,7 +383,7 @@ export const findingFor = (
       ruleId: rule.ruleId,
       severity: rule.severity,
       message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
-      help: `Delete or import instead of redeclaring: ${memberList(drops)}.${shapeOnlyNote(cluster)} ${dependents(imports, keep)}.`,
+      help: `${prescription(layers, cluster, keep, drops)}${shapeOnlyNote(cluster)} ${dependents(imports, keep)}.`,
       location: first.location,
       identity: identityOf(rule.ruleId, cluster, keep),
       confidence: verdict.confidence,
@@ -376,6 +412,7 @@ export const assessClusters = (
   rule: ClusterRule,
   imports: ImportGraph,
   clusters: ReadonlyArray<Cluster>,
+  layers: ReadonlyArray<Layer> = [],
 ): Effect.Effect<Assessment, import("../schema.ts").JudgeError, Judge> =>
   Effect.gen(function* () {
     const unreadable: Array<Drop> = []
@@ -422,7 +459,7 @@ export const assessClusters = (
     plans.forEach((plan, index) => {
       const result = results[index]
       const verdict = result === undefined ? undefined : plan.read(result.answers)
-      const outcome = findingFor(rule, imports, plan.cluster, verdict)
+      const outcome = findingFor(rule, imports, plan.cluster, verdict, layers)
       if (outcome.diagnostic !== undefined) diagnostics.push(outcome.diagnostic)
       if (outcome.drop !== undefined) drops.push(outcome.drop)
     })

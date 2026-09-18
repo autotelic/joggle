@@ -13,6 +13,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import { assessClusters, type ClusterRule } from "./cluster-verdict.ts"
+import { layersFrom } from "../architecture.ts"
 import type { Answer } from "../schema.ts"
 import { nameVocabulary } from "../vocabulary.ts"
 import type { Unit, Workspace } from "../workspace.ts"
@@ -282,7 +283,7 @@ export const namingDrift = defineRule({
   severity: spec.severity,
   description: "Two spellings of one concept across files.",
   judged: true,
-  run: Effect.fn("joggle/naming-drift")(function* (workspace, scope) {
+  run: Effect.fn("joggle/naming-drift")(function* (workspace, scope, context) {
     const clusters = find(workspace, scope)
     if (clusters.length === 0) return outcome([])
     const budget = policy.namingDrift.maxClusters
@@ -290,6 +291,7 @@ export const namingDrift = defineRule({
       spec,
       workspace.imports,
       clusters.slice(0, budget),
+      layersFrom(context.config),
     )
     const unjudged = clusters.slice(budget)
     return outcome(

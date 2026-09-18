@@ -4,6 +4,7 @@ import { components, makeCluster, type Cluster } from "../cluster.ts"
 import { budgetNote, defineRule, inScope, outcome, type Scope } from "../rule.ts"
 import { allPairs, type ScoredPair } from "../similarity.ts"
 import { assessClusters, collapseQuestionnaire, type ClusterRule } from "./cluster-verdict.ts"
+import { layersFrom } from "../architecture.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 import { nameList } from "../cluster.ts"
 
@@ -124,13 +125,14 @@ export const duplicateMeaning = defineRule({
   severity: spec.severity,
   description: "Near-duplicates where a judgement says one declaration replaces the other.",
   judged: true,
-  run: Effect.fn("joggle/duplicate-meaning")(function* (workspace, scope) {
+  run: Effect.fn("joggle/duplicate-meaning")(function* (workspace, scope, context) {
     const { clusters, oversized } = find(workspace, scope)
     const budget = policy.duplicateMeaning.maxClusters
     const { diagnostics: findings, drops } = yield* assessClusters(
       spec,
       workspace.imports,
       clusters.slice(0, budget),
+      layersFrom(context.config),
     )
     const largest = clusters
       .slice(budget)

@@ -3,6 +3,7 @@ import { policy } from "../policy.ts"
 import { makeCluster, type Cluster } from "../cluster.ts"
 import { budgetNote, defineRule, inScope, outcome, type Scope } from "../rule.ts"
 import { assessClusters, collapseQuestionnaire, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
+import { layersFrom } from "../architecture.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const spec: ClusterRule = {
@@ -62,12 +63,17 @@ export const duplicateImplementation = defineRule({
   severity: spec.severity,
   description: "One declaration written more than once across files.",
   judged: true,
-  run: Effect.fn("joggle/duplicate-implementation")(function* (workspace, scope) {
+  run: Effect.fn("joggle/duplicate-implementation")(function* (workspace, scope, context) {
     const clusters = find(workspace, scope)
     if (clusters.length === 0) return outcome([])
     const budget = policy.duplicateImplementation.maxClusters
     const shapeOnly = clusters.filter((cluster) => !cluster.typed).length
-    const reported = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))
+    const reported = yield* assessClusters(
+      spec,
+      workspace.imports,
+      clusters.slice(0, budget),
+      layersFrom(context.config),
+    )
     // Over budget: the fact is still reported, unjudged and labelled as such.
     const overflow = clusters
       .slice(budget)
