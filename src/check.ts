@@ -564,6 +564,10 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     // this file. A finding, not a rule, is what gets scoped.
     .filter((entry) => appliesAt(options.config, entry.ruleId, entry.location.file))
 
+  // The workspace's own phases, alongside the per-rule timings. A run that says
+  // "workspace 4.4s" and nothing else is a run nobody can make faster.
+  timings.push(...workspace.phases)
+
   const judgeTotals: JudgeTotals = yield* judge.stats
   const elapsedMs = Date.now() - started
   const report: Report = {

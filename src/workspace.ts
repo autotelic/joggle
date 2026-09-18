@@ -1,7 +1,13 @@
 import { Effect, FileSystem, Path } from "effect"
 import { parseSync } from "oxc-parser"
 import { policy } from "./policy.ts"
-import { buildImportGraph, importsIn, type ImportGraph, type ParsedImport } from "./imports.ts"
+import {
+  buildImportGraph,
+  importsIn,
+  type ImportEdge,
+  type ImportGraph,
+  type ParsedImport,
+} from "./imports.ts"
 import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
 import { safeJson, shortHash } from "./state.ts"
 import { shinglesOf } from "./similarity.ts"
@@ -173,6 +179,8 @@ export interface Workspace {
    * a package and its description travels with it.
    */
   readonly manifests: ReadonlyMap<string, PackageManifest>
+  /** What the load cost, phase by phase. Printed with the rule timings. */
+  readonly phases: ReadonlyArray<{ readonly phase: string; readonly ms: number }>
   /**
    * Declarations that came from a test file.
    *
@@ -1079,6 +1087,16 @@ export const loadWorkspace = (
     const path = yield* Path.Path
     const files =
       discovered ?? (yield* resolveInputs(root, inputs.length > 0 ? inputs : ["."])).files
+    // Where the time went, in the same shape the report already uses for rules.
+    // Adding this is how I learned that the parser was never the expensive part
+    // and that two guesses about the bottleneck were both wrong.
+    const phases: Array<{ phase: string; ms: number }> = []
+    const mark = (phase: string, since: number): number => {
+      const now = Date.now()
+      phases.push({ phase, ms: now - since })
+      return now
+    }
+    let clock = Date.now()
     const parsed: Array<SourceFile> = []
     const unparsed: Array<UnparsedFile> = []
     for (const absolute of files) {
@@ -1097,15 +1115,32 @@ export const loadWorkspace = (
       if (outcome.ok) parsed.push(outcome.file)
       else unparsed.push({ path: relative, reason: outcome.reason })
     }
+    clock = mark("read+parse", clock)
     const graph = buildImportGraph(parsed, path)
+    clock = mark("import-graph", clock)
     // Resolution happens here, not at parse time, because it needs the whole
     // file set: a type name only means something once we know where it came from.
+    // Edges indexed by the file that WRITES them.
+    //
+    // Resolving a type name used to scan the whole edge list once per type
+    // reference, and the first loop it tried was `importersOf.get(file)` filtered
+    // by `edge.from === file` -- which only ever matches a file importing itself,
+    // so it missed on every call and the second loop did all the work.
+    //
+    // On one repository that was 10,674 type references against 8,518 edges:
+    // ninety million comparisons to answer a question each file already knew the
+    // answer to. It was 4.4 seconds of a 4.6 second run, and I had assumed the
+    // PARSER was the expensive part. It never was.
+    const outward = new Map<string, Array<ImportEdge>>()
+    for (const edge of graph.edges) {
+      if (!edge.resolved) continue
+      const existing = outward.get(edge.from)
+      if (existing === undefined) outward.set(edge.from, [edge])
+      else existing.push(edge)
+    }
     const resolveRef = (file: string, name: string): string => {
-      for (const edge of graph.importersOf.get(file) ?? []) {
-        if (edge.from === file && edge.names.includes(name)) return `${edge.to}#${name}`
-      }
-      for (const edge of graph.edges) {
-        if (edge.from === file && edge.resolved && edge.names.includes(name)) return `${edge.to}#${name}`
+      for (const edge of outward.get(file) ?? []) {
+        if (edge.names.includes(name)) return `${edge.to}#${name}`
       }
       return `${file}#${name}`
     }
@@ -1152,10 +1187,12 @@ export const loadWorkspace = (
       }
     }
 
+    clock = mark("resolve-types", clock)
     const allUnits = parsed.flatMap((file) => file.units)
     // Helpers go; test declarations stay and are marked, because whether they
     // should be compared depends on what they are compared AGAINST.
     const units = allUnits.filter((unit) => !isCompilerHelper(unit.name))
+    clock = mark("units+manifests", clock)
     const testDeclarations = units.filter((unit) => unit.test).length
     const excludedHelpers = allUnits.filter((unit) => isCompilerHelper(unit.name)).length
     const byName = new Map<string, Array<Unit>>()
@@ -1170,6 +1207,7 @@ export const loadWorkspace = (
       units,
       byName,
       imports: graph,
+      phases,
       unparsed,
       manifests,
       testDeclarations,
