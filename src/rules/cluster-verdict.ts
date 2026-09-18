@@ -13,7 +13,16 @@ export interface ClusterVerdict {
   /** Index into the described members to keep, or undefined to leave it alone. */
   readonly keep: number | undefined
   readonly confidence: number
+  /** What the report sorts by: how much sharing these would change. */
   readonly score: number
+  /**
+   * What the GATE reads: whether this is duplication at all.
+   *
+   * Kept separate from `score` because they answer different questions, and
+   * conflating them would mean a real duplicate nobody cares about gets DROPPED
+   * rather than sorted last. A finding that does not matter is still a finding.
+   */
+  readonly redundancy: number
   /** Winner minus runner-up in the verdict's own distribution. */
   readonly margin: number
 }
@@ -126,6 +135,15 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         },
         criteria: duplicateVocabulary.verdict,
       },
+      consequence: {
+        type: "noul",
+        instructions: {
+          question: "Would a reader be better off if these declarations were one?",
+          focus:
+            "Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.",
+        },
+        criteria: duplicateVocabulary.consequence,
+      },
       canonical: {
         type: "choice",
         instructions: {
@@ -139,13 +157,16 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
       const verdict = choiceOf(answers, "verdict")
       const redundant = noulOf(answers, "redundant")
       if (verdict === undefined) return undefined
-      const score = redundant ?? verdict.confidence
+      const redundancy = redundant ?? verdict.confidence
+      // Ranked by consequence, gated by redundancy. A finding that does not
+      // matter is still a finding and still reported; it sorts last.
+      const score = noulOf(answers, "consequence") ?? redundancy
       const margin = marginOf(answers, "verdict") ?? 1
       // `keep_variants` is a decision about the declarations; a decline is a
       // decision about the question. Both suppress the finding, and only the
       // second says the rule should not have asked.
       if (verdict.choice === "keep_variants" || declined(verdict.choice)) {
-        return { keep: undefined, confidence: verdict.confidence, score, margin }
+        return { keep: undefined, confidence: verdict.confidence, score, redundancy, margin }
       }
       const canonical = choiceOf(answers, "canonical")
       const index =
@@ -154,6 +175,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         keep: Number.isNaN(index) ? 0 : index,
         confidence: verdict.confidence,
         score,
+        redundancy,
         margin,
       }
     },
@@ -298,7 +320,7 @@ export const findingFor = (
   // and each rule keeps the degrade behaviour it already declared: a provable
   // finding is still reported, marked unverified with the reason; a guessed one
   // stays silent. The gate never has to know which rule it is in.
-  const quality = qualityOf(verdict)
+  const quality = qualityOf({ score: verdict.redundancy, margin: verdict.margin })
   if (!quality.usable) {
     const fallback =
       rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster, quality.reason) : undefined

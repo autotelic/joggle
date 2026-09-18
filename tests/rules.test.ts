@@ -12,6 +12,30 @@ const collapse = (canonical: string, confidence = 0.85) => ({
   redundant: noul(0.9),
 })
 
+it.effect("the report sorts by consequence, not by redundancy", () =>
+  withWorkspace((workspace) =>
+    Effect.gen(function* () {
+      const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
+      expect(findings.length).toBe(1)
+      // Redundancy 0.9 gates it in; consequence 0.1 ranks it last. Both facts
+      // survive, and they are different facts: this IS duplication, and it does
+      // NOT matter. Before this, the report sorted by the first one, which is
+      // how a spec re-implementing the function it tests ended up last.
+      expect(findings[0]?.score).toBeCloseTo(0.1)
+      expect(findings[0]?.judged).toBe(true)
+    }).pipe(
+      Effect.provide(
+        judgeStub({
+          verdict: choice("collapse", 0.9),
+          canonical: choice("member_0", 0.8),
+          redundant: noul(0.9),
+          consequence: noul(0.1),
+        }),
+      ),
+    ),
+  ),
+)
+
 it.effect("a cluster of identical declarations is one finding", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {

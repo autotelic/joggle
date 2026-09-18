@@ -23,6 +23,19 @@ export const duplicateVocabulary = {
     true: "One declaration would serve better than several.",
     false: "The repetition is justified.",
   },
+  /**
+   * Whether it MATTERS, which is a different question from whether it is true.
+   *
+   * The report used to sort by redundancy -- "are these one thing?" -- and on one
+   * repository that put the lowest score in the whole report on a spec that
+   * re-implements the function it tests, while three placeholder aliases that
+   * were all `any` sat above it at 0.68. Both answers were correct. Sorting by
+   * the answer to the wrong question is how a real finding ends up last.
+   */
+  consequence: {
+    true: "Sharing one would remove work, or stop the copies diverging.",
+    false: "Nobody would notice either way. The copies are stable and independent.",
+  },
   verdict: {
     collapse: "They are one thing. Keep one of them and delete the rest.",
     keep_variants:

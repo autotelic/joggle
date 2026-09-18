@@ -75,12 +75,15 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
       const score = oneConcept ?? verdict.confidence
       const margin = marginOf(answers, "verdict") ?? 1
       if (declined(verdict.choice)) {
-        return { keep: undefined, confidence: verdict.confidence, score, margin }
+        return { keep: undefined, confidence: verdict.confidence, score, redundancy: score, margin }
       }
       return {
         keep: verdict.choice === "same_use_right" ? 1 : 0,
         confidence: verdict.confidence,
         score,
+        // Names have no consequence axis: whether two spellings matter is what
+        // `one_concept` already asks.
+        redundancy: score,
         margin,
       }
     },

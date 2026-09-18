@@ -26,7 +26,7 @@ export const policy = {
    * or evidence change, so verdicts produced by older questions are not replayed
    * against newer ones.
    */
-  questionVersion: "2026-09-06",
+  questionVersion: "2026-09-07",
 
   /**
    * The declared analysis version: a FALLBACK and an OVERRIDE, not the gate.
