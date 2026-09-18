@@ -33,8 +33,8 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
 
     // A breach withholds every JUDGED rule, because their evidence would cross
     // repositories. The structural rules persist nothing, so they still run:
-    // four bundle checks and three architecture checks.
-    expect(report.rules).toBe(7)
+    // four bundle checks, three architecture checks and field-set composition.
+    expect(report.rules).toBe(8)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/dependency-fit",
@@ -70,9 +70,9 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     )
 
     expect(report.files).toBe(2)
-    // Seven structural rules -- four bundle checks, three architecture checks --
-    // plus four judged ones.
-    expect(report.rules).toBe(13)
+    // Eight structural rules -- four bundle checks, three architecture checks and
+    // field-set composition -- plus five judged ones.
+    expect(report.rules).toBe(14)
     expect(report.diagnostics.length).toBe(1)
     // The fixture has no bundles, pages or modals, so the structural rules find
     // nothing and the page rule produces no candidates. A rule with nothing to

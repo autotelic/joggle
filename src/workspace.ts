@@ -49,6 +49,15 @@ export interface Unit {
    */
   readonly typed: boolean
   /**
+   * The property names a type declaration lists, in order.
+   *
+   * Empty for everything that is not an interface or a type literal. This is the
+   * material for asking whether one type is another type plus something, which is
+   * what "composed of smaller canonical things" reduces to once it stops being a
+   * principle and becomes a set comparison.
+   */
+  readonly fields: ReadonlyArray<string>
+  /**
    * Whether this declaration came from a test file.
    *
    * Kept on the unit rather than used to exclude it, because the two cases are
@@ -315,6 +324,7 @@ const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
 
   return found.map((site) => ({
     ...site,
+    ...site,
     kind: properties.has(site.start) ? "property" : types.has(site.start) ? "type" : "binding",
   }))
 }
@@ -441,6 +451,36 @@ interface DeclarationSite extends Span {
   readonly kind: UnitKind
   readonly name: string
   readonly exported: boolean
+  readonly fields: ReadonlyArray<string>
+}
+
+/**
+ * The property names a type declaration lists.
+ *
+ * An interface keeps them in `body.body`; a type alias keeps them in the members
+ * of its annotation when that annotation is a literal. A union or an intersection
+ * has no single field set and returns nothing -- `A & B` states its composition
+ * already, which is the thing this is looking for.
+ */
+const fieldsOf = (node: Record<string, unknown>): ReadonlyArray<string> => {
+  const members =
+    node["type"] === "TSInterfaceDeclaration"
+      ? isRecord(node["body"])
+        ? (node["body"] as Record<string, unknown>)["body"]
+        : undefined
+      : node["type"] === "TSTypeAliasDeclaration" && isRecord(node["typeAnnotation"])
+        ? (node["typeAnnotation"] as Record<string, unknown>)["members"]
+        : undefined
+  if (!Array.isArray(members)) return []
+  const names: Array<string> = []
+  for (const member of members) {
+    if (!isRecord(member)) continue
+    const key = member["key"]
+    if (!isRecord(key)) continue
+    if (typeof key["name"] === "string") names.push(key["name"])
+    else if (typeof key["value"] === "string") names.push(key["value"])
+  }
+  return [...new Set(names)]
 }
 
 const sitesIn = (program: Record<string, unknown>): ReadonlyArray<DeclarationSite> => {
@@ -454,7 +494,7 @@ const sitesIn = (program: Record<string, unknown>): ReadonlyArray<DeclarationSit
     const start = node["start"]
     const end = node["end"]
     if (typeof start !== "number" || typeof end !== "number") return
-    sites.push({ kind, name, start, end, exported })
+    sites.push({ kind, name, start, end, exported, fields: fieldsOf(node) })
   }
 
   const fromDeclaration = (declaration: unknown, exported: boolean): void => {
@@ -514,7 +554,14 @@ const sitesIn = (program: Record<string, unknown>): ReadonlyArray<DeclarationSit
           const name = className === undefined ? keyName : `${className}.${keyName}`
           const value = member["value"]
           if (isRecord(value) && typeof value["start"] === "number" && typeof value["end"] === "number") {
-            sites.push({ kind: "function", name, start: value["start"], end: value["end"], exported })
+            sites.push({
+              kind: "function",
+              name,
+              start: value["start"],
+              end: value["end"],
+              exported,
+              fields: [],
+            })
           } else {
             push(member, "function", name, exported)
           }
@@ -713,6 +760,7 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         shapeHash: shortHash(shape),
         typeRefs,
         typed: typeRefs.length > 0,
+        fields: site.fields,
         test: policy.testFiles.test(file),
         typeSignature: "",
         doc: docFor(site.start),

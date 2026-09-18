@@ -140,6 +140,19 @@ export const policy = {
   },
 
   /**
+   * Field-set composition analysis.
+   *
+   * Both numbers bound SEARCH, not judgement: this rule is deterministic and
+   * compares sets, so the only question is how many types one run will look at.
+   */
+  composeTypes: {
+    /** Fewer than this and a shared field set means nothing. */
+    minFields: 3,
+    /** Types compared per run. Beyond this the report says what it skipped. */
+    maxTypes: 4000,
+  },
+
+  /**
    * Package-and-dependency pairs sent for judgement in one run.
    *
    * The candidate set is small by construction -- distinct pairs, not import
