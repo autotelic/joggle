@@ -24,6 +24,41 @@ export const duplicateVocabulary = {
     false: "The repetition is justified.",
   },
   /**
+   * What a declaration IS, which decides what to do about it being duplicated.
+   *
+   * The same duplication has opposite prescriptions depending on this answer and
+   * nothing else. A wire contract defined on both sides of a service boundary is
+   * correct -- two independently deployed services share a shape, not a module. A
+   * domain concept defined on both sides is the defect the whole architecture
+   * exists to prevent. The paths say which; the model is the thing that can tell.
+   */
+  role: {
+    wire_contract:
+      "A shape that crosses a process or protocol boundary: a request body, a response, a serialized record.",
+    domain_concept:
+      "A thing the business has an opinion about, with rules or meaning attached to it.",
+    implementation_detail:
+      "A helper that exists to make other code work, and means nothing on its own.",
+    framework_glue:
+      "A shape a framework requires, such as route props, loader data, or a config object.",
+  },
+  /**
+   * How the files holding the copies relate, which decides whether any of them
+   * can import the others.
+   *
+   * This is what a declared layering used to be asked for. It is inferable from
+   * the paths and the import graph, and it is genuinely fuzzy at the edges -- is
+   * `app/routes/finance/x` a sibling of `app/routes/payroll/y` or in the same
+   * module? -- which is exactly the shape of question worth asking.
+   */
+  relationship: {
+    same_module: "One directory, or one feature: they are edited together.",
+    same_package: "One deployable, different features.",
+    sibling_packages: "Different packages inside one repository, able to depend on each other.",
+    different_deployables:
+      "Separately deployed services. Neither may import the other, whatever their paths suggest.",
+  },
+  /**
    * Whether it MATTERS, which is a different question from whether it is true.
    *
    * The report used to sort by redundancy -- "are these one thing?" -- and on one

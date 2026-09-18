@@ -17,6 +17,14 @@ export interface ClusterVerdict {
   /** What the report sorts by: how much sharing these would change. */
   readonly score: number
   /**
+   * What to do about it, decided in code from `role` and `relationship`.
+   *
+   * Absent when the model did not answer both, in which case the caller falls
+   * back to what the declared layers say -- and to neutral wording when there are
+   * none. A repository with no architecture config still gets a prescription.
+   */
+  readonly prescription?: string | undefined
+  /**
    * What the GATE reads: whether this is duplication at all.
    *
    * Kept separate from `score` because they answer different questions, and
@@ -114,7 +122,15 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
   })
   const note = describedNote(cluster, described)
   return {
-    state: { identical: cluster.identical, overlap: Number(cluster.overlap.toFixed(3)) },
+    state: {
+      identical: cluster.identical,
+      overlap: Number(cluster.overlap.toFixed(3)),
+      // The material a panel would need before judging where a thing belongs.
+      // No configuration: the paths are in the graph and the relationships are
+      // in the paths.
+      files: [...new Set(cluster.members.map((member) => member.file))],
+      common_directory: commonDirectory(cluster.members.map((member) => member.file)),
+    },
     questions: {
       redundant: {
         type: "noul",
@@ -123,6 +139,28 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
           focus: "Answer yes only if a reader is worse off for there being more than one.",
         },
         criteria: duplicateVocabulary.redundant,
+      },
+      role: {
+        type: "choice",
+        instructions: {
+          question: "What IS this declaration, apart from the fact that it is duplicated?",
+          inspect: ["{candidate}declarations", "{candidate}files"],
+          fallback: "Choose `implementation_detail` when it is a helper with no meaning of its own.",
+          focus:
+            "Answer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.",
+        },
+        criteria: duplicateVocabulary.role,
+      },
+      relationship: {
+        type: "choice",
+        instructions: {
+          question: "How do `{candidate}common_directory` and the files inside it relate?",
+          inspect: ["{candidate}files"],
+          fallback: "Choose `different_deployables` when nothing suggests they can share code.",
+          focus:
+            "Decide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.",
+        },
+        criteria: duplicateVocabulary.relationship,
       },
       verdict: {
         type: "choice",
@@ -159,6 +197,12 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
       const redundant = noulOf(answers, "redundant")
       if (verdict === undefined) return undefined
       const redundancy = redundant ?? verdict.confidence
+      const role = choiceOf(answers, "role")
+      const relationship = choiceOf(answers, "relationship")
+      const prescription =
+        role === undefined || relationship === undefined
+          ? undefined
+          : prescriptionFor(role.choice, relationship.choice)
       // Ranked by consequence, gated by redundancy. A finding that does not
       // matter is still a finding and still reported; it sorts last.
       const score = noulOf(answers, "consequence") ?? redundancy
@@ -167,7 +211,14 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
       // decision about the question. Both suppress the finding, and only the
       // second says the rule should not have asked.
       if (verdict.choice === "keep_variants" || declined(verdict.choice)) {
-        return { keep: undefined, confidence: verdict.confidence, score, redundancy, margin }
+        return {
+          keep: undefined,
+          confidence: verdict.confidence,
+          score,
+          redundancy,
+          margin,
+          prescription,
+        }
       }
       const canonical = choiceOf(answers, "canonical")
       const index =
@@ -178,13 +229,62 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         score,
         redundancy,
         margin,
+        prescription,
       }
     },
   }
 }
 
+/** The deepest directory every one of these files sits inside. */
+const commonDirectory = (paths: ReadonlyArray<string>): string => {
+  const split = paths.map((file) => file.split("/").slice(0, -1))
+  const first = split[0]
+  if (first === undefined) return "."
+  let depth = 0
+  for (let index = 0; index < first.length; index += 1) {
+    if (split.every((parts) => parts[index] === first[index])) depth = index + 1
+    else break
+  }
+  return depth === 0 ? "." : first.slice(0, depth).join("/")
+}
+
+/**
+ * What to do about it, from what the declaration IS and how the files relate.
+ *
+ * This is the whole judgement, and it is decided in code. The model answers two
+ * questions it can actually answer -- what is this, and how do these files
+ * relate -- and the prescription follows from the pair. No repository has to
+ * declare its boundaries for this to work, which is the point: a hand-maintained
+ * map of a codebase's architecture goes stale the moment someone moves a
+ * directory, and the paths say the same thing for free.
+ *
+ * The two rows that matter are the same duplication with opposite answers. A
+ * wire contract repeated across a service boundary is CORRECT -- two services
+ * share a shape, not a module. A domain concept repeated across one is the
+ * defect the architecture exists to prevent.
+ */
+export const prescriptionFor = (role: string, relationship: string): string => {
+  if (relationship === "same_module" || relationship === "same_package") {
+    return "Delete the copies and import one: these files can reach each other."
+  }
+  if (role === "wire_contract") {
+    return "Expected. A contract that crosses a deployable boundary is duplicated by design: give it a shared contracts package if the two must agree, and leave it alone if they must not."
+  }
+  if (role === "domain_concept") {
+    return "The same concept in two deployables that cannot import each other, which is the case a shared package exists for. Move the concept into one both depend on."
+  }
+  if (role === "framework_glue") {
+    return "Framework shapes are repeated per file by construction. If these are framework glue, leave them."
+  }
+  return "Different deployables and not a contract: hoist the shared part into a package both can depend on, or accept the duplication."
+}
+
 /**
  * What to do about it, given who may import whom.
+ *
+ * Used when there is no judgement to read a role from -- an unverified finding
+ * still deserves advice -- and when a repository has declared its layers, which
+ * is a fact worth using even though it is no longer required.
  *
  * "Delete the copies and import one" is only advice if the copies can reach the
  * one being kept, and across a package boundary they usually cannot. On one
@@ -383,7 +483,9 @@ export const findingFor = (
       ruleId: rule.ruleId,
       severity: rule.severity,
       message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
-      help: `${prescription(layers, cluster, keep, drops)}${shapeOnlyNote(cluster)} ${dependents(imports, keep)}.`,
+      // The model's answer when there is one, the declared layers when there are
+      // not. A repository that configures nothing still gets advice.
+      help: `${verdict.prescription ?? prescription(layers, cluster, keep, drops)}${shapeOnlyNote(cluster)} ${dependents(imports, keep)}.`,
       location: first.location,
       identity: identityOf(rule.ruleId, cluster, keep),
       confidence: verdict.confidence,
