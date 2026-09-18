@@ -190,12 +190,27 @@ export const unverifiedFinding = (
     ruleId: rule.ruleId,
     severity: rule.severity,
     message: `${rule.subject(cluster)}.`,
-    help: `Keep \`${keep.name}\` (${keep.file}:${keep.location.line}) and import it elsewhere. Not verified: ${reason}. Duplicates: ${memberList(drops)}.`,
+    help: `Keep \`${keep.name}\` (${keep.file}:${keep.location.line}) and import it elsewhere. Not verified: ${reason}.${shapeOnlyNote(cluster)} Duplicates: ${memberList(drops)}.`,
     location: first.location,
     identity: identityOf(rule.ruleId, cluster, keep),
     judged: false,
   })
 }
+
+/**
+ * The caveat a shape-only cluster earns.
+ *
+ * Empty when the cluster has types to stand on. Otherwise it says what the
+ * finding actually rests on, because in a JavaScript codebase this is the COMMON
+ * case rather than the exception: nothing in the declaration says what it
+ * operates on, so two shapes matching is all the evidence there is. The finding
+ * is still true; saying what it rests on is the difference between a weaker
+ * finding and a misleading one.
+ */
+const shapeOnlyNote = (cluster: Cluster): string =>
+  cluster.typed
+    ? ""
+    : " No member carries a type annotation, so only the shape could be compared."
 
 /**
  * Who depends on the declaration being kept.
@@ -310,7 +325,7 @@ export const findingFor = (
       ruleId: rule.ruleId,
       severity: rule.severity,
       message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
-      help: `Delete or import instead of redeclaring: ${memberList(drops)}. ${dependents(imports, keep)}.`,
+      help: `Delete or import instead of redeclaring: ${memberList(drops)}.${shapeOnlyNote(cluster)} ${dependents(imports, keep)}.`,
       location: first.location,
       identity: identityOf(rule.ruleId, cluster, keep),
       confidence: verdict.confidence,

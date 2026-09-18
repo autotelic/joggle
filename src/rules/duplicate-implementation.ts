@@ -62,6 +62,7 @@ export const duplicateImplementation = defineRule({
     const clusters = find(workspace, scope)
     if (clusters.length === 0) return outcome([])
     const budget = policy.duplicateImplementation.maxClusters
+    const shapeOnly = clusters.filter((cluster) => !cluster.typed).length
     const reported = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))
     // Over budget: the fact is still reported, unjudged and labelled as such.
     const overflow = clusters
@@ -70,7 +71,17 @@ export const duplicateImplementation = defineRule({
       .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
     return outcome(
       [...reported.diagnostics, ...overflow],
-      budgetNote("clusters", budget, clusters.length, largestOf(clusters.slice(budget))),
+      [
+        ...budgetNote("clusters", budget, clusters.length, largestOf(clusters.slice(budget))),
+        // Visibility for the missing type signal. In a `.js` codebase every
+        // cluster is shape-only, and a reader who cannot see that will read the
+        // findings as typed evidence.
+        ...(shapeOnly === 0
+          ? []
+          : [
+              `${shapeOnly} of ${clusters.length} cluster(s) were compared by shape alone: no member carries a type annotation`,
+            ]),
+      ],
       reported.drops,
     )
   }),

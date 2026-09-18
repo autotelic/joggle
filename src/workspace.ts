@@ -40,6 +40,14 @@ export interface Unit {
   /** Type-position names this declaration mentions, before resolution. */
   readonly typeRefs: ReadonlyArray<string>
   /**
+   * Whether the declaration referenced any type at all.
+   *
+   * False for every declaration in a `.js` file, and for unannotated ones in
+   * `.ts`. It is what lets a rule say "the shape was the only signal here"
+   * instead of presenting a shape match with the authority of a typed one.
+   */
+  readonly typed: boolean
+  /**
    * The same names after following this file's imports to where each is
    * declared. Two declarations whose shape matches but whose resolved types
    * differ are not the same thing, however alike they read.
@@ -101,6 +109,14 @@ export interface Workspace {
    * there was no way to know what a deletion would break.
    */
   readonly imports: ImportGraph
+  /**
+   * Files that were read and could not be parsed.
+   *
+   * Recorded rather than dropped: a file the parser rejected is a hole in every
+   * rule's view of the repository, and until this existed the parse result's
+   * `errors` array was never read at all.
+   */
+  readonly unparsed: ReadonlyArray<UnparsedFile>
 }
 
 /* -------------------------------------------------------------------------- */
@@ -603,6 +619,22 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
       const tokens = tokenize(shape)
       const from = locate(starts, site.start)
       const to = locate(starts, site.end)
+      // Whether this declaration said anything about its types. In a `.js` file,
+      // and in unannotated `.ts`, the answer is never. Recorded rather than
+      // inferred later: "no types written" and "types written and empty" look the
+      // same from outside and are not the same fact.
+      const typeRefs = [
+        ...new Set(
+          identifiers
+            .filter(
+              (identifier) =>
+                identifier.kind === "type" &&
+                identifier.start >= site.start &&
+                identifier.end <= site.end,
+            )
+            .map((identifier) => identifier.name),
+        ),
+      ]
       units.push({
         kind: site.kind,
         name: site.name,
@@ -616,18 +648,8 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         tokens,
         shingles: shinglesOf(tokens),
         shapeHash: shortHash(shape),
-        typeRefs: [
-          ...new Set(
-            identifiers
-              .filter(
-                (identifier) =>
-                  identifier.kind === "type" &&
-                  identifier.start >= site.start &&
-                  identifier.end <= site.end,
-              )
-              .map((identifier) => identifier.name),
-          ),
-        ],
+        typeRefs,
+        typed: typeRefs.length > 0,
         typeSignature: "",
         doc: docFor(site.start),
       })

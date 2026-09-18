@@ -23,6 +23,16 @@ export interface Cluster {
   readonly identical: boolean
   /** Highest pairwise structural overlap in the cluster. */
   readonly overlap: number
+  /**
+   * True when at least one member carries a type annotation.
+   *
+   * When no member does, the cluster was formed from SHAPE ALONE: two `.js`
+   * declarations with the same token shape and nothing to tell them apart. The
+   * finding is still true -- they really do share a shape -- but it is weaker
+   * evidence than the same finding in typed code, and it has to say so, because
+   * in a JavaScript codebase it is the common case rather than the exception.
+   */
+  readonly typed: boolean
 }
 
 /** Connected components over an edge list, by union-find with path compression. */
@@ -69,7 +79,14 @@ export const makeCluster = (
   members: ReadonlyArray<Unit>,
   identical: boolean,
   overlap: number,
-): Cluster => ({ members: [...members].sort(byPath), identical, overlap })
+): Cluster => ({
+  members: [...members].sort(byPath),
+  identical,
+  overlap,
+  // Computed here rather than passed in, so a caller cannot forget it or set it
+  // wrong.
+  typed: members.some((member) => member.typed),
+})
 
 /** The distinct declaration names in a cluster, in member order. */
 export const namesOf = (cluster: Cluster): ReadonlyArray<string> => [
