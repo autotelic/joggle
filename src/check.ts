@@ -461,6 +461,22 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       reason: "the file walk hit its own limit: this run saw only part of the tree",
     })
   }
+  if (workspace.excludedTestFiles > 0) {
+    notes.push({
+      ruleId: "joggle",
+      reason:
+        workspace.excludedTestFiles +
+        " declaration(s) in test files were not analysed: a factory is supposed to be repeated",
+    })
+  }
+  if (workspace.excludedHelpers > 0) {
+    notes.push({
+      ruleId: "joggle",
+      reason:
+        workspace.excludedHelpers +
+        " transpiler helper(s) were not analysed: they appear once per file by construction",
+    })
+  }
   if (discovery.ignored > 0) {
     notes.push({
       ruleId: "joggle",

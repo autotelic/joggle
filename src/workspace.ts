@@ -118,6 +118,22 @@ export interface Workspace {
    * `errors` array was never read at all.
    */
   readonly unparsed: ReadonlyArray<UnparsedFile>
+  /**
+   * Declarations not analysed because they came from a test file.
+   *
+   * Test files were 24 of 196 findings on one real repository, and the worst were
+   * not wrong: a factory is SUPPOSED to be repeated, because that is what makes
+   * it a factory. Reporting it reports the technique.
+   */
+  readonly excludedTestFiles: number
+  /**
+   * Declarations not analysed because a transpiler emitted them.
+   *
+   * TypeScript and Babel emit a helper into every file that needs one, so
+   * `__classPrivateFieldGet` appears once per file BY CONSTRUCTION. Reporting
+   * those as duplication is reporting the compiler.
+   */
+  readonly excludedHelpers: number
 }
 
 /* -------------------------------------------------------------------------- */
@@ -725,6 +741,28 @@ export interface SkippedExtension {
   readonly count: number
 }
 
+/**
+ * Whether a name is one a transpiler emits rather than one a person wrote.
+ *
+ * The lists are explicit rather than "starts with `__`", because a person is
+ * allowed to write `__proto__`-adjacent names and a filter that guesses at them
+ * is a filter that will one day drop real code. Every entry here is a helper
+ * TypeScript or Babel puts in a file by itself.
+ */
+const COMPILER_HELPERS = new Set([
+  "__awaiter", "__generator", "__rest", "__spread", "__spreadArray", "__spreadArrays",
+  "__values", "__read", "__readInt", "__assign", "__extends", "__decorate", "__metadata",
+  "__param", "__createBinding", "__setFunctionName", "__toPrimitive", "__toPropertyKey",
+  "__importDefault", "__importStar", "__export", "__exportStar", "__classPrivateFieldGet",
+  "__classPrivateFieldSet", "__classPrivateFieldIn", "__addDisposableResource",
+  "__disposeResources", "__esDecorate", "__runInitializers", "__propKey",
+  "_interopRequireDefault", "_interopRequireWildcard", "_classCallCheck", "_defineProperty",
+  "_toConsumableArray", "_typeof", "_extends", "_objectSpread", "_objectSpread2",
+  "_slicedToArray", "_asyncToGenerator", "_createClass", "_getPrototypeOf", "_inherits",
+])
+
+const isCompilerHelper = (name: string): boolean => COMPILER_HELPERS.has(name)
+
 const extensionOf = (file: string): string => {
   const cut = file.lastIndexOf(".")
   return cut === -1 ? "(no extension)" : file.slice(cut)
@@ -944,12 +982,29 @@ export const loadWorkspace = (
           .join("|")
       })
     })
-    const units = parsed.flatMap((file) => file.units)
+    // Declarations from test files and from transpiler helpers are excluded
+    // before any rule sees them, and counted, because a rule that silently
+    // receives fewer candidates is a rule nobody can debug.
+    const allUnits = parsed.flatMap((file) => file.units)
+    const units = allUnits.filter(
+      (unit) => !policy.testFiles.test(unit.file) && !isCompilerHelper(unit.name),
+    )
+    const excludedTestFiles = allUnits.filter((unit) => policy.testFiles.test(unit.file)).length
+    const excludedHelpers = allUnits.filter((unit) => isCompilerHelper(unit.name)).length
     const byName = new Map<string, Array<Unit>>()
     for (const unit of units) {
       const existing = byName.get(unit.name)
       if (existing === undefined) byName.set(unit.name, [unit])
       else existing.push(unit)
     }
-    return { root, files: parsed, units, byName, imports: graph, unparsed }
+    return {
+      root,
+      files: parsed,
+      units,
+      byName,
+      imports: graph,
+      unparsed,
+      excludedTestFiles,
+      excludedHelpers,
+    }
   })

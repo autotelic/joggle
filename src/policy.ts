@@ -207,6 +207,18 @@ export const policy = {
     maxListedPaths: 4,
   },
 
+  /**
+   * What a test file looks like.
+   *
+   * Test files were 24 of 196 findings on one real repository, and the worst of
+   * them are not wrong: a factory or a fixture helper is SUPPOSED to be repeated,
+   * because that is what makes it a factory. A linter that reports it is
+   * reporting the technique. jev carries this regex; joggle had no notion of a
+   * test file at all, so a spec's helpers were held to the same standard as an
+   * API's.
+   */
+  testFiles: /(?:^|\/)(?:tests?|__tests__|specs?)(?:\/|$)|\.(?:spec|test)\.[cm]?[jt]sx?$/,
+
   /** Files and directories the workspace scan never enters. */
   ignoredDirectories: [
     "node_modules",
