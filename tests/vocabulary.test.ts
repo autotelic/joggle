@@ -1,14 +1,26 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, test } from "vitest"
 import { decline, declineNames, declined } from "../src/rule.ts"
-
-const RULES = [
-  "src/rules/cluster-verdict.ts",
-  "src/rules/naming-drift.ts",
-  "src/rules/page-needs-composition.ts",
-]
+import { duplicateVocabulary, nameVocabulary, pageQuestions } from "../src/vocabulary.ts"
 
 const sourceOf = (file: string): string => readFileSync(new URL("../" + file, import.meta.url), "utf8")
+
+/** The rule files that ask questions. They read their words from vocabulary.ts. */
+const RULES = ["src/rules/cluster-verdict.ts", "src/rules/naming-drift.ts"]
+
+/**
+ * Every Choice that can return no finding.
+ *
+ * `nameVocabulary` is not in this list because its two "one concept" options are
+ * built by a template that needs the symbol; the decline it offers is asserted
+ * separately below.
+ */
+const choices: ReadonlyArray<readonly [string, Readonly<Record<string, unknown>>]> = [
+  ["duplicate verdict", duplicateVocabulary.verdict],
+  ["page role", pageQuestions.role.criteria],
+  ["page verdict", pageQuestions.verdict.criteria],
+  ["page primary_gap", pageQuestions.primary_gap.criteria],
+]
 
 describe("the decline vocabulary", () => {
   test("a decline is an answer, and reads as one", () => {
@@ -24,9 +36,26 @@ describe("the decline vocabulary", () => {
     expect(declined(undefined)).toBe(false)
   })
 
+  test("every choice that can decline names one of the two", () => {
+    for (const [label, criteria] of choices) {
+      const offers = declineNames.some((name) => name in criteria)
+      expect(offers, label + " has no decline option").toBe(true)
+    }
+    expect(nameVocabulary.noIssue.length).toBeGreaterThan(0)
+  })
+
+  test("a question that offers a decline states it", () => {
+    // The cookbook puts the escape hatch IN the question: "Select noMatch when no
+    // hunk provides sufficient evidence". Inferred from the option list is not
+    // the same as stated, and the model is reading the question first.
+    for (const question of [pageQuestions.role, pageQuestions.verdict, pageQuestions.primary_gap]) {
+      expect(JSON.stringify(question.instructions)).toContain("fallback")
+    }
+  })
+
   test("no rule invents a fifth name for the same idea", () => {
     const legacy = ["not_duplication", "distinct\":", "keep_local"]
-    for (const file of RULES) {
+    for (const file of [...RULES, "src/vocabulary.ts"]) {
       const source = sourceOf(file)
       for (const name of legacy) {
         expect(source.includes(name), file + " still uses " + name).toBe(false)
@@ -34,22 +63,13 @@ describe("the decline vocabulary", () => {
     }
   })
 
-  test("every rule that can decline names one of the two", () => {
-    for (const file of RULES) {
-      const source = sourceOf(file)
-      const offers = declineNames.some(
-        (name) => source.includes(name + ":") || source.includes('"' + name + '"'),
-      )
-      expect(offers, file + " has no decline option").toBe(true)
-    }
-  })
-
-  test("a question that offers a decline documents it", () => {
-    // The cookbook states the escape hatch in the question: "Select noMatch when
-    // no hunk provides sufficient evidence". Inferred from the option list is
-    // not the same as stated.
-    for (const file of RULES) {
-      expect(sourceOf(file).includes("fallback"), file + " does not state its fallback").toBe(true)
-    }
+  test("rules read their words from the vocabulary", () => {
+    // The point of moving the strings out was that two questions can be compared
+    // side by side. A rule that inlines its own criteria is a second vocabulary.
+    expect(sourceOf("src/rules/page-needs-composition.ts")).toContain("pageQuestions")
+    // The option KEY living in a rule would mean a second definition of it.
+    expect(sourceOf("src/rules/page-needs-composition.ts")).not.toContain("extract_to_bundle:")
+    expect(sourceOf("src/rules/cluster-verdict.ts")).toContain("duplicateVocabulary")
+    expect(sourceOf("src/rules/naming-drift.ts")).toContain("nameVocabulary")
   })
 })

@@ -14,6 +14,7 @@ import {
 } from "../rule.ts"
 import { assessClusters, type ClusterRule } from "./cluster-verdict.ts"
 import type { Answer } from "../schema.ts"
+import { nameVocabulary } from "../vocabulary.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 /**
@@ -49,10 +50,7 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
           focus:
             "Compare what each name means word by word. Two names for one concept are a spelling problem; two names for two different things are not, however similar they read.",
         },
-        criteria: {
-          true: "One concept, so one name should go.",
-          false: "Two concepts, so both names are correct.",
-        },
+        criteria: nameVocabulary.oneConcept,
       },
       verdict: {
         type: "choice",
@@ -64,7 +62,7 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
             "{candidate}left.words and {candidate}right.words are what each name means; {candidate}same_words is true when only the spelling differs.",
         },
         criteria: {
-          same_use_left: `One concept, two spellings. Standardize on \`${left?.name ?? "left"}\`.`,
+          same_use_left: nameVocabulary.standardize(left?.name ?? "left"),
           same_use_right: `One concept, two spellings. Standardize on \`${right?.name ?? "right"}\`.`,
           no_issue: "Two different concepts. Both names are correct. Change nothing.",
         },

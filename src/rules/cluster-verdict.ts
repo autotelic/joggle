@@ -2,6 +2,7 @@ import { Effect, Option } from "effect"
 import { policy } from "../policy.ts"
 import { Service as Judge, type JudgeRequest, type JudgeResult } from "../judge.ts"
 import { choiceOf, declined, finding, marginOf, noulOf, qualityOf } from "../rule.ts"
+import { duplicateVocabulary } from "../vocabulary.ts"
 import type { Answer, Diagnostic, Question, Severity } from "../schema.ts"
 import { namesOf, type Cluster } from "../cluster.ts"
 import type { ImportGraph } from "../imports.ts"
@@ -111,10 +112,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
           question: `Are these ${cluster.members.length} declarations one thing written repeatedly?`,
           focus: "Answer yes only if a reader is worse off for there being more than one.",
         },
-        criteria: {
-          true: "One declaration would serve better than several.",
-          false: "The repetition is justified.",
-        },
+        criteria: duplicateVocabulary.redundant,
       },
       verdict: {
         type: "choice",
@@ -126,12 +124,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
             ? `They are syntactically identical, including property names and types.${note}`
             : `They are up to ${Math.round(cluster.overlap * 100)}% structurally similar but not identical.${note}`,
         },
-        criteria: {
-          collapse: "They are one thing. Keep one of them and delete the rest.",
-          keep_variants:
-            "Related but deliberately separate, such as a special case of a general routine. Keep them all.",
-          no_issue: "Coincidentally similar. They are different things. Change nothing.",
-        },
+        criteria: duplicateVocabulary.verdict,
       },
       canonical: {
         type: "choice",

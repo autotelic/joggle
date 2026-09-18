@@ -1,0 +1,116 @@
+import type { Question } from "./schema.ts"
+
+/**
+ * Every word the model is asked to choose between, in one file.
+ *
+ * jev keeps its thresholds AND its whole vocabulary in a config module with no
+ * imports: five dimensions, thirty mechanism strings, four rubric levels. Tuning
+ * that system is editing data. joggle had the thresholds in policy.ts and the
+ * vocabulary scattered through the rules that used them, which meant the only way
+ * to compare two questions was to read two files -- and comparing them side by
+ * side is exactly how you notice that one of them has no way to say "this is
+ * fine", which is the bug the previous commit fixed.
+ *
+ * The split is by whether a string depends on the candidate. A string that is the
+ * same for every candidate lives here. A criterion that names the member being
+ * kept, or counts the declarations shown, is built in the rule that knows those
+ * facts -- so the WORDS still come from here, through a template.
+ */
+
+/** The shared question for exact and near duplicates. */
+export const duplicateVocabulary = {
+  redundant: {
+    true: "One declaration would serve better than several.",
+    false: "The repetition is justified.",
+  },
+  verdict: {
+    collapse: "They are one thing. Keep one of them and delete the rest.",
+    keep_variants:
+      "Related but deliberately separate, such as a special case of a general routine. Keep them all.",
+    no_issue: "Coincidentally similar. They are different things. Change nothing.",
+  },
+} as const
+
+/** Name pairs: two spellings of one concept, or two different concepts. */
+export const nameVocabulary = {
+  oneConcept: {
+    true: "One concept, so one name should go.",
+    false: "Two concepts, so both names are correct.",
+  },
+  /**
+   * The two "one concept" options differ only in WHICH name survives, so the
+   * sentence is one template and the rule supplies the symbol.
+   */
+  standardize: (symbol: string): string =>
+    "One concept, two spellings. Standardize on `" + symbol + "`.",
+  noIssue: "Two different concepts. Both names are correct. Change nothing.",
+} as const
+
+/**
+ * The page rule's questions, whole.
+ *
+ * Every string here is fixed, so there is nothing to build per candidate and
+ * nothing to keep in the rule.
+ */
+export const pageQuestions = {
+  role: {
+    type: "choice",
+    instructions: {
+      question: "What kind of file is `page.path`?",
+      fallback: "Choose \"not_applicable\" when it is none of these.",
+      focus:
+        "Classify the file by what it is, not by whether it conforms. This answer decides which question is asked next, so a wrong classification wastes the rest of the request.",
+    },
+    criteria: {
+      route_page: "A route's own page: it owns layout and state for one screen.",
+      modal:
+        "A dialog or modal: it owns state for one interaction and is opened and closed rather than navigated to.",
+      layout: "A shell that renders children and owns little or no state of its own.",
+      not_applicable:
+        "A helper, a loader, a test, or something else this pattern does not apply to.",
+    },
+  },
+  verdict: {
+    type: "choice",
+    instructions: {
+      question: "Should this page's state and markup live in a composition bundle instead?",
+      inspect: "`page`",
+      fallback: "Choose `no_issue` when the state is this page's own and nothing is shared.",
+      focus:
+        "The pattern earns its keep when several blocks share state that this file currently threads itself. A page with its own state and no sharing between pieces does not need it.",
+      note: "Judge whether a bundle would remove real duplication of state, not whether this file is long.",
+    },
+    criteria: {
+      extract_to_bundle:
+        "Its state and its pieces belong in a bundle with `{ state, actions, meta }`, exported by dot notation.",
+      extract_some:
+        "Part of it does, such as a repeated block or a group of elements that always travel together.",
+      no_issue: "No. The state is genuinely this page's own and a provider would be ceremony.",
+    },
+  },
+  primary_gap: {
+    type: "choice",
+    instructions: {
+      question: "What is the single most useful thing to change about `page.path`?",
+      fallback: "Choose `no_issue` when there is nothing to fix.",
+      focus: "Name the gap a reviewer would fix first, or `no_issue` when there is nothing to fix.",
+    },
+    criteria: {
+      state_belongs_in_provider: "State threaded here belongs in a provider the pieces read directly.",
+      markup_belongs_in_blocks: "Markup inlined here belongs in named blocks, one per file.",
+      no_provider_root: "It needs the bundle's provider at its composition root.",
+      no_issue: "Nothing; leave this page as it is.",
+    },
+  },
+  worth_fixing: {
+    type: "noul",
+    instructions: {
+      question: "Is extracting a bundle from this page worth a reviewer's time?",
+      focus: "A page that works and shares nothing is not worth restructuring for its own sake.",
+    },
+    criteria: {
+      true: "A reviewer should look at this.",
+      false: "Leave it alone.",
+    },
+  },
+} satisfies Record<string, Question>

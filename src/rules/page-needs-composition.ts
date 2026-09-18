@@ -14,7 +14,8 @@ import {
   qualityOf,
   type Scope,
 } from "../rule.ts"
-import type { Diagnostic, Question } from "../schema.ts"
+import type { Diagnostic } from "../schema.ts"
+import { pageQuestions } from "../vocabulary.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/page-needs-composition"
@@ -97,51 +98,17 @@ const gaps = (page: Page): ReadonlyArray<string> => {
   return found
 }
 
+/**
+ * Exactly the questions this rule reads.
+ *
+ * The vocabulary module holds more than this rule asks -- `role` earns its place
+ * as soon as the classification decides which question follows.
+ */
 const questions = {
-  verdict: {
-    type: "choice",
-    instructions: {
-      question: "Should this page's state and markup live in a composition bundle instead?",
-      inspect: "`page`",
-      fallback: "Choose \`no_issue\` when the state is this page's own and nothing is shared.",
-      focus:
-        "The pattern earns its keep when several blocks share state that this file currently threads itself. A page with its own state and no sharing between pieces does not need it.",
-      note: "Judge whether a bundle would remove real duplication of state, not whether this file is long.",
-    },
-    criteria: {
-      extract_to_bundle:
-        "Its state and its pieces belong in a bundle with `{ state, actions, meta }`, exported by dot notation.",
-      extract_some:
-        "Part of it does, such as a repeated block or a group of elements that always travel together.",
-      no_issue:
-        "No. The state is genuinely this page's own and a provider would be ceremony.",
-    },
-  },
-  primary_gap: {
-    type: "choice",
-    instructions: {
-      question: "What is the single most useful thing to change about `page.path`?",
-      focus: "Name the gap a reviewer would fix first, or `none` when there is nothing to fix.",
-    },
-    criteria: {
-      state_belongs_in_provider: "State threaded here belongs in a provider the pieces read directly.",
-      markup_belongs_in_blocks: "Markup inlined here belongs in named blocks, one per file.",
-      no_provider_root: "It needs the bundle's provider at its composition root.",
-      no_issue: "Nothing; leave this page as it is.",
-    },
-  },
-  worth_fixing: {
-    type: "noul",
-    instructions: {
-      question: "Is extracting a bundle from this page worth a reviewer's time?",
-      focus: "A page that works and shares nothing is not worth restructuring for its own sake.",
-    },
-    criteria: {
-      true: "A reviewer should look at this.",
-      false: "Leave it alone.",
-    },
-  },
-} satisfies Record<string, Question>
+  verdict: pageQuestions.verdict,
+  primary_gap: pageQuestions.primary_gap,
+  worth_fixing: pageQuestions.worth_fixing,
+}
 
 const findingFor = (
   page: Page,
