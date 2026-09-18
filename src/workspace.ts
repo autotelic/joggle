@@ -2,6 +2,7 @@ import { Effect, FileSystem, Path } from "effect"
 import { parseSync } from "oxc-parser"
 import { policy } from "./policy.ts"
 import { buildImportGraph, importsIn, type ImportGraph, type ParsedImport } from "./imports.ts"
+import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
 import { shortHash } from "./state.ts"
 import { shinglesOf } from "./similarity.ts"
 import { WorkspaceError, type SourceLocation } from "./schema.ts"
@@ -706,6 +707,17 @@ export interface Discovery {
   readonly skipped: ReadonlyArray<SkippedExtension>
   /** True when the walk stopped at its own limit rather than at the end. */
   readonly truncated: boolean
+  /** Files skipped because a .gitignore says so. */
+  readonly ignored: number
+  /**
+   * Directories skipped because a .gitignore says so.
+   *
+   * Counted separately because an ignored directory hides an unknown number of
+   * files: `.wrangler/` is one line in a .gitignore and ten generated files on
+   * disk, and reporting only the file count would have made the largest source
+   * of noise in one real report look like a rounding error.
+   */
+  readonly ignoredDirectories: number
 }
 
 export interface SkippedExtension {
@@ -727,14 +739,31 @@ const summarise = (counts: ReadonlyMap<string, number>): ReadonlyArray<SkippedEx
 
 const walkLimits = { directories: 5000, files: 20000 }
 
+const depthOf = (root: string, dir: string, path: Path.Path): number =>
+  path.relative(root, dir).split(path.sep).filter((segment) => segment !== "" && segment !== ".")
+    .length
+
+/**
+ * Walk a directory, honouring .gitignore as it goes.
+ *
+ * Rules accumulate as directories are entered. A rule only speaks for its own
+ * directory and below it -- `isIgnored` returns early when the path is not under
+ * the rule's base -- so a sibling's rules are inert rather than wrong, which is
+ * what lets one list serve the whole walk.
+ */
 const walk = (
   dir: string,
+  root: string,
+  inherited: ReadonlyArray<IgnoreRule> = [],
 ): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const found: Array<string> = []
     const skipped = new Map<string, number>()
+    let rules: ReadonlyArray<IgnoreRule> = inherited
+    let ignoredCount = 0
+    let ignoredDirs = 0
     const stack: Array<string> = []
     const seen = new Set<string>()
 
@@ -756,6 +785,13 @@ const walk = (
       // stat, not the name: a zero-byte file called "tsx" is not a directory.
       const info = yield* Effect.orElseSucceed(fs.stat(current), () => undefined)
       if (info === undefined) continue
+      // Ignored first: a generated .js file is both non-source and ignored, and
+      // "we were told not to look" is the more useful of the two reasons.
+      if (rules.length > 0 && isIgnored(rules, current, path)) {
+        if (info.type === "File") ignoredCount += 1
+        else ignoredDirs += 1
+        continue
+      }
       if (info.type === "File") {
         if (looksLikeSource(current)) {
           found.push(current)
@@ -768,6 +804,11 @@ const walk = (
       if (info.type !== "Directory") continue
       if (seen.has(current)) continue
       seen.add(current)
+      // A directory's own .gitignore applies to what is inside it, so it is
+      // read before its children are pushed.
+      const here = yield* rulesAt(current, depthOf(root, current, path))
+      if (here.length > 0) rules = orderRules([...rules, ...here])
+
       const entries = yield* Effect.orElseSucceed(
         fs.readDirectory(current),
         () => [] as ReadonlyArray<string>,
@@ -782,6 +823,8 @@ const walk = (
       files: found.sort(),
       skipped: summarise(skipped),
       truncated: found.length >= walkLimits.files || seen.size >= walkLimits.directories,
+      ignored: ignoredCount,
+      ignoredDirectories: ignoredDirs,
     }
   })
 
@@ -794,20 +837,39 @@ const resolveInputs = (
     const files: Array<string> = []
     const skipped = new Map<string, number>()
     let truncated = false
+    let ignored = 0
+    let ignoredDirectories = 0
     for (const input of inputs) {
       const absolute = path.isAbsolute(input) ? input : path.join(root, input)
       if (looksLikeSource(absolute)) {
         files.push(absolute)
         continue
       }
-      const nested = yield* walk(absolute)
+      // A .gitignore above the walked directory still applies to it, so the
+      // chain from the root down to (but not including) the input is loaded
+      // first.
+      const chain: Array<IgnoreRule> = [...(yield* rulesAt(root, 0))]
+      const segments = path
+        .relative(root, absolute)
+        .split(path.sep)
+        .filter((segment) => segment !== "" && segment !== ".")
+      let cursor = root
+      for (const segment of segments.slice(0, -1)) {
+        cursor = path.join(cursor, segment)
+        chain.push(
+          ...(yield* rulesAt(cursor, path.relative(root, cursor).split(path.sep).length)),
+        )
+      }
+      const nested = yield* walk(absolute, root, orderRules(chain))
       for (const file of nested.files) files.push(file)
       truncated = truncated || nested.truncated
+      ignored += nested.ignored
+      ignoredDirectories += nested.ignoredDirectories
       for (const entry of nested.skipped) {
         skipped.set(entry.extension, (skipped.get(entry.extension) ?? 0) + entry.count)
       }
     }
-    return { files, skipped: summarise(skipped), truncated }
+    return { files, skipped: summarise(skipped), truncated, ignored, ignoredDirectories }
   })
 
 /**
@@ -823,7 +885,13 @@ export const discoverFiles = (
   discovered?: ReadonlyArray<string>,
 ): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   discovered !== undefined
-    ? Effect.succeed({ files: discovered, skipped: [], truncated: false })
+    ? Effect.succeed({
+        files: discovered,
+        skipped: [],
+        truncated: false,
+        ignored: 0,
+        ignoredDirectories: 0,
+      })
     : resolveInputs(root, inputs.length > 0 ? inputs : ["."])
 
 export const loadWorkspace = (

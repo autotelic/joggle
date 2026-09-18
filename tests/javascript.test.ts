@@ -38,6 +38,21 @@ test("a file the parser rejects is reported, not silently empty", async () => {
   expect(loaded.unparsed[0]?.reason.length).toBeGreaterThan(0)
 })
 
+test("a .gitignore is honoured, including a nested one", async () => {
+  const found = await Effect.runPromise(
+    discoverFiles("tests/fixtures/gitignored", ["."]).pipe(Effect.provide(NodeServices.layer)),
+  )
+  // `generated/` and `*.min.js` from the root, `local.ts` from the nested file.
+  expect(found.files.map((file) => file.replace(/.*fixtures\/gitignored\//, ""))).toEqual([
+    "src/keep.ts",
+    "sub/keep.ts",
+  ])
+  expect(found.ignored).toBe(2)
+  // The ignored directory is counted as a directory, because how many files it
+  // hid is unknown by construction.
+  expect(found.ignoredDirectories).toBe(1)
+})
+
 test("discovery reports what it did not parse", async () => {
   const found = await Effect.runPromise(
     discoverFiles(fixtures, ["."]).pipe(Effect.provide(NodeServices.layer)),

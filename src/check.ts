@@ -461,6 +461,19 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       reason: "the file walk hit its own limit: this run saw only part of the tree",
     })
   }
+  if (discovery.ignored > 0) {
+    notes.push({
+      ruleId: "joggle",
+      reason:
+        "ignored by .gitignore: " +
+        discovery.ignored +
+        " file(s) and " +
+        discovery.ignoredDirectories +
+        " director" +
+        (discovery.ignoredDirectories === 1 ? "y" : "ies") +
+        " not analysed",
+    })
+  }
   if (discovery.skipped.length > 0) {
     const total = discovery.skipped.reduce((sum, entry) => sum + entry.count, 0)
     const shown = discovery.skipped.slice(0, 4).map((entry) => entry.extension + " " + entry.count)
