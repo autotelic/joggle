@@ -30,6 +30,31 @@ const isTypeUnit = (unit: Unit): boolean =>
 /** A field set as a comparable key, order-insensitive. */
 const signatureOf = (unit: Unit): string => [...unit.fields].sort().join("\u0000")
 
+/**
+ * Whether two declarations of one field can compose.
+ *
+ * Equality is too strict, and running against a real SDK proved it: this rule
+ * missed a genuine finding because two of four shared fields are written
+ * differently -- `signal` as `AbortSignal | undefined` on one side and
+ * `AbortSignal` on the other, `retry` as `RetryPolicy` against
+ * `Partial<RetryPolicy>`.
+ *
+ * Composition RESOLVES both: the intersection of a type with a union containing
+ * it is that type, and the intersection of a wrapper with the thing it wraps is
+ * the thing. What it does not resolve is `string` against `number`, which
+ * intersects to never. So the test is not equality but whether one declaration
+ * mentions everything the other does.
+ */
+const canCompose = (part: string | undefined, whole: string | undefined): boolean => {
+  if (part === undefined || whole === undefined) return false
+  if (part === whole) return true
+  const words = (text: string): ReadonlyArray<string> =>
+    text.replace(/[^A-Za-z0-9_$]+/g, " ").trim().split(" ").filter((word) => word !== "")
+  const a = words(part)
+  const b = words(whole)
+  return a.every((word) => b.includes(word)) || b.every((word) => a.includes(word))
+}
+
 export const composeTypes = defineRule({
   id: RULE_ID,
   severity: "warn",
@@ -67,13 +92,14 @@ export const composeTypes = defineRule({
         // Same NAME is not the same field. `SourceFile.units` is
         // `ReadonlyArray<Unit>` and `Encoded.units` is `ReadonlyArray<unknown>`;
         // composing one into the other on the strength of the name would have been
-        // wrong, and it is what the first version of this rule reported.
+        // wrong, and it is what the first version of this rule reported. Equal is
+        // too strict the other way -- see `canCompose`.
         const contained = signature
           .split("\u0000")
           .every(
             (field) =>
               wholeFields.has(field) &&
-              (whole.fieldTypes.get(field) ?? "") === (part.fieldTypes.get(field) ?? ""),
+              canCompose(part.fieldTypes.get(field), whole.fieldTypes.get(field)),
           )
         if (contained) best = part
       }

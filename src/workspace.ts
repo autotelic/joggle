@@ -522,8 +522,20 @@ const fieldsOf = (node: Record<string, unknown>, text: string): FieldSet => {
           ? key["value"]
           : undefined
     if (name === undefined || declarations.has(name)) continue
-    const start = member["start"]
-    const end = member["end"]
+    // The TYPE annotation, not the whole member.
+    //
+    // This recorded the member's source, which made "signal?: AbortSignal" and
+    // "signal: AbortSignal" different declarations -- and they are not, for the
+    // question being asked. A and B intersected with the first in one and the
+    // second in the other is "signal: AbortSignal", which is what the whole type
+    // wanted, so optionality is exactly the difference composition RESOLVES.
+    // Running against a real SDK, that false difference hid a genuine finding.
+    //
+    // A different TYPE is a different matter: "x: string" against "x: number"
+    // intersects to never, and there the fields genuinely disagree.
+    const annotation = member["typeAnnotation"]
+    const start = isRecord(annotation) ? annotation["start"] : undefined
+    const end = isRecord(annotation) ? annotation["end"] : undefined
     const declaration =
       typeof start === "number" && typeof end === "number"
         ? text.slice(start, end).replace(/\s+/g, " ").trim()
