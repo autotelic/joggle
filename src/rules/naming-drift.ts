@@ -239,11 +239,16 @@ export const namingDrift = defineRule({
     const clusters = find(workspace, scope)
     if (clusters.length === 0) return outcome([])
     const budget = policy.namingDrift.maxClusters
-    const findings = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))
+    const { diagnostics: findings, drops } = yield* assessClusters(
+      spec,
+      workspace.imports,
+      clusters.slice(0, budget),
+    )
     const unjudged = clusters.slice(budget)
     return outcome(
       findings,
       budgetNote("pairs", budget, clusters.length, unjudged.slice(0, 3).map((cluster) => nameList(cluster))),
+      drops,
     )
   }),
 })

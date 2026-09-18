@@ -2,7 +2,7 @@ import type { Effect } from "effect"
 import { policy } from "./policy.ts"
 import type { JoggleConfig } from "./config.ts"
 import type { Service as JudgeService } from "./judge.ts"
-import type { Answer, Diagnostic, JudgeError, Severity, SourceLocation } from "./schema.ts"
+import type { Answer, Diagnostic, Drop, JudgeError, Severity, SourceLocation } from "./schema.ts"
 import type { Unit, Workspace } from "./workspace.ts"
 
 /**
@@ -31,12 +31,21 @@ import type { Unit, Workspace } from "./workspace.ts"
 export interface RuleOutcome {
   readonly diagnostics: ReadonlyArray<Diagnostic>
   readonly notes: ReadonlyArray<string>
+  /**
+   * Candidates this rule considered and did not report, with the reason.
+   *
+   * The findings are the report; these are the funnel that produced it. A rule
+   * that reports nothing is either a rule with nothing to look at or a rule
+   * whose gate is too tight, and only this tells the two apart.
+   */
+  readonly drops: ReadonlyArray<Drop>
 }
 
 export const outcome = (
   diagnostics: ReadonlyArray<Diagnostic>,
   notes: ReadonlyArray<string> = [],
-): RuleOutcome => ({ diagnostics, notes })
+  drops: ReadonlyArray<Drop> = [],
+): RuleOutcome => ({ diagnostics, notes, drops })
 
 /**
  * How much of the workspace this run has to look at.

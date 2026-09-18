@@ -154,6 +154,45 @@ export const Note = Schema.Struct({
 
 export interface Note extends Schema.Schema.Type<typeof Note> {}
 
+/**
+ * How a candidate ended up not being reported.
+ *
+ * Every bound and every gate in this program is a decision not to look at
+ * something or not to say it, and a decision nobody can see is indistinguishable
+ * from a bug: the eighteen definitions of one helper stayed invisible for three
+ * runs because a cap discarded them silently.
+ *
+ * The stages are a closed set on purpose, so counts mean the same thing in every
+ * rule. A candidate that failed a gate and one that was never looked at are
+ * different facts, and mixing them into one number would hide exactly the
+distinction worth seeing.
+ */
+export const DropStage = Schema.Literals([
+  /** The model declined: it looked and found nothing. */
+  "declined",
+  /** The answer failed a gate. */
+  "gated",
+  /** No usable answer came back for this candidate. */
+  "unreadable",
+  /** The rule never asked: there was nothing to send. */
+  "no_evidence",
+  /** The run's budget ran out before this candidate. */
+  "budget",
+])
+
+export type DropStage = Schema.Schema.Type<typeof DropStage>
+
+export const Drop = Schema.Struct({
+  ruleId: Schema.String,
+  /** The candidate, named the way the rule names it. */
+  subject: Schema.String,
+  stage: DropStage,
+  /** Why, in the rule's own words. */
+  reason: Schema.String,
+})
+
+export interface Drop extends Schema.Schema.Type<typeof Drop> {}
+
 export const JudgeTotals = Schema.Struct({
   requests: Schema.Number,
   replayed: Schema.Number,
@@ -198,6 +237,14 @@ export const StoredRun = Schema.Struct({
   rules: Schema.Number,
   skipped: Schema.Array(Note),
   notes: Schema.Array(Note),
+  /**
+   * Candidates this run considered and did not report, with the reason.
+   *
+   * Optional so a run stored before this existed still replays: reading
+   * defensively and writing strictly is what keeps a cache an optimisation
+   * rather than a compatibility problem.
+   */
+  drops: Schema.optionalKey(Schema.Array(Drop)),
   judge: JudgeTotals,
   elapsedMs: Schema.Number,
 })

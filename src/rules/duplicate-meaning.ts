@@ -98,12 +98,16 @@ export const duplicateMeaning = defineRule({
     const clusters = find(workspace, scope)
     if (clusters.length === 0) return outcome([])
     const budget = policy.duplicateMeaning.maxClusters
-    const findings = yield* assessClusters(spec, workspace.imports, clusters.slice(0, budget))
+    const { diagnostics: findings, drops } = yield* assessClusters(
+      spec,
+      workspace.imports,
+      clusters.slice(0, budget),
+    )
     const largest = clusters
       .slice(budget)
       .sort((a, b) => b.members.length - a.members.length)
       .slice(0, 3)
       .map((cluster) => `${cluster.members.length}× ${spec.subject(cluster)}`)
-    return outcome(findings, budgetNote("clusters", budget, clusters.length, largest))
+    return outcome(findings, budgetNote("clusters", budget, clusters.length, largest), drops)
   }),
 })

@@ -4,13 +4,14 @@ import { Service as Judge } from "./judge.ts"
 import { policy } from "./policy.ts"
 import { finding } from "./rule.ts"
 import { allRules } from "./rules/index.ts"
-import { rankDiagnostics, type Report, type Skipped } from "./report.ts"
+import { funnelNotes, rankDiagnostics, type Report, type Skipped } from "./report.ts"
 import { everyFile, type Scope } from "./rule.ts"
 import { isEnabled, isIgnored, severityFor, type JoggleConfig } from "./config.ts"
 import {
   Baseline,
   StoredRun,
   WorkspaceError,
+  type Drop,
   type Diagnostic,
   type JudgeError,
   type JudgeTotals,
@@ -340,6 +341,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
         files: stored.files,
         rules: stored.rules,
         skipped: stored.skipped,
+        drops: stored.drops ?? [],
         notes: [
           {
             ruleId: "joggle",
@@ -419,6 +421,8 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     }
   }
 
+  const drops: Array<Drop> = []
+
   for (const rule of effective) {
     const ruleStarted = Date.now()
     // The config goes in, because a rule that enforces a layering is entitled to
@@ -430,11 +434,20 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     if (result._tag === "ok") {
       diagnostics.push(...result.value.diagnostics)
       for (const note of result.value.notes) notes.push({ ruleId: rule.id, reason: note })
+      drops.push(...result.value.drops)
     } else {
       skipped.push({ ruleId: rule.id, reason: reasonOf(result.error) })
     }
     timings.push({ phase: rule.id.replace("joggle/", ""), ms: Date.now() - ruleStarted })
   }
+
+  // The funnel, in the report rather than in a debug log.
+  //
+  // A rule that reports nothing is either a rule with nothing to look at or a
+  // rule whose gate is too tight, and the finding count cannot tell the two
+  // apart. This is what does -- and it is the only way a threshold can be tuned
+  // from evidence rather than from a guess.
+  notes.push(...funnelNotes(drops))
 
   if (options.typecheck && options.useTsgo) {
     const tsgo = yield* Tsgo
@@ -459,6 +472,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     rules: effective.length,
     skipped,
     notes,
+    drops,
     timings,
     judge: judgeTotals,
     elapsedMs,
@@ -483,6 +497,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       rules: report.rules,
       skipped: report.skipped,
       notes: report.notes,
+      drops: report.drops,
       judge: judgeTotals,
       elapsedMs,
     })

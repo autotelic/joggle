@@ -1,4 +1,36 @@
-import type { Diagnostic, Note, Severity } from "./schema.ts"
+import type { Diagnostic, Drop, Note, Severity } from "./schema.ts"
+
+/**
+ * The funnel, worded for the report.
+ *
+ * One line per rule that dropped anything, with the counts by stage and one
+ * example. The example matters more than the count: "gated 12" says a threshold
+ * may be wrong, while naming one candidate and the reason it failed says whether
+ * the threshold is wrong about the right thing.
+ */
+export const funnelNotes = (drops: ReadonlyArray<Drop>): ReadonlyArray<Note> => {
+  const byRule = new Map<string, Map<string, number>>()
+  for (const drop of drops) {
+    const stages = byRule.get(drop.ruleId) ?? new Map<string, number>()
+    stages.set(drop.stage, (stages.get(drop.stage) ?? 0) + 1)
+    byRule.set(drop.ruleId, stages)
+  }
+  const notes: Array<Note> = []
+  for (const [ruleId, stages] of byRule) {
+    const parts = [...stages.entries()]
+      .sort((left, right) => left[0].localeCompare(right[0]))
+      .map(([stage, count]) => stage + " " + count)
+    const example = drops.find((drop) => drop.ruleId === ruleId)
+    notes.push({
+      ruleId,
+      reason:
+        "dropped " +
+        parts.join(", ") +
+        (example === undefined ? "" : "; e.g. " + example.subject + ": " + example.reason),
+    })
+  }
+  return notes
+}
 
 /**
  * Output formats, modelled on oxlint's, because oxlint already decided what a
@@ -33,6 +65,13 @@ export interface Report {
    * so that a reader can tell "nothing there" from "we stopped looking".
    */
   readonly notes: ReadonlyArray<Skipped>
+  /**
+   * Candidates the rules considered and did not report, with the reason.
+   *
+   * This is the funnel that produced the findings. Without it, a rule that found
+   * nothing and a rule that looked at nothing read the same.
+   */
+  readonly drops: ReadonlyArray<Drop>
   /**
    * Where the wall clock went. A run that takes a minute is fine; a run that
    * takes a minute for a reason nobody can see is not.

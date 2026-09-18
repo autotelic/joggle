@@ -14,7 +14,7 @@ import {
   qualityOf,
   type Scope,
 } from "../rule.ts"
-import type { Diagnostic } from "../schema.ts"
+import type { Diagnostic, Drop, DropStage } from "../schema.ts"
 import { pageQuestions } from "../vocabulary.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
 
@@ -110,12 +110,24 @@ const questions = {
   worth_fixing: pageQuestions.worth_fixing,
 }
 
+/** Either a finding, or the reason there is none. Never both. */
+interface Result {
+  readonly diagnostic?: Diagnostic
+  readonly drop?: Drop
+}
+
 const findingFor = (
   page: Page,
   answers: Readonly<Record<string, import("../schema.ts").Answer>>,
-): Diagnostic | undefined => {
+): Result => {
+  const dropOf = (stage: DropStage, reason: string): Result => ({
+    drop: { ruleId: RULE_ID, subject: page.file.path, stage, reason },
+  })
   const verdict = choiceOf(answers, "verdict")
-  if (verdict === undefined || declined(verdict.choice)) return undefined
+  if (verdict === undefined) return dropOf("unreadable", "no verdict came back")
+  if (declined(verdict.choice)) {
+    return dropOf("declined", "the state is this page's own")
+  }
   // The yes/no question is a verdict, not a ranking: when it says the extraction
   // is not worth a reviewer's time, there is no finding, however loudly the
   // Choice said `extract_to_bundle`.
@@ -123,10 +135,11 @@ const findingFor = (
     score: noulOf(answers, "worth_fixing") ?? verdict.confidence,
     margin: marginOf(answers, "verdict"),
   })
-  if (!quality.usable) return undefined
+  if (!quality.usable) return dropOf("gated", quality.reason)
   const gap = choiceOf(answers, "primary_gap")
   const missing = gaps(page)
-  return finding({
+  return {
+    diagnostic: finding({
     ruleId: RULE_ID,
     severity: "warn",
     message: `${page.file.path} carries ${page.localState} useState call(s) and ${page.inlineElements} inline element(s) that may belong in a composition bundle.`,
@@ -139,7 +152,8 @@ const findingFor = (
     confidence: verdict.confidence,
     score: noulOf(answers, "worth_fixing") ?? verdict.confidence,
     judged: true,
-  })
+    }),
+  }
 }
 
 export const pageNeedsComposition = defineRule({
@@ -174,16 +188,30 @@ export const pageNeedsComposition = defineRule({
     const results = yield* judge.askMany(requests)
 
     const diagnostics: Array<Diagnostic> = []
+    // Pages past the budget are dropped candidates like any other, and saying so
+    // is the whole point: a cap that discards silently reads as a clean rule.
+    const drops: Array<Drop> = pages.slice(budget).map((page) => ({
+      ruleId: RULE_ID,
+      subject: page.file.path,
+      stage: "budget" as const,
+      reason: `the run judged ${budget} page(s) and this one was past the budget`,
+    }))
     judged.forEach((page, index) => {
       const result = results[index]
-      if (result === undefined) return
-      const diagnostic = findingFor(page, result.answers)
-      if (diagnostic !== undefined) diagnostics.push(diagnostic)
+      if (result === undefined) {
+        drops.push({
+          ruleId: RULE_ID,
+          subject: page.file.path,
+          stage: "unreadable",
+          reason: "the response contained nothing for this candidate",
+        })
+        return
+      }
+      const decided = findingFor(page, result.answers)
+      if (decided.diagnostic !== undefined) diagnostics.push(decided.diagnostic)
+      if (decided.drop !== undefined) drops.push(decided.drop)
     })
 
-    return outcome(diagnostics, [
-      `${pages.length - diagnostics.length} of ${pages.length} page(s) under state pressure need no bundle`,
-      ...budgetNote("pages", budget, pages.length, pages.slice(budget).map((page) => page.file.path)),
-    ])
+    return outcome(diagnostics, [], drops)
   }),
 })

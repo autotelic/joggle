@@ -69,8 +69,9 @@ export const duplicateImplementation = defineRule({
       .map((cluster) => unverifiedFinding(spec, cluster))
       .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
     return outcome(
-      [...reported, ...overflow],
+      [...reported.diagnostics, ...overflow],
       budgetNote("clusters", budget, clusters.length, largestOf(clusters.slice(budget))),
+      reported.drops,
     )
   }),
 })

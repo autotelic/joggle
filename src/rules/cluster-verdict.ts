@@ -3,7 +3,7 @@ import { policy } from "../policy.ts"
 import { Service as Judge, type JudgeRequest, type JudgeResult } from "../judge.ts"
 import { choiceOf, declined, finding, marginOf, noulOf, qualityOf } from "../rule.ts"
 import { duplicateVocabulary } from "../vocabulary.ts"
-import type { Answer, Diagnostic, Question, Severity } from "../schema.ts"
+import type { Answer, Diagnostic, Drop, DropStage, Question, Severity } from "../schema.ts"
 import { namesOf, type Cluster } from "../cluster.ts"
 import type { ImportGraph } from "../imports.ts"
 import type { Unit } from "../workspace.ts"
@@ -242,17 +242,41 @@ export const planCluster = (rule: ClusterRule, cluster: Cluster): ClusterPlan | 
 }
 
 /** Turn a verdict into a finding, or into silence. Pure, so it is testable alone. */
+/**
+ * A candidate the rule looked at and did not report.
+ *
+ * Returned alongside the finding rather than counted separately, so the reason a
+ * candidate was dropped is produced by the same code that decides to drop it. A
+ * second pass that re-derives the reason is a second chance to disagree.
+ */
+export const dropOf = (
+  rule: ClusterRule,
+  cluster: Cluster,
+  stage: DropStage,
+  reason: string,
+): Drop => ({ ruleId: rule.ruleId, subject: rule.subject(cluster), stage, reason })
+
+/** Either a finding, or the reason there is none. Never both. */
+export interface Result {
+  readonly diagnostic?: Diagnostic
+  readonly drop?: Drop
+}
+
 export const findingFor = (
   rule: ClusterRule,
   imports: ImportGraph,
   cluster: Cluster,
   verdict: ClusterVerdict | undefined,
-): Option.Option<Diagnostic> => {
+): Result => {
   if (verdict === undefined) {
     const fallback = rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster) : undefined
-    return fallback === undefined ? Option.none<Diagnostic>() : Option.some(fallback)
+    return fallback === undefined
+      ? { drop: dropOf(rule, cluster, "unreadable", "no judgement available") }
+      : { diagnostic: fallback }
   }
-  if (verdict.keep === undefined) return Option.none<Diagnostic>()
+  if (verdict.keep === undefined) {
+    return { drop: dropOf(rule, cluster, "declined", "the model found nothing to change") }
+  }
 
   // A verdict that fails its gates is not a worse verdict, it is not a verdict.
   // Handling it exactly like an absent answer means one gate serves every rule,
@@ -263,20 +287,26 @@ export const findingFor = (
   if (!quality.usable) {
     const fallback =
       rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster, quality.reason) : undefined
-    return fallback === undefined ? Option.none<Diagnostic>() : Option.some(fallback)
+    return fallback === undefined
+      ? { drop: dropOf(rule, cluster, "gated", quality.reason) }
+      : { diagnostic: fallback }
   }
 
   const keep = cluster.members[verdict.keep] ?? cluster.members[0]
-  if (keep === undefined) return Option.none<Diagnostic>()
+  if (keep === undefined) {
+    return { drop: dropOf(rule, cluster, "no_evidence", "the chosen member is not in the cluster") }
+  }
   const drops = cluster.members.filter((member) => member !== keep)
   const first = drops[0]
-  if (first === undefined) return Option.none<Diagnostic>()
+  if (first === undefined) {
+    return { drop: dropOf(rule, cluster, "no_evidence", "keeping every member leaves nothing to drop") }
+  }
 
   const names = namesOf(cluster)
   const extra =
     names.length > 1 ? ` (also named ${names.filter((name) => name !== keep.name).join(", ")})` : ""
-  return Option.some(
-    finding({
+  return {
+    diagnostic: finding({
       ruleId: rule.ruleId,
       severity: rule.severity,
       message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
@@ -287,7 +317,7 @@ export const findingFor = (
       score: verdict.score,
       judged: true,
     }),
-  )
+  }
 }
 
 /**
@@ -299,16 +329,31 @@ export const findingFor = (
  * it N times while a batched call pays once. The cache stays per cluster, so
  * adding or removing a question still invalidates only what it must.
  */
+/** What a rule's assistant pass produced: the findings, and the funnel. */
+export interface Assessment {
+  readonly diagnostics: ReadonlyArray<Diagnostic>
+  readonly drops: ReadonlyArray<Drop>
+}
+
 export const assessClusters = (
   rule: ClusterRule,
   imports: ImportGraph,
   clusters: ReadonlyArray<Cluster>,
-): Effect.Effect<ReadonlyArray<Diagnostic>, import("../schema.ts").JudgeError, Judge> =>
+): Effect.Effect<Assessment, import("../schema.ts").JudgeError, Judge> =>
   Effect.gen(function* () {
+    const unreadable: Array<Drop> = []
     const plans = clusters
-      .map((cluster) => planCluster(rule, cluster))
+      .map((cluster) => {
+        const plan = planCluster(rule, cluster)
+        if (plan === undefined) {
+          unreadable.push(
+            dropOf(rule, cluster, "no_evidence", "no member could be described to the model"),
+          )
+        }
+        return plan
+      })
       .filter((plan): plan is ClusterPlan => plan !== undefined)
-    if (plans.length === 0) return []
+    if (plans.length === 0) return { diagnostics: [], drops: unreadable }
     const judge = yield* Judge
     const requests = plans.map((plan) => plan.request)
 
@@ -327,19 +372,22 @@ export const assessClusters = (
             .pipe(Effect.map((results) => Option.some<ReadonlyArray<JudgeResult>>(results)))
 
     const diagnostics: Array<Diagnostic> = []
+    const drops: Array<Drop> = [...unreadable]
     if (Option.isNone(asked)) {
       for (const plan of plans) {
         const fallback = unverifiedFinding(rule, plan.cluster)
         if (fallback !== undefined) diagnostics.push(fallback)
+        else drops.push(dropOf(rule, plan.cluster, "unreadable", "no judgement available"))
       }
-      return diagnostics
+      return { diagnostics, drops }
     }
     const results = asked.value
     plans.forEach((plan, index) => {
       const result = results[index]
       const verdict = result === undefined ? undefined : plan.read(result.answers)
-      const diagnostic = findingFor(rule, imports, plan.cluster, verdict)
-      if (Option.isSome(diagnostic)) diagnostics.push(diagnostic.value)
+      const outcome = findingFor(rule, imports, plan.cluster, verdict)
+      if (outcome.diagnostic !== undefined) diagnostics.push(outcome.diagnostic)
+      if (outcome.drop !== undefined) drops.push(outcome.drop)
     })
-    return diagnostics
+    return { diagnostics, drops }
   })
