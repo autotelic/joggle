@@ -156,16 +156,21 @@ const plural = (count: number, noun: string): string => `${count} ${noun}${count
 const counts = (report: Report) => ({
   errors: report.diagnostics.filter((d) => d.severity === "error").length,
   warnings: report.diagnostics.filter((d) => d.severity === "warn").length,
+  infos: report.diagnostics.filter((d) => d.severity === "info").length,
   judged: report.diagnostics.filter((d) => d.judged).length,
 })
 
 const problemSummary = (report: Report): string => {
-  const { errors, warnings } = counts(report)
+  const { errors, warnings, infos } = counts(report)
   const total = report.diagnostics.length
   if (total === 0) return "0 problems"
   const parts: Array<string> = []
   if (errors > 0) parts.push(plural(errors, "error"))
   if (warnings > 0) parts.push(plural(warnings, "warning"))
+  // `info` was missing from this list, so a run whose findings were all notices
+  // printed as "208 problems ()" -- a summary saying nothing at the moment it has
+  // the most to say.
+  if (infos > 0) parts.push(plural(infos, "notice"))
   return `${plural(total, "problem")} (${parts.join(", ")})`
 }
 

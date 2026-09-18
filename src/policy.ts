@@ -140,6 +140,19 @@ export const policy = {
   },
 
   /**
+   * Groups of fields that repeat without a name.
+   *
+   * `minOccurrences` is a search bound and the only number here that decides what
+   * is worth reporting: two declarations sharing three fields is a coincidence,
+   * nine is a concept. Everything else bounds the work.
+   */
+  nameThePrimitive: {
+    minFields: 3,
+    minOccurrences: 6,
+    maxFindings: 400,
+  },
+
+  /**
    * Field-set composition analysis.
    *
    * Both numbers bound SEARCH, not judgement: this rule is deterministic and
