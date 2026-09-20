@@ -531,7 +531,7 @@ export const assessClusters = (
           ),
         )
       },
-      { concurrency: policy.judge.requestConcurrency },
+      { concurrency: policy.decision.requestConcurrency },
     )
 
     const diagnostics: Array<Diagnostic> = []

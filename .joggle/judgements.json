@@ -338,6 +338,344 @@
         "input_tokens": 1474,
         "output_tokens": 214
       }
+    },
+    "{\"decisionVersion\":\"2026-09-08\",\"model\":\"jev-latest\",\"questions\":{\"canonical\":{\"criteria\":{\"member_0\":\"Keep member_0: dirOf, function, in src/bundles.ts.\",\"member_1\":\"Keep member_1: extensionOf, function, in src/workspace.ts.\"},\"instructions\":\"If one of them should be kept, which one? Choose the declaration that best fits this codebase's conventions, its location, and its name.\",\"type\":\"choice\"},\"consequence\":{\"criteria\":{\"false\":\"Nobody would notice either way. The copies are stable and independent.\",\"true\":\"Sharing one would remove work, or stop the copies diverging.\"},\"instructions\":\"Would a reader be better off if these declarations were one? Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.\",\"type\":\"noul\"},\"redundant\":{\"criteria\":{\"false\":\"The repetition is justified.\",\"true\":\"One declaration would serve better than several.\"},\"instructions\":\"Are these 2 declarations one thing written repeatedly? Answer yes only if a reader is worse off for there being more than one.\",\"type\":\"noul\"},\"relationship\":{\"criteria\":{\"different_deployables\":\"Separately deployed services. Neither may import the other, whatever their paths suggest.\",\"same_module\":\"One directory, or one feature: they are edited together.\",\"same_package\":\"One deployable, different features.\",\"sibling_packages\":\"Different packages inside one repository, able to depend on each other.\"},\"instructions\":\"How do `common_directory` and the files inside it relate?\\nInspect `files`.\\nDecide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.\\nChoose `different_deployables` when nothing suggests they can share code.\",\"type\":\"choice\"},\"role\":{\"criteria\":{\"domain_concept\":\"A thing the business has an opinion about, with rules or meaning attached to it.\",\"framework_glue\":\"A shape a framework requires, such as route props, loader data, or a config object.\",\"implementation_detail\":\"A helper that exists to make other code work, and means nothing on its own.\",\"wire_contract\":\"A shape that crosses a process or protocol boundary: a request body, a response, a serialized record.\"},\"instructions\":\"What IS this declaration, apart from the fact that it is duplicated?\\nInspect `declarations` and `files`.\\nAnswer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.\\nChoose `implementation_detail` when it is a helper with no meaning of its own.\",\"type\":\"choice\"},\"verdict\":{\"criteria\":{\"collapse\":\"They are one thing. Keep one of them and delete the rest.\",\"keep_variants\":\"Related but deliberately separate, such as a special case of a general routine. Keep them all.\",\"no_issue\":\"Coincidentally similar. They are different things. Change nothing.\"},\"instructions\":\"What should happen to these declarations?\\nThey are up to 76% structurally similar but not identical.\\nChoose `no_issue` when the similarity is coincidence rather than repetition.\",\"type\":\"choice\"}},\"state\":{\"common_directory\":\"src\",\"count\":2,\"declarations\":[{\"doc\":null,\"documented\":false,\"id\":\"member_0\",\"kind\":\"function\",\"line\":35,\"path\":\"src/bundles.ts\",\"source\":\"(file: string): string => {\\n  const cut = file.lastIndexOf(\\\"/\\\")\\n  return cut === -1 ? \\\".\\\" : file.slice(0, cut)\\n}\",\"symbol\":\"dirOf\",\"types\":[]},{\"doc\":null,\"documented\":false,\"id\":\"member_1\",\"kind\":\"function\",\"line\":1018,\"path\":\"src/workspace.ts\",\"source\":\"(file: string): string => {\\n  const cut = file.lastIndexOf(\\\".\\\")\\n  return cut === -1 ? \\\"(no extension)\\\" : file.slice(cut)\\n}\",\"symbol\":\"extensionOf\",\"types\":[]}],\"described\":2,\"files\":[\"src/bundles.ts\",\"src/workspace.ts\"],\"identical\":false,\"overlap\":0.762}}": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "redundant": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "role": {
+          "type": "choice",
+          "choice": "implementation_detail",
+          "probabilities": {
+            "implementation_detail": 0.99,
+            "domain_concept": 0.01,
+            "framework_glue": 0,
+            "wire_contract": 0
+          },
+          "confidence": 0.99
+        },
+        "relationship": {
+          "type": "choice",
+          "choice": "same_package",
+          "probabilities": {
+            "same_module": 0.44,
+            "sibling_packages": 0,
+            "different_deployables": 0,
+            "same_package": 0.56
+          },
+          "confidence": 0.4
+        },
+        "verdict": {
+          "type": "choice",
+          "choice": "keep_variants",
+          "probabilities": {
+            "no_issue": 0.2,
+            "keep_variants": 0.79,
+            "collapse": 0.01
+          },
+          "confidence": 0.68
+        },
+        "consequence": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "canonical": {
+          "type": "choice",
+          "choice": "member_1",
+          "probabilities": {
+            "member_0": 0.43,
+            "member_1": 0.57
+          },
+          "confidence": 0.15
+        }
+      },
+      "usage": {
+        "input_tokens": 1364,
+        "output_tokens": 213
+      }
+    },
+    "{\"decisionVersion\":\"2026-09-08\",\"model\":\"jev-latest\",\"questions\":{\"canonical\":{\"criteria\":{\"member_0\":\"Keep member_0: isTypeUnit, function, in src/rules/compose-types.ts.\",\"member_1\":\"Keep member_1: isTypeUnit, function, in src/rules/name-the-primitive.ts.\"},\"instructions\":\"If one of them should be kept, which one? Choose the declaration that best fits this codebase's conventions, its location, and its name.\",\"type\":\"choice\"},\"consequence\":{\"criteria\":{\"false\":\"Nobody would notice either way. The copies are stable and independent.\",\"true\":\"Sharing one would remove work, or stop the copies diverging.\"},\"instructions\":\"Would a reader be better off if these declarations were one? Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.\",\"type\":\"noul\"},\"redundant\":{\"criteria\":{\"false\":\"The repetition is justified.\",\"true\":\"One declaration would serve better than several.\"},\"instructions\":\"Are these 2 declarations one thing written repeatedly? Answer yes only if a reader is worse off for there being more than one.\",\"type\":\"noul\"},\"relationship\":{\"criteria\":{\"different_deployables\":\"Separately deployed services. Neither may import the other, whatever their paths suggest.\",\"same_module\":\"One directory, or one feature: they are edited together.\",\"same_package\":\"One deployable, different features.\",\"sibling_packages\":\"Different packages inside one repository, able to depend on each other.\"},\"instructions\":\"How do `common_directory` and the files inside it relate?\\nInspect `files`.\\nDecide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.\\nChoose `different_deployables` when nothing suggests they can share code.\",\"type\":\"choice\"},\"role\":{\"criteria\":{\"domain_concept\":\"A thing the business has an opinion about, with rules or meaning attached to it.\",\"framework_glue\":\"A shape a framework requires, such as route props, loader data, or a config object.\",\"implementation_detail\":\"A helper that exists to make other code work, and means nothing on its own.\",\"wire_contract\":\"A shape that crosses a process or protocol boundary: a request body, a response, a serialized record.\"},\"instructions\":\"What IS this declaration, apart from the fact that it is duplicated?\\nInspect `declarations` and `files`.\\nAnswer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.\\nChoose `implementation_detail` when it is a helper with no meaning of its own.\",\"type\":\"choice\"},\"verdict\":{\"criteria\":{\"collapse\":\"They are one thing. Keep one of them and delete the rest.\",\"keep_variants\":\"Related but deliberately separate, such as a special case of a general routine. Keep them all.\",\"no_issue\":\"Coincidentally similar. They are different things. Change nothing.\"},\"instructions\":\"What should happen to these declarations?\\nThey are up to 89% structurally similar but not identical.\\nChoose `no_issue` when the similarity is coincidence rather than repetition.\",\"type\":\"choice\"}},\"state\":{\"common_directory\":\"src/rules\",\"count\":2,\"declarations\":[{\"doc\":null,\"documented\":false,\"id\":\"member_0\",\"kind\":\"function\",\"line\":26,\"path\":\"src/rules/compose-types.ts\",\"source\":\"(unit: Unit): boolean =>\\n  (unit.kind === \\\"interface\\\" || unit.kind === \\\"type\\\") &&\\n  unit.fields.length >= policy.composeTypes.minFields\",\"symbol\":\"isTypeUnit\",\"types\":[\"Unit\"]},{\"doc\":null,\"documented\":false,\"id\":\"member_1\",\"kind\":\"function\",\"line\":23,\"path\":\"src/rules/name-the-primitive.ts\",\"source\":\"(unit: Unit): boolean =>\\n  (unit.kind === \\\"interface\\\" || unit.kind === \\\"type\\\") &&\\n  unit.fields.length >= policy.nameThePrimitive.minFields\",\"symbol\":\"isTypeUnit\",\"types\":[\"Unit\"]}],\"described\":2,\"files\":[\"src/rules/compose-types.ts\",\"src/rules/name-the-primitive.ts\"],\"identical\":false,\"overlap\":0.889}}": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "redundant": {
+          "type": "noul",
+          "noul": 0.69
+        },
+        "role": {
+          "type": "choice",
+          "choice": "implementation_detail",
+          "probabilities": {
+            "wire_contract": 0,
+            "framework_glue": 0,
+            "domain_concept": 0.32,
+            "implementation_detail": 0.68
+          },
+          "confidence": 0.56
+        },
+        "relationship": {
+          "type": "choice",
+          "choice": "same_module",
+          "probabilities": {
+            "same_package": 0.19,
+            "sibling_packages": 0,
+            "different_deployables": 0,
+            "same_module": 0.81
+          },
+          "confidence": 0.75
+        },
+        "verdict": {
+          "type": "choice",
+          "choice": "collapse",
+          "probabilities": {
+            "no_issue": 0.02,
+            "collapse": 0.58,
+            "keep_variants": 0.4
+          },
+          "confidence": 0.36
+        },
+        "consequence": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "canonical": {
+          "type": "choice",
+          "choice": "member_0",
+          "probabilities": {
+            "member_1": 0.26,
+            "member_0": 0.74
+          },
+          "confidence": 0.48
+        }
+      },
+      "usage": {
+        "input_tokens": 1385,
+        "output_tokens": 211
+      }
+    },
+    "{\"decisionVersion\":\"2026-09-08\",\"model\":\"jev-latest\",\"questions\":{\"role\":{\"criteria\":{\"domain_core\":\"The rules and shapes the business is about. Other modules depend on it and it depends on nothing internal.\",\"infrastructure\":\"A database, a queue, a mail sender, or a client for a third party.\",\"library_core\":\"The machinery of this tool or library itself, which exists to serve code outside it.\",\"not_applicable\":\"Tests, scripts, migrations, seeds or configuration.\",\"rendering_edge\":\"A user interface: components, routes, forms, view state.\",\"transport_edge\":\"HTTP: handlers, routes, request parsing, response shaping, status codes.\",\"utilities\":\"Generic helpers that would make sense in any codebase.\"},\"instructions\":\"What is `module.path` for?\\nInspect `module` and `repository`.\\n`repository` describes what this codebase is trying to be. Classify the module by what it IS, not by whether it is doing it well: a route directory full of business rules is still a transport edge.\\nChoose `utilities` when it is a generic helper with no business meaning.\",\"type\":\"choice\"}},\"state\":{\"module\":{\"declarations\":67,\"examples\":[\"src/rules/bundle-conformance.ts\",\"src/rules/call-pattern.ts\",\"src/rules/cluster-verdict.ts\",\"src/rules/compose-types.ts\"],\"imports\":[\"effect\"],\"path\":\"src/rules\",\"shares_a_name_with_a_dependency\":null},\"repository\":\"joggle analyses other repositories and reports diagnostics; it does not render. There is no React here, so the composition-pattern rules are only meaningful when run against a codebase that does render.\"}}": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "role": {
+          "type": "choice",
+          "choice": "library_core",
+          "probabilities": {
+            "utilities": 0.01,
+            "rendering_edge": 0,
+            "domain_core": 0.06,
+            "not_applicable": 0,
+            "transport_edge": 0,
+            "library_core": 0.93,
+            "infrastructure": 0
+          },
+          "confidence": 0.91
+        }
+      },
+      "usage": {
+        "input_tokens": 690,
+        "output_tokens": 78
+      }
+    },
+    "{\"decisionVersion\":\"2026-09-08\",\"model\":\"jev-latest\",\"questions\":{\"role\":{\"criteria\":{\"domain_core\":\"The rules and shapes the business is about. Other modules depend on it and it depends on nothing internal.\",\"infrastructure\":\"A database, a queue, a mail sender, or a client for a third party.\",\"library_core\":\"The machinery of this tool or library itself, which exists to serve code outside it.\",\"not_applicable\":\"Tests, scripts, migrations, seeds or configuration.\",\"rendering_edge\":\"A user interface: components, routes, forms, view state.\",\"transport_edge\":\"HTTP: handlers, routes, request parsing, response shaping, status codes.\",\"utilities\":\"Generic helpers that would make sense in any codebase.\"},\"instructions\":\"What is `module.path` for?\\nInspect `module` and `repository`.\\n`repository` describes what this codebase is trying to be. Classify the module by what it IS, not by whether it is doing it well: a route directory full of business rules is still a transport edge.\\nChoose `utilities` when it is a generic helper with no business meaning.\",\"type\":\"choice\"}},\"state\":{\"module\":{\"declarations\":230,\"examples\":[\"src/architecture.ts\",\"src/bundles.ts\",\"src/canonical.ts\",\"src/check.ts\"],\"imports\":[\"@effect/ai-typesafe\",\"@effect/platform-node\",\"effect\",\"oxc-parser\"],\"path\":\"src\",\"shares_a_name_with_a_dependency\":null},\"repository\":\"joggle analyses other repositories and reports diagnostics; it does not render. There is no React here, so the composition-pattern rules are only meaningful when run against a codebase that does render.\"}}": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "role": {
+          "type": "choice",
+          "choice": "library_core",
+          "probabilities": {
+            "utilities": 0.02,
+            "not_applicable": 0.01,
+            "domain_core": 0,
+            "infrastructure": 0,
+            "transport_edge": 0,
+            "rendering_edge": 0,
+            "library_core": 0.97
+          },
+          "confidence": 0.96
+        }
+      },
+      "usage": {
+        "input_tokens": 700,
+        "output_tokens": 78
+      }
+    },
+    "{\"decisionVersion\":\"2026-09-08\",\"model\":\"jev-latest\",\"questions\":{\"canonical\":{\"criteria\":{\"member_0\":\"Keep member_0: JoggleConfig, interface, in src/config.ts.\",\"member_1\":\"Keep member_1: ParsedImport, interface, in src/imports.ts.\",\"member_2\":\"Keep member_2: SourceLocation, interface, in src/schema.ts.\",\"member_3\":\"Keep member_3: StructureFacts, interface, in src/workspace.ts.\"},\"instructions\":\"If one of them should be kept, which one? Choose the declaration that best fits this codebase's conventions, its location, and its name.\",\"type\":\"choice\"},\"consequence\":{\"criteria\":{\"false\":\"Nobody would notice either way. The copies are stable and independent.\",\"true\":\"Sharing one would remove work, or stop the copies diverging.\"},\"instructions\":\"Would a reader be better off if these declarations were one? Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.\",\"type\":\"noul\"},\"redundant\":{\"criteria\":{\"false\":\"The repetition is justified.\",\"true\":\"One declaration would serve better than several.\"},\"instructions\":\"Are these 4 declarations one thing written repeatedly? Answer yes only if a reader is worse off for there being more than one.\",\"type\":\"noul\"},\"relationship\":{\"criteria\":{\"different_deployables\":\"Separately deployed services. Neither may import the other, whatever their paths suggest.\",\"same_module\":\"One directory, or one feature: they are edited together.\",\"same_package\":\"One deployable, different features.\",\"sibling_packages\":\"Different packages inside one repository, able to depend on each other.\"},\"instructions\":\"How do `common_directory` and the files inside it relate?\\nInspect `files`.\\nDecide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.\\nChoose `different_deployables` when nothing suggests they can share code.\",\"type\":\"choice\"},\"role\":{\"criteria\":{\"domain_concept\":\"A thing the business has an opinion about, with rules or meaning attached to it.\",\"framework_glue\":\"A shape a framework requires, such as route props, loader data, or a config object.\",\"implementation_detail\":\"A helper that exists to make other code work, and means nothing on its own.\",\"wire_contract\":\"A shape that crosses a process or protocol boundary: a request body, a response, a serialized record.\"},\"instructions\":\"What IS this declaration, apart from the fact that it is duplicated?\\nInspect `declarations` and `files`.\\nAnswer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.\\nChoose `implementation_detail` when it is a helper with no meaning of its own.\",\"type\":\"choice\"},\"verdict\":{\"criteria\":{\"collapse\":\"They are one thing. Keep one of them and delete the rest.\",\"keep_variants\":\"Related but deliberately separate, such as a special case of a general routine. Keep them all.\",\"no_issue\":\"Coincidentally similar. They are different things. Change nothing.\"},\"instructions\":\"What should happen to these declarations?\\nThey are up to 71% structurally similar but not identical.\\nChoose `no_issue` when the similarity is coincidence rather than repetition.\",\"type\":\"choice\"}},\"state\":{\"common_directory\":\"src\",\"count\":4,\"declarations\":[{\"doc\":null,\"documented\":false,\"id\":\"member_0\",\"kind\":\"interface\",\"line\":131,\"path\":\"src/config.ts\",\"source\":\"interface JoggleConfig extends Schema.Schema.Type<typeof JoggleConfig> {}\",\"symbol\":\"JoggleConfig\",\"types\":[\"JoggleConfig\",\"Schema\"]},{\"doc\":null,\"documented\":false,\"id\":\"member_1\",\"kind\":\"interface\",\"line\":29,\"path\":\"src/imports.ts\",\"source\":\"interface ParsedImport extends Schema.Schema.Type<typeof ParsedImport> {}\",\"symbol\":\"ParsedImport\",\"types\":[\"ParsedImport\",\"Schema\"]},{\"doc\":null,\"documented\":false,\"id\":\"member_2\",\"kind\":\"interface\",\"line\":20,\"path\":\"src/schema.ts\",\"source\":\"interface SourceLocation extends Schema.Schema.Type<typeof SourceLocation> {}\",\"symbol\":\"SourceLocation\",\"types\":[\"SourceLocation\",\"Schema\"]},{\"doc\":null,\"documented\":false,\"id\":\"member_3\",\"kind\":\"interface\",\"line\":172,\"path\":\"src/workspace.ts\",\"source\":\"interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}\",\"symbol\":\"StructureFacts\",\"types\":[\"StructureFacts\",\"Schema\"]}],\"described\":4,\"files\":[\"src/config.ts\",\"src/imports.ts\",\"src/schema.ts\",\"src/workspace.ts\"],\"identical\":false,\"overlap\":0.714}}": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "redundant": {
+          "type": "noul",
+          "noul": 0.19
+        },
+        "role": {
+          "type": "choice",
+          "choice": "framework_glue",
+          "probabilities": {
+            "framework_glue": 0.44,
+            "wire_contract": 0.18,
+            "domain_concept": 0.28,
+            "implementation_detail": 0.1
+          },
+          "confidence": 0.26
+        },
+        "relationship": {
+          "type": "choice",
+          "choice": "same_module",
+          "probabilities": {
+            "different_deployables": 0,
+            "same_package": 0.24,
+            "same_module": 0.76,
+            "sibling_packages": 0
+          },
+          "confidence": 0.67
+        },
+        "verdict": {
+          "type": "choice",
+          "choice": "no_issue",
+          "probabilities": {
+            "collapse": 0.01,
+            "no_issue": 0.62,
+            "keep_variants": 0.37
+          },
+          "confidence": 0.43
+        },
+        "consequence": {
+          "type": "noul",
+          "noul": 0.33
+        },
+        "canonical": {
+          "type": "choice",
+          "choice": "member_2",
+          "probabilities": {
+            "member_1": 0.02,
+            "member_0": 0.33,
+            "member_3": 0.07,
+            "member_2": 0.58
+          },
+          "confidence": 0.45
+        }
+      },
+      "usage": {
+        "input_tokens": 1622,
+        "output_tokens": 231
+      }
+    },
+    "{\"decisionVersion\":\"2026-09-08\",\"model\":\"jev-latest\",\"questions\":{\"canonical\":{\"criteria\":{\"member_0\":\"Keep member_0: RuleOutcome, interface, in src/rule.ts.\",\"member_1\":\"Keep member_1: Assessment, interface, in src/rules/cluster-verdict.ts.\"},\"instructions\":\"If one of them should be kept, which one? Choose the declaration that best fits this codebase's conventions, its location, and its name.\",\"type\":\"choice\"},\"consequence\":{\"criteria\":{\"false\":\"Nobody would notice either way. The copies are stable and independent.\",\"true\":\"Sharing one would remove work, or stop the copies diverging.\"},\"instructions\":\"Would a reader be better off if these declarations were one? Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.\",\"type\":\"noul\"},\"redundant\":{\"criteria\":{\"false\":\"The repetition is justified.\",\"true\":\"One declaration would serve better than several.\"},\"instructions\":\"Are these 2 declarations one thing written repeatedly? Answer yes only if a reader is worse off for there being more than one.\",\"type\":\"noul\"},\"relationship\":{\"criteria\":{\"different_deployables\":\"Separately deployed services. Neither may import the other, whatever their paths suggest.\",\"same_module\":\"One directory, or one feature: they are edited together.\",\"same_package\":\"One deployable, different features.\",\"sibling_packages\":\"Different packages inside one repository, able to depend on each other.\"},\"instructions\":\"How do `common_directory` and the files inside it relate?\\nInspect `files`.\\nDecide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.\\nChoose `different_deployables` when nothing suggests they can share code.\",\"type\":\"choice\"},\"role\":{\"criteria\":{\"domain_concept\":\"A thing the business has an opinion about, with rules or meaning attached to it.\",\"framework_glue\":\"A shape a framework requires, such as route props, loader data, or a config object.\",\"implementation_detail\":\"A helper that exists to make other code work, and means nothing on its own.\",\"wire_contract\":\"A shape that crosses a process or protocol boundary: a request body, a response, a serialized record.\"},\"instructions\":\"What IS this declaration, apart from the fact that it is duplicated?\\nInspect `declarations` and `files`.\\nAnswer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.\\nChoose `implementation_detail` when it is a helper with no meaning of its own.\",\"type\":\"choice\"},\"verdict\":{\"criteria\":{\"collapse\":\"They are one thing. Keep one of them and delete the rest.\",\"keep_variants\":\"Related but deliberately separate, such as a special case of a general routine. Keep them all.\",\"no_issue\":\"Coincidentally similar. They are different things. Change nothing.\"},\"instructions\":\"What should happen to these declarations?\\nThey are up to 79% structurally similar but not identical.\\nChoose `no_issue` when the similarity is coincidence rather than repetition.\",\"type\":\"choice\"}},\"state\":{\"common_directory\":\"src\",\"count\":2,\"declarations\":[{\"doc\":null,\"documented\":false,\"id\":\"member_0\",\"kind\":\"interface\",\"line\":32,\"path\":\"src/rule.ts\",\"source\":\"interface RuleOutcome {\\n  readonly diagnostics: ReadonlyArray<Diagnostic>\\n  readonly notes: ReadonlyArray<string>\\n  /**\\n   * Candidates this rule considered and did not report, with the reason.\\n   *\\n   * The findings are the report; these are the funnel that produced it. A rule\\n   * that reports nothing is either a rule with nothing to look at or a rule\\n   * whose gate is too tight, and only this tells the two apart.\\n   */\\n  readonly drops: ReadonlyArray<Drop>\\n}\",\"symbol\":\"RuleOutcome\",\"types\":[\"Drop\",\"ReadonlyArray\",\"Diagnostic\"]},{\"doc\":null,\"documented\":false,\"id\":\"member_1\",\"kind\":\"interface\",\"line\":492,\"path\":\"src/rules/cluster-verdict.ts\",\"source\":\"interface Assessment {\\n  readonly diagnostics: ReadonlyArray<Diagnostic>\\n  readonly drops: ReadonlyArray<Drop>\\n}\",\"symbol\":\"Assessment\",\"types\":[\"Drop\",\"ReadonlyArray\",\"Diagnostic\"]}],\"described\":2,\"files\":[\"src/rule.ts\",\"src/rules/cluster-verdict.ts\"],\"identical\":false,\"overlap\":0.789}}": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "redundant": {
+          "type": "noul",
+          "noul": 0.52
+        },
+        "role": {
+          "type": "choice",
+          "choice": "domain_concept",
+          "probabilities": {
+            "implementation_detail": 0.02,
+            "wire_contract": 0.17,
+            "framework_glue": 0.33,
+            "domain_concept": 0.48
+          },
+          "confidence": 0.32
+        },
+        "relationship": {
+          "type": "choice",
+          "choice": "same_module",
+          "probabilities": {
+            "different_deployables": 0,
+            "sibling_packages": 0,
+            "same_module": 0.51,
+            "same_package": 0.49
+          },
+          "confidence": 0.35
+        },
+        "verdict": {
+          "type": "choice",
+          "choice": "keep_variants",
+          "probabilities": {
+            "keep_variants": 0.7,
+            "collapse": 0.29,
+            "no_issue": 0.01
+          },
+          "confidence": 0.54
+        },
+        "consequence": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "canonical": {
+          "type": "choice",
+          "choice": "member_0",
+          "probabilities": {
+            "member_1": 0.03,
+            "member_0": 0.97
+          },
+          "confidence": 0.95
+        }
+      },
+      "usage": {
+        "input_tokens": 1474,
+        "output_tokens": 214
+      }
+    },
+    "{\"decisionVersion\":\"2026-09-08\",\"model\":\"jev-latest\",\"questions\":{\"canonical\":{\"criteria\":{\"member_0\":\"Keep member_0: storePath, function, in src/decision.ts.\",\"member_1\":\"Keep member_1: runPath, function, in src/run-cache.ts.\"},\"instructions\":\"If one of them should be kept, which one? Choose the declaration that best fits this codebase's conventions, its location, and its name.\",\"type\":\"choice\"},\"consequence\":{\"criteria\":{\"false\":\"Nobody would notice either way. The copies are stable and independent.\",\"true\":\"Sharing one would remove work, or stop the copies diverging.\"},\"instructions\":\"Would a reader be better off if these declarations were one? Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.\",\"type\":\"noul\"},\"redundant\":{\"criteria\":{\"false\":\"The repetition is justified.\",\"true\":\"One declaration would serve better than several.\"},\"instructions\":\"Are these 2 declarations one thing written repeatedly? Answer yes only if a reader is worse off for there being more than one.\",\"type\":\"noul\"},\"relationship\":{\"criteria\":{\"different_deployables\":\"Separately deployed services. Neither may import the other, whatever their paths suggest.\",\"same_module\":\"One directory, or one feature: they are edited together.\",\"same_package\":\"One deployable, different features.\",\"sibling_packages\":\"Different packages inside one repository, able to depend on each other.\"},\"instructions\":\"How do `common_directory` and the files inside it relate?\\nInspect `files`.\\nDecide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.\\nChoose `different_deployables` when nothing suggests they can share code.\",\"type\":\"choice\"},\"role\":{\"criteria\":{\"domain_concept\":\"A thing the business has an opinion about, with rules or meaning attached to it.\",\"framework_glue\":\"A shape a framework requires, such as route props, loader data, or a config object.\",\"implementation_detail\":\"A helper that exists to make other code work, and means nothing on its own.\",\"wire_contract\":\"A shape that crosses a process or protocol boundary: a request body, a response, a serialized record.\"},\"instructions\":\"What IS this declaration, apart from the fact that it is duplicated?\\nInspect `declarations` and `files`.\\nAnswer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.\\nChoose `implementation_detail` when it is a helper with no meaning of its own.\",\"type\":\"choice\"},\"verdict\":{\"criteria\":{\"collapse\":\"They are one thing. Keep one of them and delete the rest.\",\"keep_variants\":\"Related but deliberately separate, such as a special case of a general routine. Keep them all.\",\"no_issue\":\"Coincidentally similar. They are different things. Change nothing.\"},\"instructions\":\"What should happen to these declarations?\\nThey are up to 78% structurally similar but not identical.\\nChoose `no_issue` when the similarity is coincidence rather than repetition.\",\"type\":\"choice\"}},\"state\":{\"common_directory\":\"src\",\"count\":2,\"declarations\":[{\"doc\":null,\"documented\":false,\"id\":\"member_0\",\"kind\":\"function\",\"line\":71,\"path\":\"src/decision.ts\",\"source\":\"(path: Path.Path, cacheDir: string): string => path.join(cacheDir, \\\"judgements.json\\\")\",\"symbol\":\"storePath\",\"types\":[\"Path\"]},{\"doc\":null,\"documented\":false,\"id\":\"member_1\",\"kind\":\"function\",\"line\":47,\"path\":\"src/run-cache.ts\",\"source\":\"(path: Path.Path, cacheDir: string): string => path.join(cacheDir, \\\"last-run.json\\\")\",\"symbol\":\"runPath\",\"types\":[\"Path\"]}],\"described\":2,\"files\":[\"src/decision.ts\",\"src/run-cache.ts\"],\"identical\":false,\"overlap\":0.778}}": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "redundant": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "role": {
+          "type": "choice",
+          "choice": "implementation_detail",
+          "probabilities": {
+            "wire_contract": 0.01,
+            "implementation_detail": 0.98,
+            "framework_glue": 0,
+            "domain_concept": 0.01
+          },
+          "confidence": 0.97
+        },
+        "relationship": {
+          "type": "choice",
+          "choice": "same_module",
+          "probabilities": {
+            "same_module": 0.6,
+            "sibling_packages": 0,
+            "different_deployables": 0,
+            "same_package": 0.4
+          },
+          "confidence": 0.46
+        },
+        "verdict": {
+          "type": "choice",
+          "choice": "keep_variants",
+          "probabilities": {
+            "collapse": 0.02,
+            "no_issue": 0.09,
+            "keep_variants": 0.89
+          },
+          "confidence": 0.84
+        },
+        "consequence": {
+          "type": "noul",
+          "noul": 0.53
+        },
+        "canonical": {
+          "type": "choice",
+          "choice": "member_1",
+          "probabilities": {
+            "member_0": 0.25,
+            "member_1": 0.75
+          },
+          "confidence": 0.51
+        }
+      },
+      "usage": {
+        "input_tokens": 1335,
+        "output_tokens": 213
+      }
     }
   }
 }

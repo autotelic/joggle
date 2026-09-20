@@ -4,7 +4,7 @@ import { duplicateImplementation } from "../src/rules/duplicate-implementation.t
 import { duplicateMeaning } from "../src/rules/duplicate-meaning.ts"
 import { everyFile, marginOfAnswer, qualityOf } from "../src/rule.ts"
 import type { StubAnswer } from "../src/testing.ts"
-import { judgeStub, noul, withWorkspace, noConfig } from "./support.ts"
+import { modelStub, noul, withWorkspace, noConfig } from "./support.ts"
 
 /** A Choice answer with a real distribution, which the shared stub does not carry. */
 const spread = (probabilities: Record<string, number>): StubAnswer => ({
@@ -57,7 +57,7 @@ it.effect("a provable finding degrades to unverified when the model says no", ()
       expect(findings[0]?.help).toContain("the yes/no question answered no")
     }).pipe(
       Effect.provide(
-        judgeStub({ verdict: spread({ collapse: 1 }), canonical: spread({ member_0: 1 }), redundant: noul(0.2) }),
+        modelStub({ verdict: spread({ collapse: 1 }), canonical: spread({ member_0: 1 }), redundant: noul(0.2) }),
       ),
     ),
   ),
@@ -70,7 +70,7 @@ it.effect("a guessed finding disappears when the model says no", () =>
       expect(findings).toEqual([])
     }).pipe(
       Effect.provide(
-        judgeStub({ verdict: spread({ collapse: 1 }), canonical: spread({ member_0: 1 }), redundant: noul(0.1) }),
+        modelStub({ verdict: spread({ collapse: 1 }), canonical: spread({ member_0: 1 }), redundant: noul(0.1) }),
       ),
     ),
   ),
@@ -83,7 +83,7 @@ it.effect("a shrug across two options is not a judgement", () =>
       expect(findings).toEqual([])
     }).pipe(
       Effect.provide(
-        judgeStub({
+        modelStub({
           verdict: spread({ collapse: 0.45, keep_variants: 0.4 }),
           canonical: spread({ member_0: 1 }),
           redundant: noul(0.9),

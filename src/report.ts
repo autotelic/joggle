@@ -77,7 +77,7 @@ export interface Report {
    * takes a minute for a reason nobody can see is not.
    */
   readonly timings: ReadonlyArray<{ readonly phase: string; readonly ms: number }>
-  readonly judge: {
+  readonly decision: {
     readonly requests: number
     readonly replayed: number
     /** Wire calls. Fewer than requests means batching worked. */
@@ -177,11 +177,11 @@ const problemSummary = (report: Report): string => {
 /** joggle-specific tail: how much of this was actually decided, and by what. */
 const provenance = (report: Report): string => {
   if (report.replayed) {
-    return `Replayed the previous run: nothing it depends on changed across ${plural(report.files, "file")}. No analysis, no judgements, no tokens.`
+    return `Replayed the previous run: nothing it depends on changed across ${plural(report.files, "file")}. No analysis, no decisions, no tokens.`
   }
   const { judged } = counts(report)
-  if (report.diagnostics.length === 0 && report.judge.requests === 0) return ""
-  const { requests, calls, replayed, unavailable, inputTokens } = report.judge
+  if (report.diagnostics.length === 0 && report.decision.requests === 0) return ""
+  const { requests, calls, replayed, unavailable, inputTokens } = report.decision
   const u = unavailable > 0 ? `, ${unavailable} unavailable` : ""
   const phases = report.timings
     .filter((timing) => timing.ms >= 50)
@@ -190,7 +190,7 @@ const provenance = (report: Report): string => {
     .join(", ")
   const where = phases === "" ? "" : ` (${phases})`
   const tokens = `${inputTokens.toLocaleString("en-US")} input tokens`
-  return `Finished in ${Math.round(report.elapsedMs / 100) / 10}s on ${plural(report.files, "file")} using ${plural(report.rules, "rule")}${where}. ${judged} of ${report.diagnostics.length} findings verified by a judgement; ${requests} judgements in ${calls} API calls, ${replayed} replayed${u}, ${tokens}.`
+  return `Finished in ${Math.round(report.elapsedMs / 100) / 10}s on ${plural(report.files, "file")} using ${plural(report.rules, "rule")}${where}. ${judged} of ${report.diagnostics.length} findings verified by the model; ${requests} decisions in ${calls} API calls, ${replayed} replayed${u}, ${tokens}.`
 }
 
 const notes = (report: Report): ReadonlyArray<string> => [
@@ -327,7 +327,7 @@ const json = (report: Report): string =>
         ...counts(report),
         skipped: report.skipped,
         notes: report.notes,
-        judge: report.judge,
+        decision: report.decision,
         replayed: report.replayed,
         timings: report.timings,
         elapsedMs: report.elapsedMs,

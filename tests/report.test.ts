@@ -19,7 +19,7 @@ const report = (diagnostics: ReadonlyArray<Diagnostic>): Report => ({
   drops: [],
   notes: [{ ruleId: "joggle/duplicate-meaning", reason: "12 of 412 clusters were not judged" }],
   timings: [{ phase: "workspace", ms: 1200 }],
-  judge: { requests: 1, replayed: 0, calls: 1, unavailable: 0, inputTokens: 900, outputTokens: 40 },
+  decision: { requests: 1, replayed: 0, calls: 1, unavailable: 0, inputTokens: 900, outputTokens: 40 },
   elapsedMs: 5,
   replayed: false,
 })
@@ -71,7 +71,7 @@ it("github output emits workflow commands", () => {
 it("json output is machine readable", () => {
   const parsed = JSON.parse(render(report([diagnostic()]), "json"))
   expect(parsed.summary.problems).toBe(1)
-  expect(parsed.summary.judge.requests).toBe(1)
+  expect(parsed.summary.decision.requests).toBe(1)
   expect(parsed.diagnostics[0].ruleId).toBe("joggle/duplicate-implementation")
 })
 

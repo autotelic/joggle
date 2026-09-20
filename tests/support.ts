@@ -1,7 +1,7 @@
 import { Effect, Layer, Option } from "effect"
 import { NodeServices } from "@effect/platform-node"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
-import { decisionStub, refusingJudge, type StubAnswer } from "../src/testing.ts"
+import { decisionStub, refusingModel, type StubAnswer } from "../src/testing.ts"
 import type { WorkspaceError } from "../src/schema.ts"
 import { Service as TsgoService } from "../src/tsgo.ts"
 import { loadWorkspace, type Workspace } from "../src/workspace.ts"
@@ -21,10 +21,10 @@ export const tsgoStub = Layer.succeed(
 )
 
 /** A model that answers from a table, for a rule that asks. */
-export const judgeStub = (answers: Readonly<Record<string, StubAnswer>>) => decisionStub(answers)
+export const modelStub = (answers: Readonly<Record<string, StubAnswer>>) => decisionStub(answers)
 
 /** A model that refuses, for a rule that must degrade without one. */
-export const judgeFailing = (reason: string) => refusingJudge(reason)
+export const modelFailing = (reason: string) => refusingModel(reason)
 
 /**
  * Load the fixture workspace once per test and hand it to the body. The body's

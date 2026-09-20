@@ -259,7 +259,7 @@ export const hoistToDomain = defineRule({
           Effect.map((result) => Option.some(result.answers)),
           Effect.catch(() => Effect.succeed(Option.none<DecisionAnswers>())),
         ),
-      { concurrency: policy.judge.requestConcurrency },
+      { concurrency: policy.decision.requestConcurrency },
     )
 
 
@@ -290,7 +290,7 @@ export const hoistToDomain = defineRule({
       // functions; these two rules were built without it, which is how one of them
       // produced 199 findings on a single repository.
       const margin = marginOfAnswer(duty)
-      if (margin < policy.judge.gates.minMargin) {
+      if (margin < policy.decision.gates.minMargin) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),

@@ -104,7 +104,7 @@ export const Drop = Schema.Struct({
 
 export interface Drop extends Schema.Schema.Type<typeof Drop> {}
 
-export const JudgeTotals = Schema.Struct({
+export const DecisionTotals = Schema.Struct({
   requests: Schema.Number,
   replayed: Schema.Number,
   calls: Schema.Number,
@@ -113,7 +113,7 @@ export const JudgeTotals = Schema.Struct({
   outputTokens: Schema.Number,
 })
 
-export interface JudgeTotals extends Schema.Schema.Type<typeof JudgeTotals> {}
+export interface DecisionTotals extends Schema.Schema.Type<typeof DecisionTotals> {}
 
 /**
  * The previous run, kept whole so an unchanged repository costs nothing.
@@ -156,7 +156,7 @@ export const StoredRun = Schema.Struct({
    * rather than a compatibility problem.
    */
   drops: Schema.optionalKey(Schema.Array(Drop)),
-  judge: JudgeTotals,
+  decision: DecisionTotals,
   elapsedMs: Schema.Number,
 })
 

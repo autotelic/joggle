@@ -2,7 +2,7 @@ import { expect, test } from "vitest"
 import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
 import * as plugin from "../src/plugin.ts"
-import { answeringJudge, diagnosticsOf } from "../src/testing.ts"
+import { answeringModel, diagnosticsOf } from "../src/testing.ts"
 import { composeTypes } from "../src/rules/compose-types.ts"
 import { loadWorkspace } from "../src/workspace.ts"
 import { choice } from "./support.ts"
@@ -65,7 +65,7 @@ test("a rule can be written against the surface and run by the tester", async ()
 })
 
 test("the tester can answer for a judged rule", async () => {
-  const judge = answeringJudge({ answer: choice("x", 0.9) })
+  const judge = answeringModel({ answer: choice("x", 0.9) })
   const answer = await Effect.runPromise(
     Effect.gen(function* () {
       const model = yield* plugin.DecisionModel.DecisionModel

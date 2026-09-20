@@ -21,7 +21,7 @@ import type * as HttpClient from "effect/unstable/http/HttpClient"
 import { TypeSafeClient, TypeSafeDecisionModel, TypeSafeSchema } from "@effect/ai-typesafe"
 import { canonical } from "./canonical.ts"
 import { policy } from "./policy.ts"
-import type { JudgeTotals } from "./schema.ts"
+import type { DecisionTotals } from "./schema.ts"
 
 // The judged half of joggle, as Effect's own DecisionModel.
 //
@@ -46,8 +46,8 @@ import type { JudgeTotals } from "./schema.ts"
 // state and forgot it in the key, and the fix is to have only one of them.
 
 /** The run's judgement accounting, read once at the end of a run. */
-export class JudgeStats extends Context.Service<JudgeStats, { readonly read: Effect.Effect<JudgeTotals> }>()(
-  "@joggle/JudgeStats",
+export class DecisionStats extends Context.Service<DecisionStats, { readonly read: Effect.Effect<DecisionTotals> }>()(
+  "@joggle/DecisionStats",
 ) {}
 
 export interface Options {
@@ -59,7 +59,7 @@ export interface Options {
   readonly apiKey: Option.Option<string>
 }
 
-const emptyStats: JudgeTotals = {
+const emptyStats: DecisionTotals = {
   requests: 0,
   replayed: 0,
   calls: 0,
@@ -81,7 +81,7 @@ const CacheFile = Schema.Struct({
  */
 export const cacheKeyFor = (payload: typeof TypeSafeSchema.SystemOneRequest.Encoded): string =>
   canonical({
-    questionVersion: policy.questionVersion,
+    decisionVersion: policy.decisionVersion,
     model: payload.model,
     state: payload.state,
     questions: payload.questions,
@@ -107,7 +107,7 @@ export const isUnreachable: Predicate.Predicate<AiError.AiError> = (error) =>
  * @param reason - The provider's reason.
  * @returns The wrapped error.
  */
-export const judgeError = (
+export const decisionError = (
   at: readonly [module: string, method: string],
   reason: AiError.AiErrorReason,
 ): AiError.AiError => AiError.make({ module: at[0], method: at[1], reason })
@@ -121,7 +121,7 @@ export const judgeError = (
  * rather than reporting every candidate as unreadable.
  */
 const missingKey = (): AiError.AiError =>
-  judgeError(
+  decisionError(
     ["joggle/Decision", "systemOne"],
     new AiError.AuthenticationError({
       kind: "MissingKey",
@@ -130,7 +130,7 @@ const missingKey = (): AiError.AiError =>
   )
 
 const offlineMiss = (): AiError.AiError =>
-  judgeError(
+  decisionError(
     ["joggle/Decision", "systemOne"],
     new AiError.UnknownError({ description: "offline mode and no cached judgement" }),
   )
@@ -145,7 +145,7 @@ const offlineMiss = (): AiError.AiError =>
 export const layer = (
   options: Options,
 ): Layer.Layer<
-  DecisionModel.DecisionModel | JudgeStats,
+  DecisionModel.DecisionModel | DecisionStats,
   never,
   FileSystem.FileSystem | Path.Path | HttpClient.HttpClient
 > =>
@@ -157,7 +157,7 @@ export const layer = (
       // Overridable so a self-hosted or enterprise deployment can be used when
       // the evidence panels must not leave the organisation's boundary.
       const baseUrl = yield* Config.String("TYPESAFE_BASE_URL").pipe(
-        Effect.orElseSucceed(() => policy.judge.baseUrl),
+        Effect.orElseSucceed(() => policy.decision.baseUrl),
       )
       const inner = yield* TypeSafeClient.make({
         apiKey: apiKey === undefined ? undefined : Redacted.make(apiKey),
@@ -246,7 +246,7 @@ export const layer = (
       )
 
       return Context.make(DecisionModel.DecisionModel, decisionModel).pipe(
-        Context.add(JudgeStats, { read: Ref.get(stats) }),
+        Context.add(DecisionStats, { read: Ref.get(stats) }),
       )
     }),
   )

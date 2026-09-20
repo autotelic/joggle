@@ -6,7 +6,7 @@ import * as HttpClient from "effect/unstable/http/HttpClient"
 import type * as HttpClientError from "effect/unstable/http/HttpClientError"
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse"
 import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
-import { cacheKeyFor, JudgeStats, layer as decisionLayer } from "../src/decision.ts"
+import { cacheKeyFor, DecisionStats, layer as decisionLayer } from "../src/decision.ts"
 import { policy } from "../src/policy.ts"
 import { nodeLayer } from "./support.ts"
 
@@ -50,7 +50,7 @@ const jsonResponse = (
 
 test("the cache key carries the question version and the model", () => {
   const key = cacheKeyFor({ model: "jev-latest", state: { a: 1 }, questions: {} })
-  expect(key).toContain(policy.questionVersion)
+  expect(key).toContain(policy.decisionVersion)
   expect(key).toContain("jev-latest")
 })
 
@@ -63,7 +63,7 @@ it.effect("answers through the provider and counts what it spent", () =>
     const outcome = yield* Effect.gen(function* () {
       const model = yield* DecisionModel.DecisionModel
       const result = yield* model.decide(definition, { input: { a: 1 } })
-      const stats = yield* (yield* JudgeStats).read
+      const stats = yield* (yield* DecisionStats).read
       return { result, stats }
     }).pipe(
       Effect.provide(decisionLayer({ cacheDir, offline: false, apiKey: Option.some("test-key") })),
@@ -104,7 +104,7 @@ it.effect("replays a cached judgement with no call and no key", () =>
     const second = yield* Effect.gen(function* () {
       const model = yield* DecisionModel.DecisionModel
       const result = yield* model.decide(definition, { input: { a: 1 } })
-      const stats = yield* (yield* JudgeStats).read
+      const stats = yield* (yield* DecisionStats).read
       return { result, stats }
     }).pipe(
       Effect.provide(decisionLayer({ cacheDir, offline: true, apiKey: Option.none() })),

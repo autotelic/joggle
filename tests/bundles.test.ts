@@ -4,7 +4,7 @@ import { NodeServices } from "@effect/platform-node"
 import { everyFile } from "../src/rule.ts"
 import { bundleRules } from "../src/rules/bundle-conformance.ts"
 import { loadWorkspace } from "../src/workspace.ts"
-import { judgeStub, noConfig } from "./support.ts"
+import { modelStub, noConfig } from "./support.ts"
 
 /** Run every producer rule over one fixture directory, keyed by rule id. */
 const runAll = (root: string) =>
@@ -16,7 +16,7 @@ const runAll = (root: string) =>
       byRule.set(rule.id, diagnostics.map((entry) => entry.help ?? entry.message))
     }
     return byRule
-  }).pipe(Effect.provide(NodeServices.layer), Effect.provide(judgeStub({})))
+  }).pipe(Effect.provide(NodeServices.layer), Effect.provide(modelStub({})))
 
 it.effect("a bundle that follows the pattern produces nothing", () =>
   Effect.gen(function* () {

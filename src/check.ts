@@ -3,7 +3,7 @@ import * as AiError from "effect/unstable/ai/AiError"
 import { shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 import { loadParses } from "./parsecache.ts"
-import { JudgeStats } from "./decision.ts"
+import { DecisionStats } from "./decision.ts"
 import {
   baselinePath,
   manifestOf,
@@ -25,7 +25,7 @@ import {
   WorkspaceError,
   type Drop,
   type Diagnostic,
-  type JudgeTotals,
+  type DecisionTotals,
 } from "./schema.ts"
 import { Service as Tsgo } from "./tsgo.ts"
 import { discoverFiles, loadWorkspace } from "./workspace.ts"
@@ -171,7 +171,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       : universe.filter((rule) => options.rules?.includes(rule.id) === true)
   ).filter((rule) => isEnabled(options.config, rule.id, rule.severity))
 
-  const judgeStats = yield* JudgeStats
+  const judgeStats = yield* DecisionStats
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
 
@@ -274,7 +274,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
         ],
         timings: [{ phase: "replay-check", ms: discoverMs }],
         // This run spent nothing, so it reports nothing spent.
-        judge: { requests: 0, replayed: 0, calls: 0, unavailable: 0, inputTokens: 0, outputTokens: 0 },
+        decision: { requests: 0, replayed: 0, calls: 0, unavailable: 0, inputTokens: 0, outputTokens: 0 },
         elapsedMs: (yield* Clock.currentTimeMillis) - started,
         replayed: true,
       })
@@ -374,7 +374,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
         )
         return { rule, result, ms: (yield* Clock.currentTimeMillis) - ruleStarted }
       }),
-    { concurrency: policy.judge.requestConcurrency },
+    { concurrency: policy.decision.requestConcurrency },
   )
   for (const { rule, result, ms } of ruleResults) {
     if (result._tag === "ok") {
@@ -543,7 +543,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // "workspace 4.4s" and nothing else is a run nobody can make faster.
   timings.push(...workspace.phases)
 
-  const judgeTotals: JudgeTotals = yield* judgeStats.read
+  const judgeTotals: DecisionTotals = yield* judgeStats.read
   const elapsedMs = (yield* Clock.currentTimeMillis) - started
   const report: Report = {
     diagnostics: rankDiagnostics(configured),
@@ -553,7 +553,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     notes,
     drops,
     timings,
-    judge: judgeTotals,
+    decision: judgeTotals,
     elapsedMs,
     replayed: false,
   }
@@ -577,7 +577,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       skipped: report.skipped,
       notes: report.notes,
       drops: report.drops,
-      judge: judgeTotals,
+      decision: judgeTotals,
       elapsedMs,
     })
   }

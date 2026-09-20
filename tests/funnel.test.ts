@@ -6,7 +6,7 @@ import { everyFile } from "../src/rule.ts"
 import type { DropStage } from "../src/schema.ts"
 import type { StubAnswer } from "../src/testing.ts"
 import { funnelNotes } from "../src/report.ts"
-import { judgeStub, noul, noConfig, withWorkspace } from "./support.ts"
+import { modelStub, noul, noConfig, withWorkspace } from "./support.ts"
 
 const spread = (probabilities: Record<string, number>): StubAnswer => ({
   type: "choice",
@@ -28,7 +28,7 @@ it.effect("a decline is recorded as a decline", () =>
       expect(drops[0]?.subject.length).toBeGreaterThan(0)
     }).pipe(
       Effect.provide(
-        judgeStub({ verdict: spread({ no_issue: 0.9 }), canonical: spread({ member_0: 1 }), redundant: noul(0.9) }),
+        modelStub({ verdict: spread({ no_issue: 0.9 }), canonical: spread({ member_0: 1 }), redundant: noul(0.9) }),
       ),
     ),
   ),
@@ -44,7 +44,7 @@ it.effect("a failed gate is recorded as a gate, not as a decline", () =>
       expect(drops[0]?.reason).toContain("answered no")
     }).pipe(
       Effect.provide(
-        judgeStub({ verdict: spread({ collapse: 1 }), canonical: spread({ member_0: 1 }), redundant: noul(0.1) }),
+        modelStub({ verdict: spread({ collapse: 1 }), canonical: spread({ member_0: 1 }), redundant: noul(0.1) }),
       ),
     ),
   ),
@@ -61,7 +61,7 @@ it.effect("a fact-based rule reports rather than drops", () =>
       expect(stagesOf(drops)).toEqual([])
     }).pipe(
       Effect.provide(
-        judgeStub({ verdict: spread({ collapse: 1 }), canonical: spread({ member_0: 1 }), redundant: noul(0.1) }),
+        modelStub({ verdict: spread({ collapse: 1 }), canonical: spread({ member_0: 1 }), redundant: noul(0.1) }),
       ),
     ),
   ),
@@ -97,6 +97,6 @@ it.effect("a rule with nothing to look at drops nothing", () =>
       const { diagnostics, drops } = yield* duplicateMeaning.run(workspace, everyFile, noConfig)
       expect(diagnostics).toEqual([])
       expect(drops.length).toBeGreaterThan(0)
-    }).pipe(Effect.provide(judgeStub({ redundant: noul(0.9) }))),
+    }).pipe(Effect.provide(modelStub({ redundant: noul(0.9) }))),
   ),
 )

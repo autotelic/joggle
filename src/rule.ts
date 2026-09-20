@@ -263,10 +263,10 @@ export const qualityOf = (input: {
   readonly margin: number | undefined
 }): JudgementQuality => {
   const round = (value: number): string => value.toFixed(2)
-  if (input.score < policy.judge.gates.noulFloor) {
+  if (input.score < policy.decision.gates.probabilityFloor) {
     return { usable: false, reason: `the yes/no question answered no (${round(input.score)})` }
   }
-  if (input.margin !== undefined && input.margin < policy.judge.gates.minMargin) {
+  if (input.margin !== undefined && input.margin < policy.decision.gates.minMargin) {
     return { usable: false, reason: `the choice was not decisive (margin ${round(input.margin)})` }
   }
   return { usable: true, reason: "" }

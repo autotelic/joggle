@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { DecisionModel } from "effect/unstable/ai"
-import { judgeError } from "./decision.ts"
+import { decisionError } from "./decision.ts"
 import { everyFile, type Rule, type RunContext } from "./rule.ts"
 import type { Diagnostic } from "./schema.ts"
 import type { Workspace } from "./workspace.ts"
@@ -39,7 +39,7 @@ export interface RuleTestOptions {
    * refusal rather than to silence means a rule that DOES ask fails loudly
    * instead of quietly reporting nothing.
    */
-  readonly judge?: Layer.Layer<DecisionModel.DecisionModel> | undefined
+  readonly model?: Layer.Layer<DecisionModel.DecisionModel> | undefined
 }
 
 export const diagnosticsOf = (
@@ -50,23 +50,23 @@ export const diagnosticsOf = (
   rule.run(workspace, everyFile, options.context ?? { config: {} }).pipe(
     Effect.map((result) => result.diagnostics),
     Effect.provide(
-      options.judge ?? refusingJudge("this rule asked for a judgement and none was provided"),
+      options.model ?? refusingModel("this rule asked for a judgement and none was provided"),
     ),
   )
 
 /** A model that answers every decision from one table. */
-export const answeringJudge = (
+export const answeringModel = (
   answers: Readonly<Record<string, StubAnswer>>,
 ): Layer.Layer<DecisionModel.DecisionModel> => decisionStub(answers)
 
 /** A model that cannot answer, for testing what a rule does without one. */
-export const refusingJudge = (reason: string): Layer.Layer<DecisionModel.DecisionModel> =>
+export const refusingModel = (reason: string): Layer.Layer<DecisionModel.DecisionModel> =>
   Layer.effect(
     DecisionModel.DecisionModel,
     DecisionModel.make({
       decide: () =>
         Effect.fail(
-          judgeError(["joggle/testing", "decide"], new AiError.UnknownError({ description: reason })),
+          decisionError(["joggle/testing", "decide"], new AiError.UnknownError({ description: reason })),
         ),
     }),
   )

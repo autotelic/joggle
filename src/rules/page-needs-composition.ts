@@ -200,7 +200,7 @@ export const pageNeedsComposition = defineRule({
           Effect.map((result) => Option.some(result.answers.role.label)),
           Effect.catch(() => Effect.succeed(Option.none<string>())),
         ),
-      { concurrency: policy.judge.requestConcurrency },
+      { concurrency: policy.decision.requestConcurrency },
     )
 
     const roles: Array<{ page: Page; role: string }> = []
@@ -263,7 +263,7 @@ export const pageNeedsComposition = defineRule({
           Effect.catch(() => Effect.succeed(Option.none<DecisionAnswers>())),
         )
       },
-      { concurrency: policy.judge.requestConcurrency },
+      { concurrency: policy.decision.requestConcurrency },
     )
 
     const diagnostics: Array<Diagnostic> = []

@@ -110,7 +110,7 @@ on every machine — which means **run from the repository root**. Evidence
 carries root-relative paths; running from a subdirectory changes the key and
 misses every cached verdict. Successful judgements are written to
 `.joggle/judgements.json`; commit that file and CI replays them with
-`--offline` and **no API key at all**. Bump `policy.questionVersion` when you
+`--offline` and **no API key at all**. Bump `policy.decisionVersion` when you
 change a question's wording, and every cached answer for it is invalidated at
 once instead of silently replayed against newer questions.
 

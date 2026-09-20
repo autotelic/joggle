@@ -35,7 +35,7 @@ export const manifestOf = (
       // version stays beside it as the documented fallback.
       `tool=${toolFingerprint}`,
       `analysis=${policy.analysisVersion}`,
-      `questions=${policy.questionVersion}`,
+      `decisions=${policy.decisionVersion}`,
       `model=${policy.model}`,
       `root=${root}`,
       `rules=${[...ruleIds].sort((left, right) => left.localeCompare(right)).join(",")}`,

@@ -273,7 +273,7 @@ export const dependencyFit = defineRule({
           Effect.catch(() => Effect.succeed(Option.none<Decision.ClassifyAnswer<string>>())),
         )
       },
-      { concurrency: policy.judge.requestConcurrency },
+      { concurrency: policy.decision.requestConcurrency },
     )
 
 
@@ -298,7 +298,7 @@ export const dependencyFit = defineRule({
       // something it does not declare is a fact regardless of what the model
       // thinks of it -- so the gate decides the QUALIFIER, not the finding.
       const margin = marginOfAnswer(verdict)
-      const decisive = margin >= policy.judge.gates.minMargin
+      const decisive = margin >= policy.decision.gates.minMargin
       // The FACT leads and the judgement qualifies it. That the package imports
       // something it does not declare is derived, not decided -- and it is the
       // finding that matters most here, because it works on a developer's machine

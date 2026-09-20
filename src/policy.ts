@@ -26,7 +26,7 @@ export const policy = {
    * or evidence change, so verdicts produced by older questions are not replayed
    * against newer ones.
    */
-  questionVersion: "2026-09-08",
+  decisionVersion: "2026-09-08",
 
   /**
    * The declared analysis version: a FALLBACK and an OVERRIDE, not the gate.
@@ -53,7 +53,7 @@ export const policy = {
    */
   analysisVersion: "2026-09-05",
 
-  judge: {
+  decision: {
     baseUrl: "https://api.typesafe.ai",
     /** How long a successful judgement stays fresh, in days. */
     timeToLiveDays: 30,
@@ -106,7 +106,7 @@ export const policy = {
      * arrived with every answer from the first day and nothing ever read it.
      */
     gates: {
-      noulFloor: 0.5,
+      probabilityFloor: 0.5,
       minMargin: 0.25,
     },
     /** Token budget for one request when batching is used. Around 32,000 is the

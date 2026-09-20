@@ -225,7 +225,7 @@ export const classifyModules = (
           ),
         )
       },
-      { concurrency: policy.judge.requestConcurrency },
+      { concurrency: policy.decision.requestConcurrency },
     )
 
     const roles = new Map<string, string>()

@@ -4,7 +4,7 @@ import { duplicateImplementation } from "../src/rules/duplicate-implementation.t
 import { duplicateMeaning } from "../src/rules/duplicate-meaning.ts"
 import { namingDrift, worthJudging } from "../src/rules/naming-drift.ts"
 import { everyFile } from "../src/rule.ts"
-import { choice, judgeFailing, judgeStub, noul, withWorkspace, noConfig } from "./support.ts"
+import { choice, modelFailing, modelStub, noul, withWorkspace, noConfig } from "./support.ts"
 
 const collapse = (canonical: string, confidence = 0.85) => ({
   verdict: choice("collapse", confidence),
@@ -25,7 +25,7 @@ it.effect("the report sorts by consequence, not by redundancy", () =>
       expect(findings[0]?.judged).toBe(true)
     }).pipe(
       Effect.provide(
-        judgeStub({
+        modelStub({
           verdict: choice("collapse", 0.9),
           canonical: choice("member_0", 0.8),
           redundant: noul(0.9),
@@ -54,7 +54,7 @@ it.effect("a cluster of identical declarations is one finding", () =>
         // judgement did not include them.
         expect(entry.help).toContain("Delete the copies and import one")
       }
-    }).pipe(Effect.provide(judgeStub(collapse("member_0")))),
+    }).pipe(Effect.provide(modelStub(collapse("member_0")))),
   ),
 )
 
@@ -65,7 +65,7 @@ it.effect("the model picks which member survives", () =>
       expect(findings.length).toBe(1)
       // member_1 is src/users.ts, so the drop is src/orders.ts.
       for (const entry of findings) expect(entry.location.file).toBe("src/orders.ts")
-    }).pipe(Effect.provide(judgeStub(collapse("member_1")))),
+    }).pipe(Effect.provide(modelStub(collapse("member_1")))),
   ),
 )
 
@@ -76,7 +76,7 @@ it.effect("keep_variants and no_issue are both silence", () =>
         Effect.gen(function* () {
           const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
           expect(findings.length).toBe(0)
-        }).pipe(Effect.provide(judgeStub({ verdict: choice(verdict, 0.9) }))),
+        }).pipe(Effect.provide(modelStub({ verdict: choice(verdict, 0.9) }))),
       ),
     ),
   ),
@@ -91,7 +91,7 @@ it.effect("a response without a verdict is unverified, not judged", () =>
         expect(entry.judged).toBe(false)
         expect(entry.help).toContain("Not verified")
       }
-    }).pipe(Effect.provide(judgeStub({}))),
+    }).pipe(Effect.provide(modelStub({}))),
   ),
 )
 
@@ -101,7 +101,7 @@ it.effect("an unavailable judge still reports, unverified", () =>
       const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBe(1)
       for (const entry of findings) expect(entry.judged).toBe(false)
-    }).pipe(Effect.provide(judgeFailing("TYPESAFE_API_KEY is not set"))),
+    }).pipe(Effect.provide(modelFailing("TYPESAFE_API_KEY is not set"))),
   ),
 )
 
@@ -114,7 +114,7 @@ it.effect("near-duplicates collapse when the cluster is judged one thing", () =>
         expect(entry.judged).toBe(true)
         expect(entry.ruleId).toBe("joggle/duplicate-meaning")
       }
-    }).pipe(Effect.provide(judgeStub(collapse("member_0", 0.8)))),
+    }).pipe(Effect.provide(modelStub(collapse("member_0", 0.8)))),
   ),
 )
 
@@ -123,7 +123,7 @@ it.effect("near-duplicates stay quiet when the cluster is unrelated", () =>
     Effect.gen(function* () {
       const findings = (yield* duplicateMeaning.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBe(0)
-    }).pipe(Effect.provide(judgeStub({ verdict: choice("no_issue", 0.9) }))),
+    }).pipe(Effect.provide(modelStub({ verdict: choice("no_issue", 0.9) }))),
   ),
 )
 
@@ -137,7 +137,7 @@ it.effect("naming drift collapses to the spelling the model chose", () =>
       for (const entry of findings) expect(entry.judged).toBe(true)
     }).pipe(
       Effect.provide(
-        judgeStub({ verdict: choice("same_use_left", 0.85), one_concept: noul(0.9) }),
+        modelStub({ verdict: choice("same_use_left", 0.85), one_concept: noul(0.9) }),
       ),
     ),
   ),
@@ -166,7 +166,7 @@ it.effect("two distinct concepts are silence", () =>
       expect(findings.length).toBe(0)
     }).pipe(
       Effect.provide(
-        judgeStub({ verdict: choice("no_issue", 0.9), one_concept: noul(0.1) }),
+        modelStub({ verdict: choice("no_issue", 0.9), one_concept: noul(0.1) }),
       ),
     ),
   ),

@@ -4,7 +4,7 @@ import { NodeServices } from "@effect/platform-node"
 import { everyFile } from "../src/rule.ts"
 import { objectShape } from "../src/rules/object-shape.ts"
 import { loadWorkspace } from "../src/workspace.ts"
-import { judgeStub, noConfig } from "./support.ts"
+import { modelStub, noConfig } from "./support.ts"
 
 it.effect("a literal that uses a declared type is not a missing type", () =>
   Effect.gen(function* () {
@@ -16,5 +16,5 @@ it.effect("a literal that uses a declared type is not a missing type", () =>
     expect(messages.some((message) => message.includes("{ x; y }"))).toBe(false)
     // { alpha, beta, gamma } has no declared type anywhere.
     expect(messages.some((message) => message.includes("{ alpha; beta; gamma }"))).toBe(true)
-  }).pipe(Effect.provide(judgeStub({})), Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(modelStub({})), Effect.provide(NodeServices.layer)),
 )

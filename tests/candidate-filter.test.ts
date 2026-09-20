@@ -4,7 +4,7 @@ import { NodeServices } from "@effect/platform-node"
 import { duplicateImplementation } from "../src/rules/duplicate-implementation.ts"
 import { everyFile } from "../src/rule.ts"
 import { loadWorkspace } from "../src/workspace.ts"
-import { choice, judgeStub, noul, noConfig } from "./support.ts"
+import { choice, modelStub, noul, noConfig } from "./support.ts"
 
 const verdict = {
   verdict: choice("collapse", 0.9),
@@ -17,7 +17,7 @@ test("test fixtures are compared only against each other", async () => {
     Effect.gen(function* () {
       const workspace = yield* loadWorkspace("tests/fixtures/dup", ["."])
       return yield* duplicateImplementation.run(workspace, everyFile, noConfig)
-    }).pipe(Effect.provide(judgeStub(verdict)), Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(modelStub(verdict)), Effect.provide(NodeServices.layer)),
   )
   const whole = JSON.stringify(outcome)
 
