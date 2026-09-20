@@ -102,7 +102,9 @@ export const moduleDirection = defineRule({
             ". That is inferred from what the two modules are, not from a declared layering -- write one in joggle.config.json if this repository disagrees, and this rule will step aside.",
           location: { file: edge.from, line: 1, column: 1 },
           identity: [RULE_ID, from, to].join("\u0000"),
-          judged: false,
+          // The roles came from the model, so this finding does too. Saying
+          // otherwise hides the model call from every downstream count.
+          judged: true,
         }),
       )
     }

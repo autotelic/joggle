@@ -198,13 +198,16 @@ export const policy = {
   /**
    * Name retrieval cost.
    *
-   * `minFiles` is where a name stops being an address: a single generic word
-   * reached from this many files is not findable by search. A search bound, and
-   * measured rather than guessed.
+   * `minFiles` is the candidate filter, not the verdict: a single word reached
+   * from fewer files than this is not worth judging. Whether a name at or above
+   * it actually fails as an address is the model's call.
    */
   nameAsAddress: {
     minFiles: 12,
-    maxFindings: 200,
+    /** Names judged per run. */
+    maxFiles: 200,
+    /** Calling files shown to the model, as a sample. */
+    maxCallers: 30,
   },
 
   /**

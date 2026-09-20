@@ -39,6 +39,15 @@ const Evidence = Schema.Struct({
   rule: Schema.Struct({
     path: Schema.String,
     judged: Schema.Boolean,
+    /**
+     * Whether this rule ships in a preset rather than running by default.
+     *
+     * A preset rule checks conformance to a pattern a repository OPTED INTO, so
+     * the pattern is the contract and checking it is a fact. Without this flag
+     * the model reads `{ state, actions, meta }` as an opinion the rule invented
+     * and flags the rule that enforces it.
+     */
+    preset: Schema.Boolean,
     source: Schema.String,
   }),
 })
@@ -49,7 +58,9 @@ const RuleReview = Decision.make({
     decides_in_code: Decision.probability({
       instructions: [
         "Does `rule.path` decide in code a question that needs a judgement?",
-        "A rule that states a measurement and offers advice in its help text is NOT deciding in code: it says what it found and the reader decides. \"This file exports nine things over twenty lines\" is a fact, even when the help suggests a fix.",
+        "Judge the rule's MESSAGE. Advice in the help text is not the verdict: a rule may state what it found and suggest a fix, and the finding is still a fact.",
+        "A rule that states a measurement is NOT deciding in code: it says what it found and the reader decides. \"This file exports nine things over twenty lines\" is a fact, even when the help suggests a fix.",
+        "A rule whose `rule.preset` is true checks conformance to a pattern the repository DECLARES. That pattern is the contract, so checking it is a fact about the declaration rather than a judgement about the code.",
         "A rule DOES decide in code when either:",
         "- a NUMBER in it decides a verdict rather than bounding a search: a rule that reports a name as unsearchable because it is reached from fewer than N files, or a file as shallow because a ratio is below a threshold;",
         "- its MESSAGE asserts a quality rather than a measurement: \"these are one thing\", \"this is a grab bag\", \"this name is an address\", \"this is not worth keeping\".",
@@ -75,6 +86,15 @@ const RuleReview = Decision.make({
     }),
   },
 })
+
+/**
+ * Whether the rule file ships in a preset.
+ *
+ * A preset is a module that imports rules and re-exports them, so the edge from a
+ * `presets/` file to this one is the declaration that the rule is opt-in.
+ */
+const isPreset = (workspace: Workspace, path: string): boolean =>
+  workspace.imports.edges.some((edge) => edge.to === path && edge.from.includes("/presets/"))
 
 /** A rule file: a file that calls `defineRule`. */
 const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<SourceFile> =>
@@ -105,6 +125,7 @@ export const ruleJudgment = defineRule({
             rule: {
               path: file.path,
               judged: file.text.includes("judged: true"),
+              preset: isPreset(workspace, file.path),
               source: file.text.slice(0, policy.evidence.maxSourceChars * 6),
             },
           },
