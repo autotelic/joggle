@@ -1,4 +1,5 @@
 import { Effect, FileSystem, Result, Schema, SchemaParser } from "effect"
+import { globSource } from "./glob.ts"
 import type { Severity } from "./schema.ts"
 
 /**
@@ -146,13 +147,8 @@ export const emptyConfig: JoggleConfig = {}
 export const matchesGlob = (glob: string, value: string): boolean =>
   globToRegExp(glob).test(value)
 
-const globToRegExp = (glob: string): RegExp => {
-  const escaped = glob
-    .split("")
-    .map((character) => (/[.+^${}()|[\]\\?]/.test(character) ? "\\" + character : character))
-    .join("")
-  return new RegExp("^" + escaped.split("**").join("\u0000").split("*").join("[^/]*").split("\u0000").join(".*") + "$")
-}
+const globToRegExp = (glob: string): RegExp =>
+  new RegExp("^" + globSource(glob, { question: false, doubleStarSkipsSlash: false }) + "$")
 
 /** Whether a finding should be suppressed by the config's exceptions. */
 export const isIgnored = (

@@ -1,4 +1,5 @@
 import { Effect, FileSystem, Path } from "effect"
+import { globSource } from "./glob.ts"
 
 /**
  * Gitignore matching, because a hand-written list of other tools' output
@@ -30,8 +31,6 @@ export interface IgnoreRule {
   readonly depth: number
 }
 
-const escape = (text: string): string => text.replace(/[.+^${}()|[\]\\]/g, "\\$&")
-
 /**
  * One pattern to one regex, over a path relative to the pattern's directory.
  *
@@ -47,29 +46,13 @@ const toRegExp = (pattern: string): RegExp | undefined => {
   if (body === "") return undefined
 
   const hasSlash = body.includes("/")
-  let source = ""
-  for (let index = 0; index < body.length; index += 1) {
-    const character = body[index]
-    if (character === "*") {
-      if (body[index + 1] === "*") {
-        source += ".*"
-        index += 1
-        if (body[index + 1] === "/") index += 1
-      } else {
-        source += "[^/]*"
-      }
-    } else if (character === "?") {
-      source += "[^/]"
-    } else {
-      source += escape(character ?? "")
-    }
-  }
-
   // A pattern with no slash matches at any depth; one with a slash is anchored
   // to the .gitignore's own directory. Git ignores a matched directory and
   // everything below it, which is what the trailing group does.
   const prefix = hasSlash || pattern.startsWith("/") ? "^" : "(?:^|.*/)"
-  return new RegExp(prefix + source + "(?:/.*)?$")
+  return new RegExp(
+    prefix + globSource(body, { question: true, doubleStarSkipsSlash: true }) + "(?:/.*)?$",
+  )
 }
 
 export const parseGitignore = (
