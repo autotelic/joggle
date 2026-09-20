@@ -82,14 +82,16 @@ it.effect("keep_variants and no_issue are both silence", () =>
   ),
 )
 
-it.effect("a response without a verdict is unverified, not judged", () =>
+it.effect("a non-decisive verdict is reported for review", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
+      // The stub's verdict is an even split, so the model is not decisive. That
+      // is a review, not a no: the finding is reported at info.
       const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
       expect(findings.length).toBe(1)
       for (const entry of findings) {
-        expect(entry.judged).toBe(false)
-        expect(entry.help).toContain("Not verified")
+        expect(entry.severity).toBe("info")
+        expect(entry.help).toContain("For review")
       }
     }).pipe(Effect.provide(modelStub({}))),
   ),

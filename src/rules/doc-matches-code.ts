@@ -178,8 +178,8 @@ export const docMatchesCode = defineRule({
       }
       const margin = marginOfAnswer(verdict)
       const chosen = Object.entries(verdict.probabilities).find(([label]) => label === verdict.label)?.[1] ?? 0
-      const quality = qualityOf({ score: chosen, margin })
-      if (!quality.usable) {
+      const quality = qualityOf({ score: chosen, margin, confidence: verdict.confidence })
+      if (quality.quality === "drop") {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
@@ -191,7 +191,7 @@ export const docMatchesCode = defineRule({
       diagnostics.push(
         finding({
           ruleId: RULE_ID,
-          severity: "warn",
+          severity: quality.quality === "review" ? "info" : "warn",
           message: label(unit) + " has a doc block that contradicts the code: " + verdict.label.replace(/_/g, " ") + ".",
           help: "Fix the doc to match the code, or the code to match the doc. The doc is the one artefact no checker reads, so it is the one that drifts.",
           location: unit.location,

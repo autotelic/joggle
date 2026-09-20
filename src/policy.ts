@@ -108,6 +108,17 @@ export const policy = {
     gates: {
       probabilityFloor: 0.5,
       minMargin: 0.25,
+      /**
+       * Below this, an answer is reported for review rather than acted on.
+       *
+       * TypeSafe's confidence is the shape of the probability distribution: a
+       * clear winner is near 1, a shrug across the options is low. The docs route
+       * on it in three ranges -- act, review, drop -- and joggle had only two.
+       * A non-decisive choice was dropped as if the model had said no, when it
+       * was saying "I am not sure", which is a different answer and belongs in
+       * the report as an info finding a reader can weigh.
+       */
+      reviewFloor: 0.6,
     },
     /** Token budget for one request when batching is used. Around 32,000 is the
      *  API limit, shared between state and questions. */

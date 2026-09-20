@@ -28,21 +28,23 @@ it("the margin is the gap the model left between two options", () => {
 
 it("a yes/no answer is a verdict, not a ranking", () => {
   const no = qualityOf({ score: 0.2, margin: 0.5 })
-  expect(no.usable).toBe(false)
+  expect(no.quality).toBe("drop")
   expect(no.reason).toContain("answered no")
 
   const yes = qualityOf({ score: 0.9, margin: 0.5 })
-  expect(yes.usable).toBe(true)
+  expect(yes.quality).toBe("act")
 })
 
 it("a choice that barely won is not a decision", () => {
   const shrugged = qualityOf({ score: 0.9, margin: 0.05 })
-  expect(shrugged.usable).toBe(false)
+  expect(shrugged.quality).toBe("review")
   expect(shrugged.reason).toContain("not decisive")
 })
 
 it("an unmeasurable margin does not block a good answer", () => {
-  expect(qualityOf({ score: 0.9, margin: undefined }).usable).toBe(true)
+  expect(qualityOf({ score: 0.9, margin: undefined }).quality).toBe("act")
+  // Low confidence is a review, not a no.
+  expect(qualityOf({ score: 0.9, margin: 0.5, confidence: 0.4 }).quality).toBe("review")
 })
 
 it.effect("a provable finding degrades to unverified when the model says no", () =>
@@ -76,11 +78,16 @@ it.effect("a guessed finding disappears when the model says no", () =>
   ),
 )
 
-it.effect("a shrug across two options is not a judgement", () =>
+it.effect("a shrug across two options is reported for review, not acted on", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
+      // The docs route on confidence in three ranges: act, review, drop. A shrug
+      // is the middle one -- the model did not say no, it said it was not sure --
+      // so the finding is reported at info for a reader to weigh.
       const findings = (yield* duplicateMeaning.run(workspace, everyFile, noConfig)).diagnostics
-      expect(findings).toEqual([])
+      expect(findings.length).toBe(1)
+      expect(findings[0]?.severity).toBe("info")
+      expect(findings[0]?.help).toContain("For review")
     }).pipe(
       Effect.provide(
         modelStub({

@@ -88,15 +88,16 @@ it("a run with no drops says nothing", () => {
   expect(funnelNotes([])).toEqual([])
 })
 
-it.effect("a rule with nothing to look at drops nothing", () =>
+it.effect("a rule whose gate rejects every candidate drops them, with a reason", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      // No candidates means no funnel. This is the case the finding count alone
-      // cannot distinguish from a rule whose gate rejected everything, which is
-      // exactly why the count is not enough.
+      // The Noul says no, which is a verdict, so the candidates are dropped
+      // rather than reported. This is the case the finding count alone cannot
+      // distinguish from a rule with nothing to look at, which is exactly why
+      // the funnel is reported.
       const { diagnostics, drops } = yield* duplicateMeaning.run(workspace, everyFile, noConfig)
       expect(diagnostics).toEqual([])
       expect(drops.length).toBeGreaterThan(0)
-    }).pipe(Effect.provide(modelStub({ redundant: noul(0.9) }))),
+    }).pipe(Effect.provide(modelStub({ redundant: noul(0.1) }))),
   ),
 )

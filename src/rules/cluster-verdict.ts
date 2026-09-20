@@ -440,14 +440,20 @@ export const findingFor = (
   // and each rule keeps the degrade behaviour it already declared: a provable
   // finding is still reported, marked unverified with the reason; a guessed one
   // stays silent. The gate never has to know which rule it is in.
-  const quality = qualityOf({ score: verdict.redundancy, margin: verdict.margin })
-  if (!quality.usable) {
+  const quality = qualityOf({
+    score: verdict.redundancy,
+    margin: verdict.margin,
+    confidence: verdict.confidence,
+  })
+  if (quality.quality === "drop") {
     const fallback =
       rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster, quality.reason) : undefined
     return fallback === undefined
       ? { drop: dropOf(rule, cluster, "gated", quality.reason) }
       : { diagnostic: fallback }
   }
+
+  const review = quality.quality === "review"
 
   const keep = cluster.members[verdict.keep] ?? cluster.members[0]
   if (keep === undefined) {
@@ -465,11 +471,11 @@ export const findingFor = (
   return {
     diagnostic: finding({
       ruleId: rule.ruleId,
-      severity: rule.severity,
+      severity: review ? "info" : rule.severity,
       message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
       // The model's answer when there is one, the declared layers when there are
       // not. A repository that configures nothing still gets advice.
-      help: `${verdict.prescription ?? prescription(layers, cluster, keep, drops)}${shapeOnlyNote(cluster)} ${dependents(imports, keep)}.`,
+      help: `${verdict.prescription ?? prescription(layers, cluster, keep, drops)}${shapeOnlyNote(cluster)} ${dependents(imports, keep)}.${review ? " For review: " + quality.reason + "." : ""}`,
       location: first.location,
       identity: identityOf(rule.ruleId, cluster, keep),
       confidence: verdict.confidence,

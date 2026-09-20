@@ -133,14 +133,16 @@ const findingFor = (page: Page, answers: DecisionAnswers): Result => {
   const quality = qualityOf({
     score: probability ?? confidence,
     margin: marginOfAnswer(verdict),
+    confidence,
   })
-  if (!quality.usable) return dropOf("gated", quality.reason)
+  if (quality.quality === "drop") return dropOf("gated", quality.reason)
+  const review = quality.quality === "review"
   const gap = answers["primary_gap"]
   const missing = gaps(page)
   return {
     diagnostic: finding({
     ruleId: RULE_ID,
-    severity: "warn",
+    severity: review ? "info" : "warn",
     message: `${page.file.path} carries ${page.localState} useState call(s) and ${page.inlineElements} inline element(s) that may belong in a composition bundle.`,
     help:
       missing.length === 0

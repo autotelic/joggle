@@ -243,33 +243,47 @@ export const marginOfAnswer = (
   return second === undefined ? 1 : first - second
 }
 
-/** Why a judgement was not good enough to act on, or that it was. */
+/**
+ * What to do with a judgement: act on it, report it for review, or drop it.
+ *
+ * The three ranges are TypeSafe's own advice. A Noul below the floor is the model
+ * saying no, and no is a verdict. A choice the model shrugged across, or an answer
+ * it is not confident about, is the model saying "I am not sure" -- which is not a
+ * no, and dropping it as if it were throws away the one signal that says a reader
+ * should look. So it becomes an info finding instead.
+ */
+export type Quality = "act" | "review" | "drop"
+
+/** Why a judgement is in its range. */
 export interface JudgementQuality {
-  readonly usable: boolean
+  readonly quality: Quality
   readonly reason: string
 }
 
 /**
- * Whether an answer may be acted on.
+ * Which range an answer falls in.
  *
- * A judgement that fails its gates is not a worse judgement, it is not a
+ * A judgement that fails its floor is not a worse judgement, it is not a
  * judgement: callers treat it exactly as they treat an absent answer, which is
- * what keeps one gate from having to know how each rule degrades. A rule whose
- * finding is provable still reports it, marked unverified; a rule whose finding
- * is a guess stays silent.
+ * what keeps one gate from having to know how each rule degrades. A judgement
+ * that is merely uncertain is still a judgement, and is reported.
  */
 export const qualityOf = (input: {
   readonly score: number
   readonly margin: number | undefined
+  readonly confidence?: number | undefined
 }): JudgementQuality => {
   const round = (value: number): string => value.toFixed(2)
   if (input.score < policy.decision.gates.probabilityFloor) {
-    return { usable: false, reason: `the yes/no question answered no (${round(input.score)})` }
+    return { quality: "drop", reason: `the yes/no question answered no (${round(input.score)})` }
   }
   if (input.margin !== undefined && input.margin < policy.decision.gates.minMargin) {
-    return { usable: false, reason: `the choice was not decisive (margin ${round(input.margin)})` }
+    return { quality: "review", reason: `the choice was not decisive (margin ${round(input.margin)})` }
   }
-  return { usable: true, reason: "" }
+  if (input.confidence !== undefined && input.confidence < policy.decision.gates.reviewFloor) {
+    return { quality: "review", reason: `the answer was not certain (confidence ${round(input.confidence)})` }
+  }
+  return { quality: "act", reason: "" }
 }
 
 /** Short, human-readable "file:line:col" for messages. */
