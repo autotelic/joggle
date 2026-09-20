@@ -15,8 +15,8 @@
  *
  *   write one          defineRule, finding, outcome, the Rule interface
  *   read the code      Workspace, Unit, ImportGraph, SourceFile, Cluster
- *   ask a question     Choice, Noul, the judge service, the answer readers
- *   decide in code     qualityOf, marginOf, declined, the gate vocabulary
+ *   ask a question     Decision, DecisionModel, the answer readers
+ *   decide in code     qualityOf, marginOfAnswer, declined, the gate vocabulary
  *   know the shape     policy, the layer and composition helpers
  *
  * A deterministic rule needs only the first two, and that is deliberate: most

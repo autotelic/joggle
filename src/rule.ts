@@ -13,11 +13,11 @@ import type { Workspace } from "./workspace.ts"
  *
  *   find      deterministic, high recall, noise tolerated
  *   evidence  the panel a reviewer would need to decide
- *   questions atomic, typed, sent in one request
+ *   decisions atomic, typed, sent in one request
  *   policy    weights and thresholds, imported from policy.ts
  *   diagnose  span, message, help -- the product
  *
- * Deterministic rules simply never call the judge. That is the whole
+ * Deterministic rules simply never call the model. That is the whole
  * difference; the output shape is identical, so a host cannot tell them apart.
  */
 /**
@@ -89,7 +89,7 @@ export interface Rule {
   readonly id: string
   readonly severity: Severity
   readonly description: string
-  /** Whether this rule needs the judge. Deterministic rules must run without it. */
+  /** Whether this rule needs the model. Deterministic rules must run without it. */
   readonly judged: boolean
   readonly run: (
     workspace: Workspace,

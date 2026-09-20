@@ -7,8 +7,8 @@
  * guess wearing a number, unreviewable and impossible to argue with, and the
  * reason the earlier rules could only be improved by fiddling.
  *
- * Every decision now belongs to exactly one Choice question, and code reads
- * `choice`. Numbers survive only where they bound *search*: how similar a pair
+ * Every decision now belongs to exactly one Effect Decision, and code reads its
+ * answer. Numbers survive only where they bound *search*: how similar a pair
  * must be before it is worth a call, and how many calls a run may make. Those
  * are recall and cost knobs. Judging a candidate is the model's job; finding
  * candidates is the code's.

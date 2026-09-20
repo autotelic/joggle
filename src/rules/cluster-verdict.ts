@@ -49,9 +49,8 @@ export interface ClusterVerdict {
  * candidates that produced six findings. The rule was never starved of budget;
  * it was asked the wrong question, and the answer was right.
  *
- * Question text refers to the candidate as `{candidate}`. That marker is what
- * lets one request hold many candidates: the judge rewrites it to
- * `candidates[3].` and the questions stay unambiguous.
+ * Each cluster is its own `DecisionModel.decide`, so the input is that
+ * cluster's own evidence and there is no marker to rewrite.
  */
 export interface Questionnaire {
   /** Merged into the input alongside `declarations`. */
