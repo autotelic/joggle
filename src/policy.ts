@@ -267,6 +267,19 @@ export const policy = {
   },
 
   /**
+   * Documented declarations sent for a doc-vs-code check in one run.
+   *
+   * The candidate filter is structural: an exported declaration with a doc block
+   * and enough body to document. The ceiling is against a pathological
+   * repository rather than a budget anybody should reach.
+   */
+  docMatchesCode: {
+    maxDeclarations: 400,
+    /** Tokens below which a declaration has nothing for a doc to describe. */
+    minTokens: 40,
+  },
+
+  /**
    * Declarations sent for judgement in one run.
    *
    * The candidate filter is structural and deliberately narrow -- an exported

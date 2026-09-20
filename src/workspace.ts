@@ -515,6 +515,14 @@ interface DeclarationSite extends Span {
   readonly exported: boolean
   readonly fields: ReadonlyArray<string>
   readonly fieldTypes: ReadonlyMap<string, string>
+  /**
+   * Where the declaration's own statement starts, for the doc lookup.
+   *
+   * For a `const f = () => ...` the span is the arrow, but the JSDoc sits above
+   * the `const`. Reading from the span dropped the doc for every const-declared
+   * function, which is most of them.
+   */
+  readonly docStart: number
 }
 
 /**
@@ -582,7 +590,13 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
   if (!Array.isArray(body)) return []
   const sites: Array<DeclarationSite> = []
 
-  const push = (node: unknown, kind: UnitKind, name: unknown, exported: boolean): void => {
+  const push = (
+    node: unknown,
+    kind: UnitKind,
+    name: unknown,
+    exported: boolean,
+    docStart: number | undefined,
+  ): void => {
     if (!isRecord(node)) return
     if (typeof name !== "string") return
     const start = node["start"]
@@ -597,25 +611,30 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
       exported,
       fields: fieldSet.names,
       fieldTypes: fieldSet.declarations,
+      docStart: docStart ?? start,
     })
   }
 
-  const fromDeclaration = (declaration: unknown, exported: boolean): void => {
+  const fromDeclaration = (
+    declaration: unknown,
+    exported: boolean,
+    docStart: number | undefined,
+  ): void => {
     if (!isRecord(declaration)) return
     switch (declaration["type"]) {
       case "FunctionDeclaration": {
         const id = declaration["id"]
-        push(declaration, "function", isRecord(id) ? id["name"] : undefined, exported)
+        push(declaration, "function", isRecord(id) ? id["name"] : undefined, exported, docStart)
         return
       }
       case "TSInterfaceDeclaration": {
         const id = declaration["id"]
-        push(declaration, "interface", isRecord(id) ? id["name"] : undefined, exported)
+        push(declaration, "interface", isRecord(id) ? id["name"] : undefined, exported, docStart)
         return
       }
       case "TSTypeAliasDeclaration": {
         const id = declaration["id"]
-        push(declaration, "type", isRecord(id) ? id["name"] : undefined, exported)
+        push(declaration, "type", isRecord(id) ? id["name"] : undefined, exported, docStart)
         return
       }
       case "VariableDeclaration": {
@@ -628,11 +647,11 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
           if (!isRecord(init)) continue
           const initType = init["type"]
           if (initType === "ObjectExpression") {
-            fromDeclaration(init, exported)
+            fromDeclaration(init, exported, docStart)
             continue
           }
           if (initType !== "ArrowFunctionExpression" && initType !== "FunctionExpression") continue
-          push(init, "function", isRecord(id) ? id["name"] : undefined, exported)
+          push(init, "function", isRecord(id) ? id["name"] : undefined, exported, docStart)
         }
         return
       }
@@ -665,9 +684,10 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
               exported,
               fields: [],
               fieldTypes: new Map(),
+              docStart: typeof member["start"] === "number" ? member["start"] : value["start"],
             })
           } else {
-            push(member, "function", name, exported)
+            push(member, "function", name, exported, undefined)
           }
         }
         return
@@ -684,7 +704,7 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
           if (!isRecord(value)) continue
           const valueType = value["type"]
           if (valueType !== "ArrowFunctionExpression" && valueType !== "FunctionExpression") continue
-          push(value, "function", keyName, exported)
+          push(value, "function", keyName, exported, undefined)
         }
         return
       }
@@ -698,13 +718,22 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
     switch (statement["type"]) {
       case "ExportNamedDeclaration":
       case "ExportDefaultDeclaration":
-        fromDeclaration(statement["declaration"], true)
+        // The doc sits above the `export`, so the lookup starts at the statement.
+        fromDeclaration(
+          statement["declaration"],
+          true,
+          typeof statement["start"] === "number" ? statement["start"] : undefined,
+        )
         continue
       case "FunctionDeclaration":
       case "TSInterfaceDeclaration":
       case "TSTypeAliasDeclaration":
       case "VariableDeclaration":
-        fromDeclaration(statement, false)
+        fromDeclaration(
+          statement,
+          false,
+          typeof statement["start"] === "number" ? statement["start"] : undefined,
+        )
         continue
       default:
         continue
@@ -920,7 +949,7 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         callSignature: "",
         test: policy.testFiles.test(file),
         typeSignature: "",
-        doc: docFor(site.start),
+        doc: docFor(site.docStart),
       })
     }
   }

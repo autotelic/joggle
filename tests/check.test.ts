@@ -41,6 +41,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/dependency-fit",
+      "joggle/doc-matches-code",
       "joggle/duplicate-implementation",
       "joggle/duplicate-meaning",
       "joggle/hoist-to-domain",
@@ -75,10 +76,10 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
 
     expect(report.files).toBe(2)
     // Six structural rules -- three architecture checks, two field-set analyses
-    // and call-pattern comparison -- plus five judged ones. The composition rules are a preset and
-    // are not in this run at all, which is what makes them an opinion rather than
-    // an inheritance.
-    expect(report.rules).toBe(14)
+    // and call-pattern comparison -- plus six judged ones. The composition rules
+    // are a preset and are not in this run at all, which is what makes them an
+    // opinion rather than an inheritance.
+    expect(report.rules).toBe(15)
     expect(report.diagnostics.length).toBe(1)
     // The fixture has no bundles, pages or modals, so the structural rules find
     // nothing and the page rule produces no candidates. A rule with nothing to

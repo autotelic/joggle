@@ -11,7 +11,7 @@ import { Baseline, StoredRun } from "./schema.ts"
 /**
  * Everything the output depends on, as one hash.
  *
- * Analysis version, question version, model, the rule set, the root, and the
+ * Analysis version, decision version, model, the rule set, the root, and the
  * content of every analysed file. If this is unchanged then the previous report
  * is the report -- no parsing, no candidate generation, and no tokens.
  *

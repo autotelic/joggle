@@ -77,7 +77,7 @@ const CacheFile = Schema.Struct({
 
 /**
  * The key of one wire request: the model, the state and the questions, plus the
- * question version. Exported because the replay file is a contract.
+ * decision version. Exported because the replay file is a contract.
  */
 export const cacheKeyFor = (payload: typeof TypeSafeSchema.SystemOneRequest.Encoded): string =>
   canonical({

@@ -2,6 +2,7 @@ import { duplicateImplementation } from "./duplicate-implementation.ts"
 import { duplicateMeaning } from "./duplicate-meaning.ts"
 import { importArchitectureRules } from "./import-architecture.ts"
 import { dependencyFit } from "./dependency-fit.ts"
+import { docMatchesCode } from "./doc-matches-code.ts"
 import { callPattern } from "./call-pattern.ts"
 import { nameAsAddress } from "./name-as-address.ts"
 import { moduleDirection } from "./module-direction.ts"
@@ -35,6 +36,7 @@ export const allRules: ReadonlyArray<Rule> = [
   objectShape,
   nameThePrimitive,
   dependencyFit,
+  docMatchesCode,
   hoistToDomain,
   duplicateImplementation,
   duplicateMeaning,

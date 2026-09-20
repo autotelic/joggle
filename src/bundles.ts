@@ -112,7 +112,14 @@ const providerValue = (file: SourceFile | undefined): ReadonlyArray<string> | un
 
 const isIndex = (file: SourceFile): boolean => baseOf(file.path).startsWith("index.")
 
-/** Every directory whose files include a `createContext` call, as a bundle. */
+/**
+ * Every directory that ATTEMPTS the composition pattern, as a bundle.
+ *
+ * A `createContext` call is the signal, but not the whole test: the directory
+ * must also attempt the pattern -- a provider file, a `-provider` file, or an
+ * index that dot-exports an object. A directory that merely calls
+ * `createContext` is not measured as a bundle.
+ */
 export const findBundles = (workspace: Workspace): ReadonlyArray<Bundle> => {
   const byDir = new Map<string, Array<SourceFile>>()
   for (const file of workspace.files) {
