@@ -11,7 +11,8 @@ import {
   outcome,
   type Scope,
 } from "../rule.ts"
-import { dutyVocabulary, EDGE_ROLES, homeVocabulary, moduleRoles } from "../vocabulary.ts"
+import { classifyModules, moduleOf } from "../roles.ts"
+import { dutyVocabulary, EDGE_ROLES, homeVocabulary } from "../vocabulary.ts"
 import type { Diagnostic, Drop, Question } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -121,32 +122,6 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Unit> =
     // drop reason reports it. It is not trusted to order anything.
     .sort((left, right) => left.file.localeCompare(right.file) || left.start - right.start)
 
-/** The module a declaration belongs to: its package, or its path without one. */
-const moduleOf = (unit: Unit): string => {
-  const parts = unit.file.split("/")
-  // Four segments, not the package.
-  //
-  // The package is the wrong unit for this question: `services/rest` contains
-  // both `src/routes` and `src/domain`, and asking whether "services/rest" is a
-  // transport edge has no answer. Four segments separates a routes tree from the
-  // domain tree inside one package, which is exactly the line being looked for.
-  return parts.length <= 4 ? parts.join("/") : parts.slice(0, 4).join("/")
-}
-
-const moduleQuestions = {
-  role: {
-    type: "choice",
-    instructions: {
-      question: "What is `module.path` for?",
-      inspect: ["module", "repository"],
-      fallback: "Choose `utilities` when it is a generic helper with no business meaning.",
-      focus:
-        "`repository` describes what this codebase is trying to be. Classify the module by what it IS, not by whether it is doing it well: a route directory full of business rules is still a transport edge.",
-    },
-    criteria: moduleRoles,
-  },
-} satisfies Record<string, Question>
-
 const questions = {
   duty: {
     type: "choice",
@@ -194,57 +169,32 @@ export const hoistToDomain = defineRule({
 
     // ROUND ONE: what is each module for?
     //
-    // Business logic at the edge is only a problem at an edge, and a declaration
-    // in a domain package, a database layer or a utility module is not a hoist
-    // candidate whatever it contains. One call per module, not per declaration.
-    const modules = new Map<string, Array<Unit>>()
-    for (const unit of all) {
-      const path = moduleOf(unit)
-      const existing = modules.get(path)
-      if (existing === undefined) modules.set(path, [unit])
-      else existing.push(unit)
-    }
-    const moduleList = [...modules.entries()]
-    const judge = yield* Judge
-    const classified = yield* judge.askMany(
-      moduleList.map(([path, units]) => ({
-        evidence: {
-          repository: context.config.evidence?.repository ?? null,
-          module: {
-            path,
-            declarations: units.length,
-            examples: [...new Set(units.map((unit) => unit.file))].slice(
-              0,
-              policy.evidence.maxListedPaths,
-            ),
-          },
-        },
-        questions: moduleQuestions,
-      })),
-    )
+    // The same classification `module-direction` uses, shared rather than
+    // repeated: one Decision, one answer, and the content-addressed cache makes
+    // the second reader free. Business logic at the edge is only a problem at an
+    // edge, so a declaration in a domain package or a utility module is not a
+    // hoist candidate whatever it contains.
+    const classified = yield* classifyModules(workspace, context, RULE_ID)
 
     const edge = new Map<string, string>()
     const notAnEdge: Array<Drop> = []
-    moduleList.forEach(([path, units], index) => {
-      const role = choiceOf(classified[index]?.answers ?? {}, "role")
-      if (role !== undefined && EDGE_ROLES.has(role.choice)) {
-        edge.set(path, role.choice)
-        return
+    for (const unit of all) {
+      const path = moduleOf(unit)
+      const role = classified.roles.get(path)
+      if (role !== undefined && EDGE_ROLES.has(role)) {
+        edge.set(path, role)
+        continue
       }
-      for (const unit of units) {
-        notAnEdge.push({
-          ruleId: RULE_ID,
-          subject: label(unit),
-          stage: "declined" as const,
-          reason:
-            role === undefined
-              ? "the module this declaration lives in could not be classified"
-              : "this declaration is in a " +
-                role.choice.replace(/_/g, " ") +
-                " module, so there is nothing to hoist it out of",
-        })
-      }
-    })
+      notAnEdge.push({
+        ruleId: RULE_ID,
+        subject: label(unit),
+        stage: "declined" as const,
+        reason:
+          role === undefined
+            ? "the module this declaration lives in could not be classified"
+            : "this declaration is in a " + role.replace(/_/g, " ") + " module, so there is nothing to hoist it out of",
+      })
+    }
 
     const candidates = all.filter((unit) => edge.has(moduleOf(unit)))
 
@@ -290,6 +240,7 @@ export const hoistToDomain = defineRule({
     // the same as saying nothing. The funnel is reported either way, because the
     // candidate count is exactly what you need in order to decide whether a run
     // with a key is worth making.
+    const judge = yield* Judge
     const asked = yield* judge.askMany(requests).pipe(
       Effect.map((results) => ({ ok: true as const, results })),
       Effect.catch((error) =>
