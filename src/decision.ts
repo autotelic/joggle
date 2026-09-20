@@ -6,6 +6,7 @@ import {
   Layer,
   Option,
   Path,
+  Predicate,
   Redacted,
   Ref,
   Result,
@@ -100,6 +101,14 @@ export const cacheKeyFor = (payload: typeof TypeSafeSchema.SystemOneRequest.Enco
     state: payload.state,
     questions: payload.questions,
   })
+
+/**
+ * True when the model was never reached: no key, or offline with no cached
+ * judgement. A rule treats that as "step aside", not as "every candidate is
+ * unreadable", and the predicate lives here so the rules that ask agree.
+ */
+export const isUnreachable: Predicate.Predicate<AiError.AiError> = (error) =>
+  error.reason._tag === "AuthenticationError" || error.reason._tag === "UnknownError"
 
 /**
  * A judgement that cannot be made, in the provider's own error vocabulary.

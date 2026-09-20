@@ -1,6 +1,7 @@
 import { Effect, Option, Schema } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { Decision, DecisionModel } from "effect/unstable/ai"
+import { isUnreachable } from "../decision.ts"
 import { policy } from "../policy.ts"
 import { canImport, sharedLayerFor, type Layer } from "../architecture.ts"
 import { declined, finding, marginOfAnswer, qualityOf, type DecisionAnswers } from "../rule.ts"
@@ -524,13 +525,11 @@ export const assessClusters = (
         const definition = Decision.make({ input: Schema.Json, decisions: plan.decisions })
         return DecisionModel.decide(definition, { input: plan.input }).pipe(
           Effect.map((result) => Option.some(result.answers)),
-          Effect.catch((error) => {
-            const unreached =
-              error.reason._tag === "AuthenticationError" || error.reason._tag === "UnknownError"
-            return rule.onUnavailable === "report" || !unreached
+          Effect.catch((error) =>
+            rule.onUnavailable === "report" || !isUnreachable(error)
               ? Effect.succeed(Option.none<DecisionAnswers>())
-              : Effect.fail(error)
-          }),
+              : Effect.fail(error),
+          ),
         )
       },
       { concurrency: policy.judge.requestConcurrency },

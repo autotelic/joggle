@@ -1,6 +1,7 @@
 import { Effect, Option, Schema } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { Decision, DecisionModel } from "effect/unstable/ai"
+import { isUnreachable } from "./decision.ts"
 import { policy } from "./policy.ts"
 import { budgetNote, type RunContext } from "./rule.ts"
 import { moduleRoles } from "./vocabulary.ts"
@@ -220,9 +221,7 @@ export const classifyModules = (
           // failed run: the other modules still deserve an answer. A model that
           // was never reached is different -- the whole rule steps aside.
           Effect.catch((error) =>
-            error.reason._tag === "AuthenticationError" || error.reason._tag === "UnknownError"
-              ? Effect.fail(error)
-              : Effect.succeed(Option.none<string>()),
+            isUnreachable(error) ? Effect.fail(error) : Effect.succeed(Option.none<string>()),
           ),
         )
       },
