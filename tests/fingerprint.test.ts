@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
-import { manifestOf } from "../src/check.ts"
+import { manifestOf } from "../src/run-cache.ts"
 import { sourceFingerprint } from "../src/fingerprint.ts"
 
 const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>

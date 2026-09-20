@@ -1,9 +1,17 @@
-import { Clock, Effect, FileSystem, Path, Result, Schema, SchemaParser } from "effect"
+import { Clock, Effect, FileSystem, Path } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 import { loadParses } from "./parsecache.ts"
 import { JudgeStats } from "./decision.ts"
+import {
+  baselinePath,
+  manifestOf,
+  readBaseline,
+  readStored,
+  writeBaseline,
+  writeStored,
+} from "./run-cache.ts"
 import { policy } from "./policy.ts"
 import { finding } from "./rule.ts"
 import { Rules } from "./rules/index.ts"
@@ -13,7 +21,6 @@ import { funnelNotes, rankDiagnostics, type Report, type Skipped } from "./repor
 import { everyFile, type Scope } from "./rule.ts"
 import { appliesAt, isEnabled, isIgnored, severityFor, type JoggleConfig } from "./config.ts"
 import {
-  Baseline,
   StoredRun,
   WorkspaceError,
   type Drop,
@@ -85,39 +92,6 @@ const typecheckFindings = (output: ReadonlyArray<{ readonly file: string; readon
 /* -------------------------------------------------------------------------- */
 
 /**
- * Everything the output depends on, as one hash.
- *
- * Analysis version, question version, model, the rule set, the root, and the
- * content of every analysed file. If this is unchanged then the previous report
- * is the report -- no parsing, no candidate generation, and no tokens.
- *
- * Rule LOGIC changes are covered by `policy.analysisVersion` and nothing else:
- * a filter or a clustering rule can change every finding while leaving every
- * question byte-identical. Bump it when the rules move.
- */
-export const manifestOf = (
-  root: string,
-  files: ReadonlyArray<string>,
-  contents: ReadonlyMap<string, string>,
-  ruleIds: ReadonlyArray<string>,
-  toolFingerprint: string,
-): string =>
-  shortHash(
-    [
-      // The tool's own source, so a rule change cannot be forgotten. The declared
-      // version stays beside it as the documented fallback.
-      `tool=${toolFingerprint}`,
-      `analysis=${policy.analysisVersion}`,
-      `questions=${policy.questionVersion}`,
-      `model=${policy.model}`,
-      `root=${root}`,
-      `rules=${[...ruleIds].sort().join(",")}`,
-      `files=${files.length}`,
-      ...files.map((file) => `${file}\u0000${shortHash(contents.get(file) ?? "")}`),
-    ].join("\n"),
-  )
-
-/**
  * Which files moved since the stored run, or undefined when there is none to
  * compare against.
  */
@@ -175,66 +149,6 @@ const affectedBy = (
   }
   return out
 }
-
-const runPath = (path: Path.Path, cacheDir: string): string => path.join(cacheDir, "last-run.json")
-const baselinePath = (path: Path.Path, file: string): string => file
-
-const readStored = (
-  fs: FileSystem.FileSystem,
-  path: Path.Path,
-  cacheDir: string,
-): Effect.Effect<StoredRun | undefined> =>
-  Effect.gen(function* () {
-    const file = runPath(path, cacheDir)
-    const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
-    if (!exists) return undefined
-    const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
-    if (text.trim() === "") return undefined
-    return Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(StoredRun))(text))
-  })
-
-const writeStored = (
-  fs: FileSystem.FileSystem,
-  path: Path.Path,
-  cacheDir: string,
-  run: StoredRun,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    yield* Effect.orElseSucceed(fs.makeDirectory(cacheDir, { recursive: true }), () => undefined)
-    yield* Effect.orElseSucceed(
-      fs.writeFileString(runPath(path, cacheDir), JSON.stringify(run, null, 2)),
-      () => undefined,
-    )
-  })
-
-const readBaseline = (
-  fs: FileSystem.FileSystem,
-  file: string,
-): Effect.Effect<ReadonlySet<string> | undefined> =>
-  Effect.gen(function* () {
-    const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
-    if (!exists) return undefined
-    const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
-    const decoded = Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(Baseline))(text))
-    return decoded === undefined ? undefined : new Set(decoded.identities)
-  })
-
-const writeBaseline = (
-  fs: FileSystem.FileSystem,
-  path: Path.Path,
-  file: string,
-  identities: ReadonlyArray<string>,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const parent = path.dirname(file)
-    yield* Effect.orElseSucceed(fs.makeDirectory(parent, { recursive: true }), () => undefined)
-    const body = JSON.stringify(
-      { version: policy.version, identities: [...identities].sort() },
-      null,
-      2,
-    )
-    yield* Effect.orElseSucceed(fs.writeFileString(file, body), () => undefined)
-  })
 
 /* -------------------------------------------------------------------------- */
 /* The run                                                                     */
