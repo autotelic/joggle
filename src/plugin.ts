@@ -43,9 +43,6 @@ export * from "./similarity.ts"
  * yielding, and `layer` reads as any other layer in a program. The aliases are
  * what the surface promises.
  */
-export * from "./judge.ts"
-export { Service as Judge, layer as judgeLayer } from "./judge.ts"
-
 /* Deciding, and the vocabulary decisions are made in. */
 export * from "./policy.ts"
 export * from "./vocabulary.ts"

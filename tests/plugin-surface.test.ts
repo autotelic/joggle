@@ -1,6 +1,7 @@
 import { expect, test } from "vitest"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import { NodeServices } from "@effect/platform-node"
+import { Decision, DecisionModel } from "effect/unstable/ai"
 import * as plugin from "../src/plugin.ts"
 import { answeringJudge, diagnosticsOf } from "../src/testing.ts"
 import { composeTypes } from "../src/rules/compose-types.ts"
@@ -22,9 +23,7 @@ const SURFACE = [
   "outcome",
   "budgetNote",
   // reading answers, and deciding in code
-  "choiceOf",
-  "noulOf",
-  "marginOf",
+  "marginOfAnswer",
   "qualityOf",
   "declined",
   "decline",
@@ -33,9 +32,6 @@ const SURFACE = [
   "loadWorkspace",
   "makeCluster",
   "components",
-  // asking
-  "Judge",
-  "judgeLayer",
   // shape helpers
   "policy",
   "layersFrom",
@@ -54,12 +50,8 @@ test("the authoring surface exports what a rule needs", () => {
 })
 
 test("a rule can be written against the surface and run by the tester", async () => {
-  // A structural rule needs no judge and no answers, which is the point: most
+  // A structural rule needs no model and no answers, which is the point: most
   // opinions are free and the API makes the free path the easy one.
-  // No judge is provided: `compose-types` is structural, and the tester's default
-  // would refuse loudly if it ever asked.
-  // No judge is provided: compose-types is structural, and the tester's default
-  // would refuse loudly if it ever asked for one.
   const diagnostics = await Effect.runPromise(
     Effect.gen(function* () {
       const workspace = yield* loadWorkspace("tests/fixtures/layers", ["."])
@@ -72,16 +64,17 @@ test("a rule can be written against the surface and run by the tester", async ()
 test("the tester can answer for a judged rule", async () => {
   const judge = answeringJudge({ answer: choice("x", 0.9) })
   const answer = await Effect.runPromise(
-    Effect.provide(
-      Effect.gen(function* () {
-        const service = yield* plugin.Judge
-        const results = yield* service.askMany([
-          { evidence: {}, questions: { q: { type: "noul", instructions: "?" } } },
-        ])
-        return results[0]?.answers["answer"]?.type ?? "none"
-      }),
-      judge,
-    ),
+    Effect.gen(function* () {
+      const model = yield* DecisionModel.DecisionModel
+      const definition = Decision.make({
+        input: Schema.Struct({}),
+        decisions: {
+          answer: Decision.classify({ instructions: "?", criteria: { x: "yes", y: "no" } }),
+        },
+      })
+      const result = yield* model.decide(definition, { input: {} })
+      return result.answers.answer.label
+    }).pipe(Effect.provide(judge)),
   )
-  expect(answer).toBe("choice")
+  expect(answer).toBe("x")
 })

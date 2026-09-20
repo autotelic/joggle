@@ -1,16 +1,15 @@
 import { Effect, Layer, Option } from "effect"
 import { NodeServices } from "@effect/platform-node"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
-import { Service as JudgeService } from "../src/judge.ts"
-import { decisionStub } from "../src/testing.ts"
-import { JudgeUnavailable, type Answer, type WorkspaceError } from "../src/schema.ts"
+import { decisionStub, refusingJudge, type StubAnswer } from "../src/testing.ts"
+import type { WorkspaceError } from "../src/schema.ts"
 import { Service as TsgoService } from "../src/tsgo.ts"
 import { loadWorkspace, type Workspace } from "../src/workspace.ts"
 import type { RunContext } from "../src/rule.ts"
 
 export const corpus = "tests/fixtures/corpus"
 
-/** Everything a test needs to run the real workspace and judge layers. */
+/** Everything a test needs to run the real workspace and decision layers. */
 export const nodeLayer = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer)
 
 export const tsgoStub = Layer.succeed(
@@ -21,49 +20,15 @@ export const tsgoStub = Layer.succeed(
   }),
 )
 
-const stubStats = {
-  requests: 1,
-  replayed: 0,
-  calls: 0,
-  unavailable: 0,
-  inputTokens: 0,
-  outputTokens: 0,
-}
+/** A model that answers from a table, for a rule that asks. */
+export const judgeStub = (answers: Readonly<Record<string, StubAnswer>>) => decisionStub(answers)
 
-export const judgeStub = (answers: Readonly<Record<string, Answer>>) =>
-  Layer.mergeAll(
-    Layer.succeed(
-      JudgeService,
-      JudgeService.of({
-        ask: () => Effect.succeed({ answers, replayed: false }),
-        // Every candidate gets the same stubbed verdict, batched or not: the
-        // stubs are about policy, and batching must not change the policy.
-        askMany: (requests) =>
-          Effect.succeed(requests.map(() => ({ answers, replayed: false }))),
-        stats: Effect.succeed(stubStats),
-      }),
-    ),
-    // A migrated rule asks the DecisionModel; an unmigrated one asks the Judge.
-    // Both are provided so a test says what it is about, not which surface it uses.
-    decisionStub(answers),
-  )
-
-export const judgeFailing = (reason: string) =>
-  Layer.mergeAll(
-    Layer.succeed(
-      JudgeService,
-      JudgeService.of({
-        ask: () => Effect.fail(new JudgeUnavailable({ reason })),
-        askMany: () => Effect.fail(new JudgeUnavailable({ reason })),
-        stats: Effect.succeed(stubStats),
-      }),
-    ),
-    decisionStub(),
-  )
+/** A model that refuses, for a rule that must degrade without one. */
+export const judgeFailing = (reason: string) => refusingJudge(reason)
 
 /**
  * Load the fixture workspace once per test and hand it to the body. The body's
- * remaining requirements are the test's business (usually a judge stub).
+ * remaining requirements are the test's business (usually a decision stub).
  */
 export const withWorkspace = <A, E, R>(
   use: (workspace: Workspace) => Effect.Effect<A, E, R>,
@@ -73,9 +38,9 @@ export const withWorkspace = <A, E, R>(
     return yield* use(workspace)
   }).pipe(Effect.provide(NodeServices.layer))
 
-export const noul = (value: number): Answer => ({ type: "noul", noul: value })
+export const noul = (value: number): StubAnswer => ({ type: "noul", noul: value })
 
-export const choice = (value: string, confidence: number): Answer => ({
+export const choice = (value: string, confidence: number): StubAnswer => ({
   type: "choice",
   choice: value,
   probabilities: { [value]: confidence },

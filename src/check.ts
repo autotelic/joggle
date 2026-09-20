@@ -1,10 +1,9 @@
-import { Clock, Effect, FileSystem, Match, Path, Result, Schema, SchemaParser } from "effect"
+import { Clock, Effect, FileSystem, Path, Result, Schema, SchemaParser } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 import { loadParses } from "./parsecache.ts"
 import { JudgeStats } from "./decision.ts"
-import { Service as Judge } from "./judge.ts"
 import { policy } from "./policy.ts"
 import { finding } from "./rule.ts"
 import { allRules } from "./rules/index.ts"
@@ -19,7 +18,6 @@ import {
   WorkspaceError,
   type Drop,
   type Diagnostic,
-  type JudgeError,
   type JudgeTotals,
 } from "./schema.ts"
 import { Service as Tsgo } from "./tsgo.ts"
@@ -69,15 +67,7 @@ export interface Options {
   readonly updateBaselinePath: string | undefined
 }
 
-const reasonOf = (error: JudgeError | AiError.AiError): string =>
-  error._tag === "AiError"
-    ? error.message
-    : Match.valueTags(error, {
-        "joggle/JudgeUnavailable": (reason) => reason.reason,
-        "joggle/JudgeRejected": (reason) => `HTTP ${reason.status}: ${reason.detail}`,
-        "joggle/JudgeMalformed": (reason) => reason.detail,
-        "joggle/JudgeTransport": (reason) => reason.detail,
-      })
+const reasonOf = (error: AiError.AiError): string => error.message
 
 const typecheckFindings = (output: ReadonlyArray<{ readonly file: string; readonly line: number; readonly column: number; readonly severity: "error" | "warning"; readonly code: string; readonly message: string }>): ReadonlyArray<Diagnostic> =>
   output.map((diagnostic) =>
@@ -269,7 +259,6 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       : universe.filter((rule) => options.rules?.includes(rule.id) === true)
   ).filter((rule) => isEnabled(options.config, rule.id, rule.severity))
 
-  const judge = yield* Judge
   const judgeStats = yield* JudgeStats
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
@@ -629,19 +618,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // "workspace 4.4s" and nothing else is a run nobody can make faster.
   timings.push(...workspace.phases)
 
-  // Both surfaces during the migration: the old judge counts what it spent, and
-  // the DecisionModel layer counts what it spent. When judge.ts is gone this is
-  // one read.
-  const legacy = yield* judge.stats
-  const fresh = yield* judgeStats.read
-  const judgeTotals: JudgeTotals = {
-    requests: legacy.requests + fresh.requests,
-    replayed: legacy.replayed + fresh.replayed,
-    calls: legacy.calls + fresh.calls,
-    unavailable: legacy.unavailable + fresh.unavailable,
-    inputTokens: legacy.inputTokens + fresh.inputTokens,
-    outputTokens: legacy.outputTokens + fresh.outputTokens,
-  }
+  const judgeTotals: JudgeTotals = yield* judgeStats.read
   const elapsedMs = (yield* Clock.currentTimeMillis) - started
   const report: Report = {
     diagnostics: rankDiagnostics(configured),

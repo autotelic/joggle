@@ -2,12 +2,12 @@ import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { duplicateImplementation } from "../src/rules/duplicate-implementation.ts"
 import { duplicateMeaning } from "../src/rules/duplicate-meaning.ts"
-import { everyFile, marginOf, qualityOf } from "../src/rule.ts"
-import type { Answer } from "../src/schema.ts"
+import { everyFile, marginOfAnswer, qualityOf } from "../src/rule.ts"
+import type { StubAnswer } from "../src/testing.ts"
 import { judgeStub, noul, withWorkspace, noConfig } from "./support.ts"
 
 /** A Choice answer with a real distribution, which the shared stub does not carry. */
-const spread = (probabilities: Record<string, number>): Answer => ({
+const spread = (probabilities: Record<string, number>): StubAnswer => ({
   type: "choice",
   choice: Object.entries(probabilities).sort((left, right) => right[1] - left[1])[0]?.[0] ?? "",
   probabilities,
@@ -15,12 +15,15 @@ const spread = (probabilities: Record<string, number>): Answer => ({
 })
 
 it("the margin is the gap the model left between two options", () => {
-  expect(marginOf({ verdict: spread({ collapse: 0.6, keep_variants: 0.3, no_issue: 0.1 }) }, "verdict")).toBeCloseTo(0.3)
+  expect(
+    marginOfAnswer({
+      label: "collapse",
+      probabilities: { collapse: 0.6, keep_variants: 0.3, no_issue: 0.1 },
+      confidence: 0.5,
+    }),
+  ).toBeCloseTo(0.3)
   // One option has nothing to be uncertain between.
-  expect(marginOf({ verdict: spread({ collapse: 1 }) }, "verdict")).toBe(1)
-  // No distribution means no measurement, and a gate that cannot measure must not fire.
-  expect(marginOf({ verdict: noul(0.9) }, "verdict")).toBeUndefined()
-  expect(marginOf({}, "verdict")).toBeUndefined()
+  expect(marginOfAnswer({ label: "collapse", probabilities: { collapse: 1 }, confidence: 0.5 })).toBe(1)
 })
 
 it("a yes/no answer is a verdict, not a ranking", () => {

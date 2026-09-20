@@ -17,7 +17,7 @@ import * as AiError from "effect/unstable/ai/AiError"
 import { DecisionModel } from "effect/unstable/ai"
 import type * as HttpClient from "effect/unstable/http/HttpClient"
 import { TypeSafeClient, TypeSafeDecisionModel, TypeSafeSchema } from "@effect/ai-typesafe"
-import { canonical } from "./judge.ts"
+import { canonical } from "./canonical.ts"
 import { policy } from "./policy.ts"
 
 /**

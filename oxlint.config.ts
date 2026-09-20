@@ -201,6 +201,20 @@ export default {
       },
     },
     {
+      // A canonical JSON serializer accepts any JSON by definition. Its whole job
+      // is that the same value produces the same string whatever its shape, so a
+      // domain type on it would be a lie about what it does. The rules it trips
+      // are the ones that ask for a named type at every boundary; the boundary
+      // here IS the type.
+      files: ["src/canonical.ts"],
+      rules: {
+        "plumb/no-unknown-parameters": "off",
+        "plumb/no-unknown-returns": "off",
+        "plumb/no-unsafe-dictionary-type": "off",
+        "plumb/no-known-value-widening": "off",
+      },
+    },
+    {
       // `Effect.gen(function* () { ... return x })` with no `yield` is idiomatic
       // Effect: the generator IS the effect, and a rule body with no effectful
       // steps still returns through one. eslint's rule predates Effect and cannot

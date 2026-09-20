@@ -1,4 +1,4 @@
-import type { Question } from "./schema.ts"
+import { Decision } from "effect/unstable/ai"
 
 /**
  * Every word the model is asked to choose between, in one file.
@@ -218,20 +218,18 @@ export const dependencyVocabulary = {
 } as const
 
 /**
- * The page rule's questions, whole.
+ * The page rule's decisions, whole.
  *
  * Every string here is fixed, so there is nothing to build per candidate and
  * nothing to keep in the rule.
  */
-export const pageQuestions = {
-  role: {
-    type: "choice",
-    instructions: {
-      question: "What kind of file is `page.path`?",
-      fallback: "Choose \"not_applicable\" when it is none of these.",
-      focus:
-        "Classify the file by what it is, not by whether it conforms. This answer decides which question is asked next, so a wrong classification wastes the rest of the request.",
-    },
+export const pageDecisions = {
+  role: Decision.classify({
+    instructions: [
+      "What kind of file is `page.path`?",
+      "Classify the file by what it is, not by whether it conforms. This answer decides which question is asked next, so a wrong classification wastes the rest of the request.",
+      "Choose \"not_applicable\" when it is none of these.",
+    ].join("\n"),
     criteria: {
       route_page: "A route's own page: it owns layout and state for one screen.",
       modal:
@@ -240,17 +238,15 @@ export const pageQuestions = {
       not_applicable:
         "A helper, a loader, a test, or something else this pattern does not apply to.",
     },
-  },
-  verdict: {
-    type: "choice",
-    instructions: {
-      question: "Should this file's state and markup live in a composition bundle instead?",
-      inspect: "`page`",
-      fallback: "Choose `no_issue` when the state is this file's own and nothing is shared.",
-      focus:
-        "The pattern earns its keep when several blocks share state that this file currently threads itself. A file with its own state and no sharing between pieces does not need it.",
-      note: "Judge whether a bundle would remove real duplication of state, not whether this file is long.",
-    },
+  }),
+  verdict: Decision.classify({
+    instructions: [
+      "Should this file's state and markup live in a composition bundle instead?",
+      "Inspect `page`.",
+      "The pattern earns its keep when several blocks share state that this file currently threads itself. A file with its own state and no sharing between pieces does not need it.",
+      "Judge whether a bundle would remove real duplication of state, not whether this file is long.",
+      "Choose `no_issue` when the state is this file's own and nothing is shared.",
+    ].join("\n"),
     criteria: {
       extract_to_bundle:
         "Its state and its pieces belong in a bundle with `{ state, actions, meta }`, exported by dot notation.",
@@ -258,30 +254,26 @@ export const pageQuestions = {
         "Part of it does, such as a repeated block or a group of elements that always travel together.",
       no_issue: "No. The state is genuinely this file's own and a provider would be ceremony.",
     },
-  },
-  primary_gap: {
-    type: "choice",
-    instructions: {
-      question: "What is the single most useful thing to change about `page.path`?",
-      fallback: "Choose `no_issue` when there is nothing to fix.",
-      focus: "Name the gap a reviewer would fix first, or `no_issue` when there is nothing to fix.",
-    },
+  }),
+  primary_gap: Decision.classify({
+    instructions: [
+      "What is the single most useful thing to change about `page.path`?",
+      "Name the gap a reviewer would fix first, or `no_issue` when there is nothing to fix.",
+      "Choose `no_issue` when there is nothing to fix.",
+    ].join("\n"),
     criteria: {
       state_belongs_in_provider: "State threaded here belongs in a provider the pieces read directly.",
       markup_belongs_in_blocks: "Markup inlined here belongs in named blocks, one per file.",
       no_provider_root: "It needs the bundle's provider at its composition root.",
       no_issue: "Nothing; leave this page as it is.",
     },
-  },
-  worth_fixing: {
-    type: "noul",
-    instructions: {
-      question: "Is extracting a bundle from this page worth a reviewer's time?",
-      focus: "A page that works and shares nothing is not worth restructuring for its own sake.",
-    },
+  }),
+  worth_fixing: Decision.probability({
+    instructions:
+      "Is extracting a bundle from this page worth a reviewer's time? A page that works and shares nothing is not worth restructuring for its own sake.",
     criteria: {
-      true: "A reviewer should look at this.",
       false: "Leave it alone.",
+      true: "A reviewer should look at this.",
     },
-  },
-} satisfies Record<string, Question>
+  }),
+}

@@ -4,7 +4,7 @@ import { decline, declineNames, declined } from "../src/rule.ts"
 import {
   duplicateVocabulary,
   nameVocabulary,
-  pageQuestions,
+  pageDecisions,
   pageVerdictByRole,
 } from "../src/vocabulary.ts"
 
@@ -22,9 +22,9 @@ const RULES = ["src/rules/cluster-verdict.ts", "src/rules/naming-drift.ts"]
  */
 const choices: ReadonlyArray<readonly [string, Readonly<Record<string, unknown>>]> = [
   ["duplicate verdict", duplicateVocabulary.verdict],
-  ["page role", pageQuestions.role.criteria],
-  ["page verdict", pageQuestions.verdict.criteria],
-  ["page primary_gap", pageQuestions.primary_gap.criteria],
+  ["page role", pageDecisions.role.criteria],
+  ["page verdict", pageDecisions.verdict.criteria],
+  ["page primary_gap", pageDecisions.primary_gap.criteria],
 ]
 
 describe("the decline vocabulary", () => {
@@ -54,8 +54,8 @@ describe("the decline vocabulary", () => {
     // be allowed to drift: a role added without a verdict vocabulary would be
     // judged by criteria written for a different kind of file, and the answer
     // would be true of neither.
-    const verdictOptions = Object.keys(pageQuestions.verdict.criteria).sort()
-    for (const role of Object.keys(pageQuestions.role.criteria)) {
+    const verdictOptions = Object.keys(pageDecisions.verdict.criteria).sort()
+    for (const role of Object.keys(pageDecisions.role.criteria)) {
       if (declineNames.includes(role)) continue
       const criteria = pageVerdictByRole[role]
       expect(criteria, role + " has no verdict vocabulary").toBeDefined()
@@ -67,8 +67,8 @@ describe("the decline vocabulary", () => {
     // The cookbook puts the escape hatch IN the question: "Select noMatch when no
     // hunk provides sufficient evidence". Inferred from the option list is not
     // the same as stated, and the model is reading the question first.
-    for (const question of [pageQuestions.role, pageQuestions.verdict, pageQuestions.primary_gap]) {
-      expect(JSON.stringify(question.instructions)).toContain("fallback")
+    for (const decision of [pageDecisions.role, pageDecisions.verdict, pageDecisions.primary_gap]) {
+      expect(decision.instructions).toContain("Choose")
     }
   })
 
@@ -85,7 +85,7 @@ describe("the decline vocabulary", () => {
   test("rules read their words from the vocabulary", () => {
     // The point of moving the strings out was that two questions can be compared
     // side by side. A rule that inlines its own criteria is a second vocabulary.
-    expect(sourceOf("src/rules/page-needs-composition.ts")).toContain("pageQuestions")
+    expect(sourceOf("src/rules/page-needs-composition.ts")).toContain("pageDecisions")
     // The option KEY living in a rule would mean a second definition of it.
     expect(sourceOf("src/rules/page-needs-composition.ts")).not.toContain("extract_to_bundle:")
     expect(sourceOf("src/rules/cluster-verdict.ts")).toContain("duplicateVocabulary")

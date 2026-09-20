@@ -57,76 +57,6 @@ export const Diagnostic = Schema.Struct({
 
 export interface Diagnostic extends Schema.Schema.Type<typeof Diagnostic> {}
 
-/* -------------------------------------------------------------------------- */
-/* System One wire contract                                                    */
-/* -------------------------------------------------------------------------- */
-
-/**
- * TypeSafe accepts JSON structure wherever prose gets blurry: instructions,
- * Choice option descriptions, Score levels and Noul criteria. Labelled fields
- * ("question", "compare", "focus") make a decision boundary easier to review
- * than one dense sentence, and the model is trained on the structure.
- */
-export const Entry = Schema.Union([
-  Schema.String,
-  Schema.Record(Schema.String, Schema.Unknown),
-  Schema.Array(Schema.Unknown),
-])
-
-export type Entry = Schema.Schema.Type<typeof Entry>
-
-export const NoulQuestion = Schema.Struct({
-  type: Schema.tag("noul"),
-  instructions: Entry,
-  criteria: Schema.optionalKey(
-    Schema.Struct({
-      true: Entry,
-      false: Entry,
-    }),
-  ),
-})
-
-export const ChoiceQuestion = Schema.Struct({
-  type: Schema.tag("choice"),
-  instructions: Entry,
-  criteria: Schema.Record(Schema.String, Schema.NullOr(Entry)),
-})
-
-export const Question = Schema.Union([NoulQuestion, ChoiceQuestion])
-
-export type Question = Schema.Schema.Type<typeof Question>
-
-export const Answer = Schema.Union([
-  Schema.Struct({
-    type: Schema.tag("noul"),
-    noul: Schema.Number,
-  }),
-  Schema.Struct({
-    type: Schema.tag("choice"),
-    choice: Schema.String,
-    probabilities: Schema.Record(Schema.String, Schema.Number),
-    confidence: Schema.Number,
-  }),
-])
-
-export type Answer = Schema.Schema.Type<typeof Answer>
-export type NoulAnswer = Extract<Answer, { readonly type: "noul" }>
-export type ChoiceAnswer = Extract<Answer, { readonly type: "choice" }>
-
-/**
- * The judgement cache key. It contains everything the answer depends on --
- * including the question version -- so a cache hit can be replayed in CI with
- * no API key and no network.
- */
-export const JudgeCacheKey = Schema.Struct({
-  questionVersion: Schema.String,
-  model: Schema.String,
-  evidence: Schema.Unknown,
-  questions: Schema.Record(Schema.String, Question),
-})
-
-export interface JudgeCacheKey extends Schema.Schema.Type<typeof JudgeCacheKey> {}
-
 /** A rule id and a reason: a skip, or a bound a rule hit. */
 export const Note = Schema.Struct({
   ruleId: Schema.String,
@@ -244,13 +174,6 @@ export const Baseline = Schema.Struct({
 
 export type Baseline = Schema.Schema.Type<typeof Baseline>
 
-export const JudgeCacheFile = Schema.Struct({
-  version: Schema.String,
-  entries: Schema.Record(Schema.String, Schema.Record(Schema.String, Answer)),
-})
-
-export type JudgeCacheFile = Schema.Schema.Type<typeof JudgeCacheFile>
-
 /* -------------------------------------------------------------------------- */
 /* Typed errors                                                                */
 /* -------------------------------------------------------------------------- */
@@ -269,38 +192,3 @@ export class TsgoError extends Schema.TaggedError<TsgoError>()("joggle/TsgoError
   detail: Schema.String,
 }) {}
 
-export class JudgeUnavailable extends Schema.TaggedError<JudgeUnavailable>()(
-  "joggle/JudgeUnavailable",
-  {
-    reason: Schema.String,
-  },
-) {}
-
-export class JudgeRejected extends Schema.TaggedError<JudgeRejected>()(
-  "joggle/JudgeRejected",
-  {
-    status: Schema.Number,
-    detail: Schema.String,
-  },
-) {}
-
-export class JudgeMalformed extends Schema.TaggedError<JudgeMalformed>()(
-  "joggle/JudgeMalformed",
-  {
-    detail: Schema.String,
-  },
-) {}
-
-export class JudgeTransport extends Schema.TaggedError<JudgeTransport>()(
-  "joggle/JudgeTransport",
-  {
-    operation: Schema.String,
-    detail: Schema.String,
-  },
-) {}
-
-export type JudgeError =
-  | JudgeUnavailable
-  | JudgeRejected
-  | JudgeMalformed
-  | JudgeTransport

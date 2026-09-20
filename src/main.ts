@@ -4,7 +4,6 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeServices } from "@effect/platform-node"
 import { runCheck } from "./check.ts"
 import { layer as decisionLayer } from "./decision.ts"
-import { layer as judgeLayer } from "./judge.ts"
 import { runCacheDirFor } from "./state.ts"
 import { loadConfig } from "./config.ts"
 import { loadPlugins, withDefaults } from "./plugins.ts"
@@ -90,14 +89,6 @@ const check = Command.make(
         baselinePath: Option.getOrUndefined(config.baseline),
         updateBaselinePath: Option.getOrUndefined(config.updateBaseline),
       }).pipe(
-        Effect.provide(
-          judgeLayer({
-            cacheDir,
-            offline: config.offline,
-            apiKey,
-            evidenceContext: effective.evidence?.repository,
-          }),
-        ),
         Effect.provide(decisionLayer({ cacheDir, offline: config.offline, apiKey })),
         Effect.provide(tsgoLayer(cwd)),
       )
@@ -154,10 +145,6 @@ const describeFailure = (failure: unknown): string | undefined => {
     const cause = record["cause"]
     const detail = cause instanceof Error ? cause.message : String(cause ?? "")
     return String(record["operation"]) + ": " + detail
-  }
-  if (tag === "joggle/JudgeUnavailable") return "judgement unavailable: " + String(record["reason"])
-  if (tag === "joggle/JudgeRejected") {
-    return "the judge refused the request: " + String(record["detail"])
   }
   return undefined
 }

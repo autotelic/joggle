@@ -3,8 +3,7 @@ import { policy } from "./policy.ts"
 import type { JoggleConfig } from "./config.ts"
 import type * as AiError from "effect/unstable/ai/AiError"
 import type { Decision, DecisionModel } from "effect/unstable/ai"
-import type { Service as JudgeService } from "./judge.ts"
-import type { Answer, Diagnostic, Drop, JudgeError, Severity, SourceLocation } from "./schema.ts"
+import type { Diagnostic, Drop, Severity, SourceLocation } from "./schema.ts"
 import type { Workspace } from "./workspace.ts"
 
 /**
@@ -96,7 +95,7 @@ export interface Rule {
     workspace: Workspace,
     scope: Scope,
     context: RunContext,
-  ) => Effect.Effect<RuleOutcome, JudgeError | AiError.AiError, JudgeService | DecisionModel.DecisionModel>
+  ) => Effect.Effect<RuleOutcome, AiError.AiError, DecisionModel.DecisionModel>
 }
 
 export const defineRule = (rule: Rule): Rule => rule
@@ -241,50 +240,6 @@ export const marginOfAnswer = (
   const ranked = Object.values(answer.probabilities).sort((left, right) => right - left)
   const [first, second] = ranked
   if (first === undefined) return 1
-  return second === undefined ? 1 : first - second
-}
-
-export const choiceOf = (
-  answers: Readonly<Record<string, Answer>>,
-  id: string,
-): { readonly choice: string; readonly confidence: number } | undefined => {
-  const answer = answers[id]
-  return answer !== undefined && answer.type === "choice"
-    ? { choice: answer.choice, confidence: answer.confidence }
-    : undefined
-}
-
-/**
- * A Noul answer, used as a ranking score.
- *
- * The re-ranking cookbook is explicit that a Noul is the right primitive when
- * you need "a comparable score for every query-candidate pair... without
- * inventing a scoring scale". Every rule asks one, so the whole report sorts.
- */
-export const noulOf = (
-  answers: Readonly<Record<string, Answer>>,
-  id: string,
-): number | undefined => {
-  const answer = answers[id]
-  return answer !== undefined && answer.type === "noul" ? answer.noul : undefined
-}
-
-/**
- * Winner minus runner-up in a Choice's own distribution.
- *
- * A single option has nothing to be uncertain between, so its margin is 1; an
- * answer with no distribution at all has no margin, and a gate that cannot
- * measure should not fire.
- */
-export const marginOf = (
-  answers: Readonly<Record<string, Answer>>,
-  id: string,
-): number | undefined => {
-  const answer = answers[id]
-  if (answer === undefined || answer.type !== "choice") return undefined
-  const ranked = Object.values(answer.probabilities).sort((left, right) => right - left)
-  const [first, second] = ranked
-  if (first === undefined) return undefined
   return second === undefined ? 1 : first - second
 }
 

@@ -3,11 +3,12 @@ import { Effect } from "effect"
 import { duplicateImplementation } from "../src/rules/duplicate-implementation.ts"
 import { duplicateMeaning } from "../src/rules/duplicate-meaning.ts"
 import { everyFile } from "../src/rule.ts"
-import type { Answer, DropStage } from "../src/schema.ts"
+import type { DropStage } from "../src/schema.ts"
+import type { StubAnswer } from "../src/testing.ts"
 import { funnelNotes } from "../src/report.ts"
 import { judgeStub, noul, noConfig, withWorkspace } from "./support.ts"
 
-const spread = (probabilities: Record<string, number>): Answer => ({
+const spread = (probabilities: Record<string, number>): StubAnswer => ({
   type: "choice",
   choice: Object.entries(probabilities).sort((left, right) => right[1] - left[1])[0]?.[0] ?? "",
   probabilities,

@@ -1,10 +1,19 @@
 import { Effect, Layer } from "effect"
+import * as AiError from "effect/unstable/ai/AiError"
 import { DecisionModel } from "effect/unstable/ai"
-import type * as AiError from "effect/unstable/ai/AiError"
-import { Service as JudgeService, type JudgeResult } from "./judge.ts"
 import { everyFile, type Rule, type RunContext } from "./rule.ts"
-import { JudgeUnavailable, type Answer, type Diagnostic, type JudgeError } from "./schema.ts"
+import type { Diagnostic } from "./schema.ts"
 import type { Workspace } from "./workspace.ts"
+
+/** A test's answer for one decision, in the vocabulary the tests already use. */
+export type StubAnswer =
+  | { readonly type: "noul"; readonly noul: number }
+  | {
+      readonly type: "choice"
+      readonly choice: string
+      readonly probabilities: Readonly<Record<string, number>>
+      readonly confidence: number
+    }
 
 /**
  * What a rule author needs in order to test a rule.
@@ -23,20 +32,20 @@ export interface RuleTestOptions {
   /**
    * The answers to give, when the rule asks for any.
    *
-   * Absent means a judge that refuses with a clear reason. A structural rule
+   * Absent means a model that refuses with a clear reason. A structural rule
    * never reaches it -- and the type has to ask for a service either way, because
    * a rule that turns out to be judged must not be a compile error. Defaulting to
    * refusal rather than to silence means a rule that DOES ask fails loudly
    * instead of quietly reporting nothing.
    */
-  readonly judge?: Layer.Layer<JudgeService | DecisionModel.DecisionModel> | undefined
+  readonly judge?: Layer.Layer<DecisionModel.DecisionModel> | undefined
 }
 
 export const diagnosticsOf = (
   rule: Rule,
   workspace: Workspace,
   options: RuleTestOptions = {},
-): Effect.Effect<ReadonlyArray<Diagnostic>, JudgeError | AiError.AiError> =>
+): Effect.Effect<ReadonlyArray<Diagnostic>, AiError.AiError> =>
   rule.run(workspace, everyFile, options.context ?? { config: {} }).pipe(
     Effect.map((result) => result.diagnostics),
     Effect.provide(
@@ -44,68 +53,36 @@ export const diagnosticsOf = (
     ),
   )
 
-/**
- * A judge that answers every question the same way.
- *
- * Batching must not change policy, so the stub answers each request identically
- * whether they arrived together or apart -- which is what lets a test assert
- * about a RULE rather than about how its requests happened to be packed.
- */
+/** A model that answers every decision from one table. */
 export const answeringJudge = (
-  answers: Readonly<Record<string, Answer>>,
-): Layer.Layer<JudgeService | DecisionModel.DecisionModel> =>
-  Layer.mergeAll(
-    Layer.succeed(
-      JudgeService,
-      JudgeService.of({
-        ask: () => Effect.succeed({ answers, replayed: false }),
-        askMany: (requests) =>
-          Effect.succeed(
-            requests.map((): JudgeResult => ({ answers, replayed: false })),
-          ),
-        stats: Effect.succeed({
-          requests: 0,
-          replayed: 0,
-          calls: 0,
-          unavailable: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-        }),
-      }),
-    ),
-    decisionStub(answers),
-  )
+  answers: Readonly<Record<string, StubAnswer>>,
+): Layer.Layer<DecisionModel.DecisionModel> => decisionStub(answers)
 
-/** A judge that cannot answer, for testing what a rule does without one. */
-export const refusingJudge = (reason: string): Layer.Layer<JudgeService | DecisionModel.DecisionModel> =>
-  Layer.mergeAll(
-    Layer.succeed(
-      JudgeService,
-      JudgeService.of({
-        ask: () => Effect.fail(new JudgeUnavailable({ reason })),
-        askMany: () => Effect.fail(new JudgeUnavailable({ reason })),
-        stats: Effect.succeed({
-          requests: 0,
-          replayed: 0,
-          calls: 0,
-          unavailable: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-        }),
-      }),
-    ),
-    decisionStub(),
+/** A model that cannot answer, for testing what a rule does without one. */
+export const refusingJudge = (reason: string): Layer.Layer<DecisionModel.DecisionModel> =>
+  Layer.effect(
+    DecisionModel.DecisionModel,
+    DecisionModel.make({
+      decide: () =>
+        Effect.fail(
+          AiError.make({
+            module: "joggle/testing",
+            method: "decide",
+            reason: new AiError.UnknownError({ description: reason }),
+          }),
+        ),
+    }),
   )
 
 /**
- * A DecisionModel that answers every decision consistently.
+ * A DecisionModel that answers from a table of answers.
  *
- * A test asserts policy, not the provider, so classify decisions choose one label
- * and probability decisions answer one number. The answers still pass Effect's
- * validation, so a rule under test sees a real Decision answer.
+ * The tests are about policy, so the model is a stub. A distribution with labels
+ * missing gets the remainder spread over them, so a test can name only the
+ * options it is about and still pass Effect's validation.
  */
 export const decisionStub = (
-  supplied: Readonly<Record<string, Answer>> = {},
+  supplied: Readonly<Record<string, StubAnswer>> = {},
 ): Layer.Layer<DecisionModel.DecisionModel> =>
   Layer.effect(
     DecisionModel.DecisionModel,
@@ -132,7 +109,8 @@ export const decisionStub = (
                     probabilities: Object.fromEntries(
                       labels.map((candidate) => [candidate, given[candidate] ?? remainder]),
                     ),
-                    confidence: answer !== undefined && answer.type === "choice" ? answer.confidence : 0.9,
+                    confidence:
+                      answer !== undefined && answer.type === "choice" ? answer.confidence : 0.9,
                   },
                 ]
               }

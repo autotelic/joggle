@@ -1,19 +1,19 @@
-import { Effect } from "effect"
+import { Effect, Option, Schema } from "effect"
+import { Decision, DecisionModel } from "effect/unstable/ai"
 import { policy } from "../policy.ts"
-import { Service as Judge, type JudgeRequest } from "../judge.ts"
 import {
   budgetNote,
-  choiceOf,
   declined,
   defineRule,
   finding,
-  marginOf,
+  marginOfAnswer,
   outcome,
+  type DecisionAnswers,
   type Scope,
 } from "../rule.ts"
 import { classifyModules, moduleOf } from "../roles.ts"
 import { dutyVocabulary, EDGE_ROLES, homeVocabulary } from "../vocabulary.ts"
-import type { Diagnostic, Drop, Question } from "../schema.ts"
+import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/hoist-to-domain"
@@ -122,29 +122,42 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Unit> =
     // drop reason reports it. It is not trusted to order anything.
     .sort((left, right) => left.file.localeCompare(right.file) || left.start - right.start)
 
-const questions = {
-  duty: {
-    type: "choice",
-    instructions: {
-      question: "What is `declaration.name` doing?",
-      inspect: ["declaration", "repository"],
-      fallback: "Choose `orchestration` when it mostly calls other things and decides little itself.",
-      focus:
+const DeclarationEvidence = Schema.Struct({
+  repository: Schema.NullOr(Schema.String),
+  module: Schema.Struct({ path: Schema.String, role: Schema.NullOr(Schema.String) }),
+  declaration: Schema.Struct({
+    name: Schema.String,
+    path: Schema.String,
+    line: Schema.Number,
+    source: Schema.String,
+    documented: Schema.Boolean,
+    doc: Schema.NullOr(Schema.String),
+    types: Schema.Array(Schema.String),
+  }),
+})
+
+const HoistDecision = Decision.make({
+  input: DeclarationEvidence,
+  decisions: {
+    duty: Decision.classify({
+      instructions: [
+        "What is `declaration.name` doing?",
+        "Inspect `declaration` and `repository`.",
         "`repository` describes what this codebase is trying to be. Judge what this declaration IS, not where it sits: the same calculation is a domain rule in any file. A rule, an invariant or a decision about the business is `domain_logic` wherever it is written.",
-    },
-    criteria: dutyVocabulary,
-  },
-  home: {
-    type: "choice",
-    instructions: {
-      question: "Is `declaration.path` already where logic like this belongs?",
-      inspect: ["declaration.path", "repository"],
-      focus:
+        "Choose `orchestration` when it mostly calls other things and decides little itself.",
+      ].join("\n"),
+      criteria: dutyVocabulary,
+    }),
+    home: Decision.classify({
+      instructions: [
+        "Is `declaration.path` already where logic like this belongs?",
+        "Inspect `declaration.path` and `repository`.",
         "Decide from the path and what `repository` says the architecture is. A route, a component directory or a transport handler is not where business rules live; a domain or model package is.",
-    },
-    criteria: homeVocabulary,
+      ].join("\n"),
+      criteria: homeVocabulary,
+    }),
   },
-} satisfies Record<string, Question>
+})
 
 export const hoistToDomain = defineRule({
   id: RULE_ID,
@@ -201,26 +214,6 @@ export const hoistToDomain = defineRule({
     const budget = policy.hoistToDomain.maxDeclarations
     const judged = candidates.slice(0, budget)
 
-    const requests: Array<JudgeRequest> = judged.map((unit) => ({
-      evidence: {
-        repository: context.config.evidence?.repository ?? null,
-        // What the module IS, from round one. Every question about a declaration
-        // is easier to answer knowing whether it sits in a route handler or a
-        // domain package, and round one already paid for the answer.
-        module: { path: moduleOf(unit), role: edge.get(moduleOf(unit)) ?? null },
-        declaration: {
-          name: unit.name,
-          path: unit.file,
-          line: unit.location.line,
-          source: unit.text.slice(0, policy.evidence.maxSourceChars),
-          documented: unit.doc !== undefined,
-          doc: unit.doc?.slice(0, policy.evidence.maxDocChars) ?? null,
-          types: unit.typeRefs,
-        },
-      },
-      questions,
-    }))
-
     const diagnostics: Array<Diagnostic> = []
     const drops: Array<Drop> = [...notAnEdge]
     for (const unit of candidates.slice(budget)) drops.push({
@@ -240,38 +233,50 @@ export const hoistToDomain = defineRule({
     // the same as saying nothing. The funnel is reported either way, because the
     // candidate count is exactly what you need in order to decide whether a run
     // with a key is worth making.
-    const judge = yield* Judge
-    const asked = yield* judge.askMany(requests).pipe(
-      Effect.map((results) => ({ ok: true as const, results })),
-      Effect.catch((error) =>
-        Effect.succeed({
-          ok: false as const,
-          reason:
-            typeof error === "object" && error !== null && "reason" in error
-              ? String((error as { reason: unknown }).reason)
-              : String(error),
-        }),
-      ),
+    // One DecisionModel.decide per declaration; a declaration whose answer cannot
+    // be read becomes an unreadable drop rather than a failed rule.
+    const results = yield* Effect.forEach(
+      judged,
+      (unit) =>
+        DecisionModel.decide(HoistDecision, {
+          input: {
+            repository: context.config.evidence?.repository ?? null,
+            // What the module IS, from round one. Every question about a declaration
+            // is easier to answer knowing whether it sits in a route handler or a
+            // domain package, and round one already paid for the answer.
+            module: { path: moduleOf(unit), role: edge.get(moduleOf(unit)) ?? null },
+            declaration: {
+              name: unit.name,
+              path: unit.file,
+              line: unit.location.line,
+              source: unit.text.slice(0, policy.evidence.maxSourceChars),
+              documented: unit.doc !== undefined,
+              doc: unit.doc?.slice(0, policy.evidence.maxDocChars) ?? null,
+              types: unit.typeRefs,
+            },
+          },
+        }).pipe(
+          Effect.map((result) => Option.some(result.answers)),
+          Effect.catch(() => Effect.succeed(Option.none<DecisionAnswers>())),
+        ),
+      { concurrency: policy.judge.requestConcurrency },
     )
-    if (!asked.ok) {
-      return outcome([], [], [
-        ...drops,
-        ...judged.map((unit) => ({
-          ruleId: RULE_ID,
-          subject: label(unit),
-          stage: "unreadable" as const,
-          reason: "no judgement available: " + asked.reason,
-        })),
-      ])
-    }
-    const results = asked.results
 
 
     judged.forEach((unit, index) => {
-      const answers = results[index]?.answers ?? {}
-      const duty = choiceOf(answers, "duty")
-      const home = choiceOf(answers, "home")
-      if (duty === undefined || home === undefined) {
+      const answer = results[index]
+      if (answer === undefined || Option.isNone(answer)) {
+        drops.push({
+          ruleId: RULE_ID,
+          subject: label(unit),
+          stage: "unreadable",
+          reason: "the response did not classify this declaration",
+        })
+        return
+      }
+      const duty = answer.value["duty"]
+      const home = answer.value["home"]
+      if (duty === undefined || !("label" in duty) || home === undefined || !("label" in home)) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
@@ -284,8 +289,8 @@ export const hoistToDomain = defineRule({
       // this gate since it was shown to withhold 11 clusters of unrelated `db*`
       // functions; these two rules were built without it, which is how one of them
       // produced 199 findings on a single repository.
-      const margin = marginOf(answers, "duty")
-      if (margin !== undefined && margin < policy.judge.gates.minMargin) {
+      const margin = marginOfAnswer(duty)
+      if (margin < policy.judge.gates.minMargin) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
@@ -294,15 +299,15 @@ export const hoistToDomain = defineRule({
         })
         return
       }
-      if (duty.choice !== "domain_logic" || declined(home.choice) || home.choice === "already_there") {
+      if (duty.label !== "domain_logic" || declined(home.label) || home.label === "already_there") {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
           stage: "declined" as const,
           reason:
-            duty.choice === "domain_logic"
+            duty.label === "domain_logic"
               ? "the model says this is already where it belongs"
-              : "the model says this is " + duty.choice,
+              : "the model says this is " + duty.label,
         })
         return
       }
@@ -315,13 +320,13 @@ export const hoistToDomain = defineRule({
             " in " +
             unit.file +
             " is a rule about the business, living in " +
-            home.choice.replace(/_/g, " ") +
+            home.label.replace(/_/g, " ") +
             ".",
           help:
             "Move it into the domain package and import it from here. Business rules at the edge get re-implemented by the next caller, and the two copies then disagree. If this is deliberately local, pin the decision in the config so the question is not asked again.",
           location: unit.location,
           identity: [RULE_ID, unit.file, unit.name].join("\u0000"),
-          confidence: duty.confidence,
+          confidence: duty.confidence ?? 1,
           judged: true,
         }),
       )

@@ -1,20 +1,19 @@
-import { Effect } from "effect"
+import { Effect, Option, Schema } from "effect"
+import { Decision, DecisionModel } from "effect/unstable/ai"
 import { policy } from "../policy.ts"
-import { Service as Judge } from "../judge.ts"
 import {
-  choiceOf,
   declined,
   defineRule,
   finding,
   inScope,
-  marginOf,
-  noulOf,
+  marginOfAnswer,
   outcome,
   qualityOf,
+  type DecisionAnswers,
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop, DropStage } from "../schema.ts"
-import { pageQuestions, pageVerdictByRole } from "../vocabulary.ts"
+import { pageDecisions, pageVerdictByRole } from "../vocabulary.ts"
 import { baseOf, dirOf } from "../bundles.ts"
 import type { Result } from "./cluster-verdict.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
@@ -96,27 +95,47 @@ const gaps = (page: Page): ReadonlyArray<string> => {
   return found
 }
 
-const findingFor = (
-  page: Page,
-  answers: Readonly<Record<string, import("../schema.ts").Answer>>,
-): Result => {
+const PageEvidence = Schema.Struct({
+  page: Schema.Struct({
+    path: Schema.String,
+    lines: Schema.Number,
+    local_state_calls: Schema.Number,
+    inline_elements: Schema.Number,
+    imports_from_pattern_bundles: Schema.Number,
+    renders_a_provider: Schema.Boolean,
+  }),
+  gaps: Schema.Array(Schema.String),
+  role: Schema.optionalKey(Schema.String),
+})
+
+const PageRole = Decision.make({
+  input: PageEvidence,
+  decisions: { role: pageDecisions.role },
+})
+
+const findingFor = (page: Page, answers: DecisionAnswers): Result => {
   const dropOf = (stage: DropStage, reason: string): Result => ({
     drop: { ruleId: RULE_ID, subject: page.file.path, stage, reason },
   })
-  const verdict = choiceOf(answers, "verdict")
-  if (verdict === undefined) return dropOf("unreadable", "no verdict came back")
-  if (declined(verdict.choice)) {
+  const verdict = answers["verdict"]
+  if (verdict === undefined || !("label" in verdict)) {
+    return dropOf("unreadable", "no verdict came back")
+  }
+  if (declined(verdict.label)) {
     return dropOf("declined", "the state is this page's own")
   }
   // The yes/no question is a verdict, not a ranking: when it says the extraction
   // is not worth a reviewer's time, there is no finding, however loudly the
   // Choice said `extract_to_bundle`.
+  const worth = answers["worth_fixing"]
+  const probability = worth !== undefined && "probability" in worth ? worth.probability : undefined
+  const confidence = verdict.confidence ?? 1
   const quality = qualityOf({
-    score: noulOf(answers, "worth_fixing") ?? verdict.confidence,
-    margin: marginOf(answers, "verdict"),
+    score: probability ?? confidence,
+    margin: marginOfAnswer(verdict),
   })
   if (!quality.usable) return dropOf("gated", quality.reason)
-  const gap = choiceOf(answers, "primary_gap")
+  const gap = answers["primary_gap"]
   const missing = gaps(page)
   return {
     diagnostic: finding({
@@ -126,11 +145,11 @@ const findingFor = (
     help:
       missing.length === 0
         ? "See the composition pattern guide: a provider owns `{ state, actions, meta }` and blocks are exported by dot notation."
-        : `Gaps: ${missing.join("; ")}.${gap === undefined || declined(gap.choice) ? "" : ` Start with: ${gap.choice.replace(/_/g, " ")}.`}`,
+        : `Gaps: ${missing.join("; ")}.${gap === undefined || !("label" in gap) || declined(gap.label) ? "" : ` Start with: ${gap.label.replace(/_/g, " ")}.`}`,
     location: { file: page.file.path, line: 1, column: 1 },
     identity: [RULE_ID, page.file.path].join("\u0000"),
-    confidence: verdict.confidence,
-    score: noulOf(answers, "worth_fixing") ?? verdict.confidence,
+    confidence,
+    score: probability ?? confidence,
     judged: true,
     }),
   }
@@ -167,8 +186,6 @@ export const pageNeedsComposition = defineRule({
       gaps: gaps(page),
     })
 
-    const judge = yield* Judge
-
     // ROUND ONE: what is this file?
     //
     // Cheaper and more useful than asking the real question directly, because the
@@ -176,11 +193,14 @@ export const pageNeedsComposition = defineRule({
     // asked every file under routes/ whether it should be a bundle, produced
     // 1,216 candidates, and got 237 shrugs -- a model asked a question that does
     // not apply to the thing in front of it does not say so, it says 0.2.
-    const classified = yield* judge.askMany(
-      judged.map((page) => ({
-        evidence: evidenceFor(page),
-        questions: { role: pageQuestions.role },
-      })),
+    const classified = yield* Effect.forEach(
+      judged,
+      (page) =>
+        DecisionModel.decide(PageRole, { input: evidenceFor(page) }).pipe(
+          Effect.map((result) => Option.some(result.answers.role.label)),
+          Effect.catch(() => Effect.succeed(Option.none<string>())),
+        ),
+      { concurrency: policy.judge.requestConcurrency },
     )
 
     const roles: Array<{ page: Page; role: string }> = []
@@ -192,9 +212,8 @@ export const pageNeedsComposition = defineRule({
     }))
 
     judged.forEach((page, index) => {
-      const answer = classified[index]?.answers ?? {}
-      const role = choiceOf(answer, "role")
-      if (role === undefined) {
+      const role = classified[index]
+      if (role === undefined || Option.isNone(role)) {
         drops.push({
           ruleId: RULE_ID,
           subject: page.file.path,
@@ -203,7 +222,7 @@ export const pageNeedsComposition = defineRule({
         })
         return
       }
-      if (declined(role.choice)) {
+      if (declined(role.value)) {
         drops.push({
           ruleId: RULE_ID,
           subject: page.file.path,
@@ -212,7 +231,7 @@ export const pageNeedsComposition = defineRule({
         })
         return
       }
-      roles.push({ page, role: role.choice })
+      roles.push({ page, role: role.value })
     })
 
     if (roles.length === 0) {
@@ -223,20 +242,28 @@ export const pageNeedsComposition = defineRule({
       )
     }
 
-    // ROUND TWO: the question the classification selected, with the vocabulary
+    // ROUND TWO: the decision the classification selected, with the vocabulary
     // that kind of file is judged by.
-    const results = yield* judge.askMany(
-      roles.map(({ page, role }) => ({
-        evidence: { ...evidenceFor(page), role },
-        questions: {
-          verdict: {
-            ...pageQuestions.verdict,
-            criteria: pageVerdictByRole[role] ?? pageQuestions.verdict.criteria,
+    const results = yield* Effect.forEach(
+      roles,
+      ({ page, role }) => {
+        const definition = Decision.make({
+          input: PageEvidence,
+          decisions: {
+            verdict: {
+              ...pageDecisions.verdict,
+              criteria: pageVerdictByRole[role] ?? pageDecisions.verdict.criteria,
+            },
+            primary_gap: pageDecisions.primary_gap,
+            worth_fixing: pageDecisions.worth_fixing,
           },
-          primary_gap: pageQuestions.primary_gap,
-          worth_fixing: pageQuestions.worth_fixing,
-        },
-      })),
+        })
+        return DecisionModel.decide(definition, { input: { ...evidenceFor(page), role } }).pipe(
+          Effect.map((result) => Option.some(result.answers)),
+          Effect.catch(() => Effect.succeed(Option.none<DecisionAnswers>())),
+        )
+      },
+      { concurrency: policy.judge.requestConcurrency },
     )
 
     const diagnostics: Array<Diagnostic> = []
@@ -244,7 +271,7 @@ export const pageNeedsComposition = defineRule({
     // is into THAT list: round two asked about a different, shorter set.
     roles.forEach(({ page }, index) => {
       const result = results[index]
-      if (result === undefined) {
+      if (result === undefined || Option.isNone(result)) {
         drops.push({
           ruleId: RULE_ID,
           subject: page.file.path,
@@ -253,7 +280,7 @@ export const pageNeedsComposition = defineRule({
         })
         return
       }
-      const decided = findingFor(page, result.answers)
+      const decided = findingFor(page, result.value)
       if (decided.diagnostic !== undefined) diagnostics.push(decided.diagnostic)
       if (decided.drop !== undefined) drops.push(decided.drop)
     })

@@ -1,18 +1,17 @@
-import { Effect } from "effect"
+import { Effect, Option, Schema } from "effect"
 import { builtinModules } from "node:module"
+import { Decision, DecisionModel } from "effect/unstable/ai"
 import { policy } from "../policy.ts"
-import { Service as Judge, type JudgeRequest } from "../judge.ts"
 import {
   budgetNote,
-  choiceOf,
   defineRule,
   finding,
-  marginOf,
+  marginOfAnswer,
   outcome,
   type Scope,
 } from "../rule.ts"
 import { dependencyVocabulary } from "../vocabulary.ts"
-import type { Diagnostic, Drop, Question } from "../schema.ts"
+import type { Diagnostic, Drop } from "../schema.ts"
 import type { Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/dependency-fit"
@@ -190,19 +189,32 @@ const dependenciesIn = (workspace: Workspace): Candidates => {
   return { dependencies, declared }
 }
 
-const questions = {
-  fit: {
-    type: "choice",
-    instructions: {
-      question: "Does `dependency.specifier` belong in `package.path`?",
-      inspect: ["package", "dependency"],
-      fallback: "Choose `belongs` unless something is clearly wrong. This rule is meant to be quiet.",
-      focus:
+const DependencyEvidence = Schema.Struct({
+  repository: Schema.NullOr(Schema.String),
+  package: Schema.Struct({
+    path: Schema.String,
+    name: Schema.NullOr(Schema.String),
+    describes_itself_as: Schema.NullOr(Schema.String),
+    imports_this_in: Schema.Number,
+    examples: Schema.Array(Schema.String),
+  }),
+  dependency: Schema.Struct({ specifier: Schema.String }),
+})
+
+const DependencyFit = Decision.make({
+  input: DependencyEvidence,
+  decisions: {
+    fit: Decision.classify({
+      instructions: [
+        "Does `dependency.specifier` belong in `package.path`?",
+        "Inspect `package` and `dependency`.",
         "`package.describes_itself_as` is what this package says it is, and `repository` describes what the codebase is trying to be. Judge the dependency against BOTH: a Fastify plugin importing fastify is a package doing its job, and the same import in a domain package is the thing the architecture exists to prevent. Do not apply a constraint that belongs to one package to every package.",
-    },
-    criteria: dependencyVocabulary,
+        "Choose `belongs` unless something is clearly wrong. This rule is meant to be quiet.",
+      ].join("\n"),
+      criteria: dependencyVocabulary,
+    }),
   },
-} satisfies Record<string, Question>
+})
 
 export const dependencyFit = defineRule({
   id: RULE_ID,
@@ -234,27 +246,6 @@ export const dependencyFit = defineRule({
         " in its own manifest, so importing it is what the package is for",
     }))
 
-    const requests: Array<JudgeRequest> = judged.map((dependency) => {
-      const manifest = workspace.manifests.get(dependency.directory)
-      return {
-      evidence: {
-        repository: context.config.evidence?.repository ?? null,
-        package: {
-          path: dependency.path,
-          // What the package says it IS. Without this the panel is asked whether a
-          // package should import a framework while being told nothing about the
-          // package -- and answers correctly for the wrong package.
-          name: manifest?.name ?? null,
-          describes_itself_as: manifest?.description ?? null,
-          imports_this_in: dependency.count,
-          examples: dependency.examples,
-        },
-        dependency: { specifier: dependency.specifier },
-      },
-      questions,
-      }
-    })
-
     const diagnostics: Array<Diagnostic> = []
     // Declared dependencies are drops, not answers: the funnel has to account for
     // every candidate, and 129 of 241 never reached the model. This was computed
@@ -268,41 +259,41 @@ export const dependencyFit = defineRule({
       reason: "this run judged " + budget + " dependencies and this one was past the budget",
     })
 
-    const judge = yield* Judge
     // A verdict here is a guess about someone else's design, so without one the
     // rule stays silent rather than inventing a finding. It still reports what it
     // looked at: the candidate count is how you decide whether to make the run
-    // that needs a key.
-    const asked = yield* judge.askMany(requests).pipe(
-      Effect.map((results) => ({ ok: true as const, results })),
-      Effect.catch((error) =>
-        Effect.succeed({
-          ok: false as const,
-          reason:
-            typeof error === "object" && error !== null && "reason" in error
-              ? String((error as { reason: unknown }).reason)
-              : String(error),
-        }),
-      ),
+    // that needs a key. One DecisionModel.decide per dependency; a dependency
+    // whose answer cannot be read becomes an unreadable drop, not a failed rule.
+    const results = yield* Effect.forEach(
+      judged,
+      (dependency) => {
+        const manifest = workspace.manifests.get(dependency.directory)
+        const evidence = {
+          repository: context.config.evidence?.repository ?? null,
+          package: {
+            path: dependency.path,
+            // What the package says it IS. Without this the panel is asked whether
+            // a package should import a framework while being told nothing about
+            // the package -- and answers correctly for the wrong package.
+            name: manifest?.name ?? null,
+            describes_itself_as: manifest?.description ?? null,
+            imports_this_in: dependency.count,
+            examples: dependency.examples,
+          },
+          dependency: { specifier: dependency.specifier },
+        }
+        return DecisionModel.decide(DependencyFit, { input: evidence }).pipe(
+          Effect.map((result) => Option.some(result.answers.fit)),
+          Effect.catch(() => Effect.succeed(Option.none<Decision.ClassifyAnswer<string>>())),
+        )
+      },
+      { concurrency: policy.judge.requestConcurrency },
     )
-    if (!asked.ok) {
-      return outcome([], [], [
-        ...drops,
-        ...judged.map((dependency) => ({
-          ruleId: RULE_ID,
-          subject: label(dependency),
-          stage: "unreadable" as const,
-          reason: "no judgement available: " + asked.reason,
-        })),
-      ])
-    }
-    const results = asked.results
 
 
     judged.forEach((dependency, index) => {
-      const answers = results[index]?.answers ?? {}
-      const verdict = choiceOf(answers, "fit")
-      if (verdict === undefined) {
+      const answer = results[index]
+      if (answer === undefined || Option.isNone(answer)) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(dependency),
@@ -311,6 +302,7 @@ export const dependencyFit = defineRule({
         })
         return
       }
+      const verdict = answer.value
       // The model only decides WHICH of two problems this is. That the package
       // imports something it does not declare is a fact, and it is the more
       // common one: `@autotelic/fasdentify` imports `fastify` in 29 files and its
@@ -319,13 +311,13 @@ export const dependencyFit = defineRule({
       // A Choice that barely won is not a decision, and a package that imports
       // something it does not declare is a fact regardless of what the model
       // thinks of it -- so the gate decides the QUALIFIER, not the finding.
-      const margin = marginOf(answers, "fit")
-      const decisive = margin === undefined || margin >= policy.judge.gates.minMargin
+      const margin = marginOfAnswer(verdict)
+      const decisive = margin >= policy.judge.gates.minMargin
       // The FACT leads and the judgement qualifies it. That the package imports
       // something it does not declare is derived, not decided -- and it is the
       // finding that matters most here, because it works on a developer's machine
       // and fails on a clean install.
-      const misplaced = verdict.choice === "violates"
+      const misplaced = verdict.label === "violates"
       diagnostics.push(
         finding({
           ruleId: RULE_ID,
@@ -351,7 +343,7 @@ export const dependencyFit = defineRule({
             dependency.path,
             dependency.specifier,
           ].join("\u0000"),
-          confidence: verdict.confidence,
+          confidence: verdict.confidence ?? 1,
           judged: false,
         }),
       )
