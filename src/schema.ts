@@ -73,6 +73,8 @@ export const Entry = Schema.Union([
   Schema.Array(Schema.Unknown),
 ])
 
+export type Entry = Schema.Schema.Type<typeof Entry>
+
 export const NoulQuestion = Schema.Struct({
   type: Schema.tag("noul"),
   instructions: Entry,
@@ -110,27 +112,6 @@ export const Answer = Schema.Union([
 export type Answer = Schema.Schema.Type<typeof Answer>
 export type NoulAnswer = Extract<Answer, { readonly type: "noul" }>
 export type ChoiceAnswer = Extract<Answer, { readonly type: "choice" }>
-
-export const SystemOneRequest = Schema.Struct({
-  state: Schema.Unknown,
-  model: Schema.String,
-  questions: Schema.Record(Schema.String, Question),
-})
-
-export type SystemOneRequest = Schema.Schema.Type<typeof SystemOneRequest>
-
-export const SystemOneResponse = Schema.Struct({
-  model: Schema.String,
-  answers: Schema.Record(Schema.String, Answer),
-  usage: Schema.optionalKey(
-    Schema.Struct({
-      input_tokens: Schema.Number,
-      output_tokens: Schema.Number,
-    }),
-  ),
-})
-
-export interface SystemOneResponse extends Schema.Schema.Type<typeof SystemOneResponse> {}
 
 /**
  * The judgement cache key. It contains everything the answer depends on --

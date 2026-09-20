@@ -1,5 +1,5 @@
-import { Effect, FileSystem, Option, Path, Schema } from "effect"
-import { safeJson, shortHash } from "./state.ts"
+import { Clock, Effect, FileSystem, Match, Path, Result, Schema, SchemaParser } from "effect"
+import { shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 import { loadParses } from "./parsecache.ts"
 import { Service as Judge } from "./judge.ts"
@@ -67,20 +67,13 @@ export interface Options {
   readonly updateBaselinePath: string | undefined
 }
 
-const reasonOf = (error: JudgeError): string => {
-  switch (error._tag) {
-    case "joggle/JudgeUnavailable":
-      return error.reason
-    case "joggle/JudgeRejected":
-      return `HTTP ${error.status}: ${error.detail}`
-    case "joggle/JudgeMalformed":
-      return error.detail
-    case "joggle/JudgeTransport":
-      return error.detail
-    default:
-      return String(error)
-  }
-}
+const reasonOf = (error: JudgeError): string =>
+  Match.valueTags(error, {
+    "joggle/JudgeUnavailable": (reason) => reason.reason,
+    "joggle/JudgeRejected": (reason) => `HTTP ${reason.status}: ${reason.detail}`,
+    "joggle/JudgeMalformed": (reason) => reason.detail,
+    "joggle/JudgeTransport": (reason) => reason.detail,
+  })
 
 const typecheckFindings = (output: ReadonlyArray<{ readonly file: string; readonly line: number; readonly column: number; readonly severity: "error" | "warning"; readonly code: string; readonly message: string }>): ReadonlyArray<Diagnostic> =>
   output.map((diagnostic) =>
@@ -203,8 +196,7 @@ const readStored = (
     if (!exists) return undefined
     const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
     if (text.trim() === "") return undefined
-    const decoded = Schema.decodeUnknownOption(StoredRun)(safeJson(text))
-    return Option.isSome(decoded) ? decoded.value : undefined
+    return Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(StoredRun))(text))
   })
 
 const writeStored = (
@@ -229,8 +221,8 @@ const readBaseline = (
     const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
     if (!exists) return undefined
     const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
-    const decoded = Schema.decodeUnknownOption(Baseline)(safeJson(text))
-    return Option.isSome(decoded) ? new Set(decoded.value.identities) : undefined
+    const decoded = Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(Baseline))(text))
+    return decoded === undefined ? undefined : new Set(decoded.identities)
   })
 
 const writeBaseline = (
@@ -259,7 +251,7 @@ const writeBaseline = (
  * the rules that ask for it, then a single sorted report.
  */
 export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
-  const started = Date.now()
+  const started = yield* Clock.currentTimeMillis
   // Built-in rules plus the repository's own. A plugin rule is not special: it
   // is selectable, configurable, severable and ignorable like any other, which is
   // the whole point of it being a registry rather than an array.
@@ -285,7 +277,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
         })
       : undefined
 
-  const discoverStarted = Date.now()
+  const discoverStarted = yield* Clock.currentTimeMillis
   const discovery = yield* discoverFiles(options.cwd, options.paths, discovered)
   const files = discovery.files
 
@@ -311,7 +303,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     const text = yield* Effect.orElseSucceed(fs.readFileString(absolute), () => undefined)
     if (text !== undefined) contents.set(absolute, text)
   }
-  const discoverMs = Date.now() - discoverStarted
+  const discoverMs = (yield* Clock.currentTimeMillis) - discoverStarted
 
   // The tool's own source, which is also the parse cache's version: the parser is
   // part of the tool, so an entry produced by a different parser is not a cache
@@ -377,13 +369,13 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
         timings: [{ phase: "replay-check", ms: discoverMs }],
         // This run spent nothing, so it reports nothing spent.
         judge: { requests: 0, replayed: 0, calls: 0, unavailable: 0, inputTokens: 0, outputTokens: 0 },
-        elapsedMs: Date.now() - started,
+        elapsedMs: (yield* Clock.currentTimeMillis) - started,
         replayed: true,
       })
     }
   }
 
-  const workspaceStarted = Date.now()
+  const workspaceStarted = yield* Clock.currentTimeMillis
   const parseCache = yield* loadParses(options.cacheDir, toolFingerprint)
   const workspace = yield* loadWorkspace(
     options.cwd,
@@ -395,7 +387,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // Written after the load, and only when something was actually parsed.
   yield* parseCache.save
   const timings: Array<{ phase: string; ms: number }> = [
-    { phase: "workspace", ms: Date.now() - workspaceStarted },
+    { phase: "workspace", ms: (yield* Clock.currentTimeMillis) - workspaceStarted },
   ]
 
   const diagnostics: Array<Diagnostic> = []
@@ -459,7 +451,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   const drops: Array<Drop> = []
 
   for (const rule of effective) {
-    const ruleStarted = Date.now()
+    const ruleStarted = yield* Clock.currentTimeMillis
     // The config goes in, because a rule that enforces a layering is entitled to
     // know what the layering is. Rules that need nothing take two parameters.
     const result = yield* rule.run(workspace, scope, { config: options.config }).pipe(
@@ -473,7 +465,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     } else {
       skipped.push({ ruleId: rule.id, reason: reasonOf(result.error) })
     }
-    timings.push({ phase: rule.id.replace("joggle/", ""), ms: Date.now() - ruleStarted })
+    timings.push({ phase: rule.id.replace("joggle/", ""), ms: (yield* Clock.currentTimeMillis) - ruleStarted })
   }
 
   // What the run did not look at.
@@ -633,7 +625,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   timings.push(...workspace.phases)
 
   const judgeTotals: JudgeTotals = yield* judge.stats
-  const elapsedMs = Date.now() - started
+  const elapsedMs = (yield* Clock.currentTimeMillis) - started
   const report: Report = {
     diagnostics: rankDiagnostics(configured),
     files: workspace.files.length,

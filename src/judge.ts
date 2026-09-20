@@ -1,20 +1,25 @@
 import {
   Config,
   Context,
+  Duration,
   Effect,
   FileSystem,
   Layer,
   Option,
   Path,
+  Predicate,
+  Redacted,
   Ref,
+  Result,
   Schedule,
   Schema,
+  SchemaParser,
 } from "effect"
-import * as HttpClient from "effect/unstable/http/HttpClient"
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse"
+import { Decision } from "effect/unstable/ai"
+import * as AiError from "effect/unstable/ai/AiError"
+import type * as HttpClient from "effect/unstable/http/HttpClient"
+import { TypeSafeClient, TypeSafeDecisionModel } from "@effect/ai-typesafe"
 import { policy } from "./policy.ts"
-import { safeJson } from "./state.ts"
 import { isRecord } from "./workspace.ts"
 import {
   JudgeCacheFile,
@@ -22,9 +27,8 @@ import {
   JudgeRejected,
   JudgeTransport,
   JudgeUnavailable,
-  SystemOneRequest,
-  SystemOneResponse,
   type Answer,
+  type Entry,
   type JudgeError,
   type Question,
 } from "./schema.ts"
@@ -93,30 +97,71 @@ export class Service extends Context.Service<Service, Interface>()("@joggle/Judg
 /* Helpers                                                                     */
 /* -------------------------------------------------------------------------- */
 
-const describe = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause))
-
-const tagOf = (cause: unknown): string =>
-  isRecord(cause) && typeof cause["_tag"] === "string" ? cause["_tag"] : ""
-
-const statusDetail = (status: number): string => {
-  if (status === 401) return "unauthorized — check TYPESAFE_API_KEY"
-  if (status === 422) return "the request failed validation"
-  if (status === 429) return "rate limited"
-  if (status === 529) return "TypeSafe is overloaded; retry later"
-  return "unexpected response status"
+/** The provider's HTTP status, when the reason carries one. */
+const statusOf = (reason: AiError.AiErrorReason, fallback: number): number => {
+  const http = isRecord(reason) ? reason["http"] : undefined
+  const response = isRecord(http) ? http["response"] : undefined
+  const status = isRecord(response) ? response["status"] : undefined
+  return typeof status === "number" ? status : fallback
 }
 
-const mapJudgeError = (cause: unknown): JudgeError => {
-  const tag = tagOf(cause)
-  if (tag === "StatusCodeError") {
-    const response = isRecord(cause) ? cause["response"] : undefined
-    const status = isRecord(response) && typeof response["status"] === "number" ? response["status"] : 0
-    return new JudgeRejected({ status, detail: describe(cause) })
+/**
+ * joggle's questions, as Effect `Decision`s.
+ *
+ * A `Decision` carries a single instruction string, so a labelled entry is
+ * serialized to JSON: the labels survive in the text, and the provider sees the
+ * same content the rules wrote. The question kind picks the decision kind -- a
+ * Noul is a probability, a Choice is a classification.
+ */
+const instructionText = (entry: Entry): string =>
+  Predicate.isString(entry) ? entry : JSON.stringify(entry)
+
+const criteriaText = (entry: Entry | null): string => {
+  if (entry === null) return ""
+  return Predicate.isString(entry) ? entry : JSON.stringify(entry)
+}
+
+const toDecision = (question: Question): Decision.Any => {
+  if (question.type === "noul") {
+    const criteria = question.criteria
+    return Decision.probability({
+      instructions: instructionText(question.instructions),
+      // Effect's `Decision.probability` always describes both outcomes. A joggle
+      // question may omit them, so the neutral pair stands in and the wording of
+      // the question itself carries the meaning.
+      criteria: {
+        false: criteria === undefined ? "No." : criteriaText(criteria.false),
+        true: criteria === undefined ? "Yes." : criteriaText(criteria.true),
+      },
+    })
   }
-  if (tag === "SchemaError" || tag === "ParseError") {
-    return new JudgeMalformed({ detail: describe(cause) })
+  return Decision.classify({
+    instructions: instructionText(question.instructions),
+    criteria: Object.fromEntries(
+      Object.entries(question.criteria).map(([key, value]) => [key, criteriaText(value)]),
+    ),
+  })
+}
+
+/** A `Decision` answer, back in the vocabulary the rules and the cache speak. */
+const toAnswer = (
+  question: Question,
+  answer: Decision.Answer<Decision.Any> | undefined,
+): Option.Option<Answer> => {
+  if (answer === undefined) return Option.none()
+  if (question.type === "noul") {
+    return "probability" in answer
+      ? Option.some({ type: "noul", noul: answer.probability })
+      : Option.none()
   }
-  return new JudgeTransport({ operation: "systemone", detail: describe(cause) })
+  return "label" in answer
+    ? Option.some({
+        type: "choice",
+        choice: answer.label,
+        probabilities: answer.probabilities,
+        confidence: answer.confidence ?? 0,
+      })
+    : Option.none()
 }
 
 /**
@@ -284,14 +329,25 @@ export const layer = (
       const path = yield* Path.Path
 
       const file = storePath(path, options.cacheDir)
-      // Acquired once for the layer's lifetime, not per call: a client built
-      // inside a lookup pays the acquisition on every miss.
-      const client = (yield* HttpClient.HttpClient).pipe(HttpClient.retryTransient({ times: 3 }))
       const apiKey = Option.getOrUndefined(options.apiKey)
       // Overridable so a self-hosted or enterprise deployment can be used when
       // the evidence panels must not leave the organisation's boundary.
       const baseUrl = yield* Config.String("TYPESAFE_BASE_URL").pipe(
         Effect.orElseSucceed(() => policy.judge.baseUrl),
+      )
+      // The provider client owns authentication, the endpoint, JSON encoding and
+      // the error taxonomy. joggle owns the cache, the batching and the questions.
+      // Acquired once for the layer's lifetime, not per call: a client built
+      // inside a lookup pays the acquisition on every miss.
+      const client = yield* TypeSafeClient.make({
+        apiKey: apiKey === undefined ? undefined : Redacted.make(apiKey),
+        apiUrl: `${baseUrl}/v1`,
+      })
+      // The decision model is Effect's own abstraction over System One: it builds
+      // the questions, calls the endpoint, validates the answers and returns them
+      // typed. joggle keeps the cache, the batching and the scoping.
+      const decisionModel = yield* TypeSafeDecisionModel.make({ model: policy.model }).pipe(
+        Effect.provideService(TypeSafeClient.TypeSafeClient, client),
       )
 
       const load = Effect.gen(function* () {
@@ -300,8 +356,8 @@ export const layer = (
         if (!exists) return empty
         const text = yield* orEmpty(fs.readFileString(file), "")
         if (text.trim() === "") return empty
-        const decoded = Schema.decodeUnknownOption(JudgeCacheFile)(safeJson(text))
-        return Option.isSome(decoded) ? decoded.value.entries : empty
+        const decoded = Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(JudgeCacheFile))(text))
+        return decoded === undefined ? empty : decoded.entries
       })
 
       const entries = yield* Ref.make(yield* load)
@@ -323,7 +379,6 @@ export const layer = (
 
       /** One wire call: the whole batch as one state, one question per candidate. */
       const callBatch = Effect.fn("Judge.callBatch")(function* (
-        apiKey: string,
         batch: ReadonlyArray<Miss>,
       ) {
         // The context is read off the request it was stamped onto, so the state
@@ -341,43 +396,62 @@ export const layer = (
           }
         })
 
-        const body: SystemOneRequest = { state, model: policy.model, questions }
-        const httpRequest = yield* HttpClientRequest.post(`${baseUrl}/v1/systemone`).pipe(
-          HttpClientRequest.bearerToken(apiKey),
-          HttpClientRequest.acceptJson,
-          HttpClientRequest.bodyJson(body),
-          Effect.mapError(mapJudgeError),
-        )
-        const attempt = Effect.gen(function* () {
-          const response = yield* client.execute(httpRequest).pipe(Effect.mapError(mapJudgeError))
-          if (response.status < 200 || response.status >= 300) {
-            return yield* Effect.fail(
-              new JudgeRejected({ status: response.status, detail: statusDetail(response.status) }),
-            )
-          }
-          return yield* HttpClientResponse.schemaBodyJson(SystemOneResponse)(response).pipe(
-            Effect.mapError(mapJudgeError),
-          )
-        })
+        const decisions: Record<string, Decision.Any> = {}
+        for (const [key, question] of Object.entries(questions)) decisions[key] = toDecision(question)
+        if (Object.keys(decisions).length === 0) return
+        const definition = Decision.make({ input: Schema.Unknown, decisions })
 
-        // 429 and 529 are backpressure, not verdicts. Classifying the status by
-        // hand means retryTransient never sees them, so they are retried here.
-        const response = yield* attempt.pipe(
+        const decided = yield* decisionModel.decide(definition, { input: state }).pipe(
+          // Backpressure is the provider's own classification now, so
+          // `isRetryable` decides instead of a hand-written status list.
           Effect.retry({
-            while: (error: JudgeError) =>
-              error._tag === "joggle/JudgeRejected" &&
-              (error.status === 429 || error.status === 529),
+            while: (error: AiError.AiError) => error.isRetryable,
             schedule: Schedule.exponential("400 millis").pipe(
               Schedule.jittered,
               Schedule.upTo({ times: 6 }),
             ),
           }),
+          // The reason taxonomy is the provider's too, so the conversion to
+          // joggle's outcomes is a reason match rather than a guess at a tag.
+          Effect.catchReasons(
+            "AiError",
+            {
+              RateLimitError: (reason, error) =>
+                Effect.fail(
+                  new JudgeRejected({
+                    status: statusOf(reason, 429),
+                    detail:
+                      reason.retryAfter === undefined
+                        ? error.message
+                        : `${error.message} (retry after ${Duration.toSeconds(reason.retryAfter)}s)`,
+                  }),
+                ),
+              AuthenticationError: (reason, error) =>
+                Effect.fail(new JudgeRejected({ status: statusOf(reason, 401), detail: error.message })),
+              InvalidRequestError: (reason, error) =>
+                Effect.fail(new JudgeRejected({ status: statusOf(reason, 422), detail: error.message })),
+              ContentPolicyError: (reason, error) =>
+                Effect.fail(new JudgeRejected({ status: statusOf(reason, 422), detail: error.message })),
+              InternalProviderError: (reason, error) =>
+                Effect.fail(new JudgeRejected({ status: statusOf(reason, 500), detail: error.message })),
+              QuotaExhaustedError: (reason, error) =>
+                Effect.fail(new JudgeRejected({ status: statusOf(reason, 429), detail: error.message })),
+              InvalidOutputError: (_reason, error) =>
+                Effect.fail(new JudgeMalformed({ detail: error.message })),
+              StructuredOutputError: (_reason, error) =>
+                Effect.fail(new JudgeMalformed({ detail: error.message })),
+              UnsupportedSchemaError: (_reason, error) =>
+                Effect.fail(new JudgeMalformed({ detail: error.message })),
+            },
+            (_reason, error) =>
+              Effect.fail(new JudgeTransport({ operation: "systemone", detail: error.message })),
+          ),
         )
 
         yield* Ref.update(stats, (current) => ({
           ...current,
-          inputTokens: current.inputTokens + (response.usage?.input_tokens ?? 0),
-          outputTokens: current.outputTokens + (response.usage?.output_tokens ?? 0),
+          inputTokens: current.inputTokens + (decided.usage.inputTokens ?? 0),
+          outputTokens: current.outputTokens + (decided.usage.outputTokens ?? 0),
         }))
 
         yield* Ref.update(entries, (current) => {
@@ -385,8 +459,10 @@ export const layer = (
           batch.forEach((miss, position) => {
             const scoped: Record<string, Answer> = {}
             for (const id of Object.keys(miss.request.questions)) {
-              const answer = response.answers[`c${position}__${id}`]
-              if (answer !== undefined) scoped[id] = answer
+              const key = `c${position}__${id}`
+              const question = questions[key]
+              const answer = question === undefined ? Option.none() : toAnswer(question, decided.answers[key])
+              if (Option.isSome(answer)) scoped[id] = answer.value
             }
             // An unreadable response is not cached: caching it would make the
             // absence permanent and a later run could never learn the answer.
@@ -452,7 +528,7 @@ export const layer = (
           }
           const batches = packRequests(misses, options.batchCandidates ?? policy.judge.batchCandidates)
           yield* Ref.update(stats, (current) => ({ ...current, calls: current.calls + batches.length }))
-          yield* Effect.forEach(batches, (batch) => callBatch(apiKey, batch), {
+          yield* Effect.forEach(batches, (batch) => callBatch(batch), {
             concurrency: policy.judge.requestConcurrency,
           })
           yield* flush

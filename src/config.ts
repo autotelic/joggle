@@ -1,5 +1,4 @@
-import { Effect, FileSystem, Option, Schema } from "effect"
-import { safeJson } from "./state.ts"
+import { Effect, FileSystem, Result, Schema, SchemaParser } from "effect"
 import type { Severity } from "./schema.ts"
 
 /**
@@ -222,6 +221,5 @@ export const loadConfig = (
     const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
     if (!exists) return emptyConfig
     const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
-    const decoded = Schema.decodeUnknownOption(JoggleConfig)(safeJson(text))
-    return Option.isSome(decoded) ? decoded.value : emptyConfig
+    return Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(JoggleConfig))(text)) ?? emptyConfig
   })

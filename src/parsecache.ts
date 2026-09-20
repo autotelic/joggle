@@ -1,5 +1,5 @@
-import { Effect, FileSystem, Option, Path, Schema } from "effect"
-import { safeJson, shortHash } from "./state.ts"
+import { Effect, FileSystem, Path, Result, Schema, SchemaParser } from "effect"
+import { shortHash } from "./state.ts"
 import { shinglesOf } from "./similarity.ts"
 import { ParsedImport } from "./imports.ts"
 import { SourceLocation } from "./schema.ts"
@@ -121,14 +121,11 @@ const CacheFile = Schema.Struct({
 /**
  * The decoder, chosen so that a failure is RECORDED.
  *
- * plumb's point is right and its remedy does not fit: this Effect version has no
- * `decodeUnknownResult`, and `SchemaParser.decodeResult` takes a schema's ENCODED
- * type rather than `unknown` -- which a JSON file read as `unknown` cannot supply
- * without a cast. So the choice is the option form plus a recorded failure, which
- * is the part that matters: a cache that has quietly stopped working used to look
- * exactly like a cold one, forever.
+ * `decodeUnknownResult` returns the schema issue as data rather than throwing it
+ * away, which is the part that matters: a cache that has quietly stopped working
+ * used to look exactly like a cold one, forever.
  */
-const decodeCache = Schema.decodeUnknownOption(CacheFile)
+const decodeCache = SchemaParser.decodeUnknownResult(Schema.fromJsonString(CacheFile))
 
 /**
  * The file a parse belongs to: which one, and what it said.
@@ -243,14 +240,14 @@ export const loadParses = (
       // One decode for the whole file. A cache from a different tool version is
       // discarded whole rather than repaired: the parser is part of the tool, so
       // an entry it did not produce is a wrong answer, not a slow one.
-      const decoded = Option.getOrUndefined(decodeCache(safeJson(body)))
-      if (decoded === undefined) {
+      const decoded = decodeCache(body)
+      if (Result.isFailure(decoded)) {
         // An empty or absent cache is not damage; a file that will not parse is.
         if (body.trim() !== "") issues.push("the cache file did not match the expected shape")
-      } else if (decoded.version === CACHE_VERSION && decoded.tool === tool) {
+      } else if (decoded.success.version === CACHE_VERSION && decoded.success.tool === tool) {
         // A version or tool mismatch is not damage either: the cache is discarded
         // whole and rebuilt, which is what an upgrade is supposed to do.
-        for (const [key, value] of Object.entries(decoded.entries)) entries.set(key, value)
+        for (const [key, value] of Object.entries(decoded.success.entries)) entries.set(key, value)
       }
     }
 

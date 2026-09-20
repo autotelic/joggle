@@ -25,15 +25,6 @@ import { createHash } from "node:crypto"
 export const shortHash = (value: string): string =>
   createHash("sha1").update(value).digest("hex").slice(0, 16)
 
-/** Parse persisted JSON, or say nothing rather than throwing at a boundary. */
-export const safeJson = (text: string): unknown => {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return undefined
-  }
-}
-
 /** The per-machine cache root, following the platform's convention. */
 export const machineCacheRoot = (): string => {
   const home = process.env["HOME"] ?? "."

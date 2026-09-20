@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Path, Schema } from "effect"
+import { Clock, Effect, FileSystem, Path, Schema } from "effect"
 import { parseSync } from "oxc-parser"
 import { policy } from "./policy.ts"
 import {
@@ -9,7 +9,10 @@ import {
   type ParsedImport,
 } from "./imports.ts"
 import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
-import { safeJson, shortHash } from "./state.ts"
+import { shortHash } from "./state.ts"
+import { manifestAt, type PackageManifest } from "./manifest.ts"
+
+export type { PackageManifest } from "./manifest.ts"
 
 import { shinglesOf } from "./similarity.ts"
 import { WorkspaceError, type SourceLocation } from "./schema.ts"
@@ -184,21 +187,6 @@ export interface SourceFile {
  * asked the panel whether a package should import a framework without telling it
  * what the package was, and it gave the only answer available from that material.
  */
-export interface PackageManifest {
-  readonly name: string
-  readonly description: string | undefined
-  /**
-   * What the package declares that it depends on.
-   *
-   * The field that cannot be vacuous, and the reason `description` was not
-   * enough. `"fasdentify core package"` says nothing; `"dependencies": {
-   * "fastify": "^4" }` says everything. A package that declares a dependency has
-   * already answered whether importing it is intended, so the question never
-   * needs asking -- a fact, not a judgement.
-   */
-  readonly declares: ReadonlyArray<string>
-}
-
 export interface UnparsedFile {
   readonly path: string
   readonly reason: string
@@ -976,46 +964,6 @@ const COMPILER_HELPERS = new Set([
 
 const isCompilerHelper = (name: string): boolean => COMPILER_HELPERS.has(name)
 
-/**
- * The package.json in one directory, if it names the package.
- *
- * Read from the filesystem rather than declared, for the same reason .gitignore
- * is: it is already current, because whoever made the package wrote it. A name
- * and a description are the two fields that say what a package IS.
- */
-const manifestAt = (
-  directory: string,
-): Effect.Effect<PackageManifest | undefined, never, FileSystem.FileSystem | Path.Path> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
-    const file = path.join(directory, "package.json")
-    const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
-    if (!exists) return undefined
-    const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
-    const decoded = safeJson(text)
-    if (!isRecord(decoded)) return undefined
-    const name = decoded["name"]
-    if (typeof name !== "string" || name.length === 0) return undefined
-    const description = decoded["description"]
-    // Every kind of dependency, because the question this answers is "has the
-    // package declared it?" and a devDependency is a declaration. Restricting
-    // this to runtime dependencies flagged `chai` and `@faker-js/faker` as
-    // undeclared imports, which they are not -- the distinction between runtime
-    // and development belongs to the judgement about whether an import FITS, and
-    // that is the model's question, not this one's.
-    const declares: Array<string> = []
-    for (const field of ["dependencies", "peerDependencies", "devDependencies"]) {
-      const block = decoded[field]
-      if (isRecord(block)) declares.push(...Object.keys(block))
-    }
-    return {
-      name,
-      description: typeof description === "string" ? description : undefined,
-      declares,
-    }
-  })
-
 const extensionOf = (file: string): string => {
   const cut = file.lastIndexOf(".")
   return cut === -1 ? "(no extension)" : file.slice(cut)
@@ -1230,12 +1178,11 @@ export const loadWorkspace = (
     // Adding this is how I learned that the parser was never the expensive part
     // and that two guesses about the bottleneck were both wrong.
     const phases: Array<{ phase: string; ms: number }> = []
-    const mark = (phase: string, since: number): number => {
-      const now = Date.now()
+    const mark = (phase: string, since: number, now: number): number => {
       phases.push({ phase, ms: now - since })
       return now
     }
-    let clock = Date.now()
+    let clock = yield* Clock.currentTimeMillis
     const parsed: Array<SourceFile> = []
     const unparsed: Array<UnparsedFile> = []
     for (const absolute of files) {
@@ -1263,9 +1210,9 @@ export const loadWorkspace = (
         unparsed.push({ path: relative, reason: outcome.reason })
       }
     }
-    clock = mark("read+parse", clock)
+    clock = mark("read+parse", clock, yield* Clock.currentTimeMillis)
     const graph = buildImportGraph(parsed, path)
-    clock = mark("import-graph", clock)
+    clock = mark("import-graph", clock, yield* Clock.currentTimeMillis)
     // Resolution happens here, not at parse time, because it needs the whole
     // file set: a type name only means something once we know where it came from.
     // Edges indexed by the file that WRITES them.
@@ -1343,12 +1290,12 @@ export const loadWorkspace = (
       }
     }
 
-    clock = mark("resolve-types", clock)
+    clock = mark("resolve-types", clock, yield* Clock.currentTimeMillis)
     const allUnits = parsed.flatMap((file) => file.units)
     // Helpers go; test declarations stay and are marked, because whether they
     // should be compared depends on what they are compared AGAINST.
     const units = allUnits.filter((unit) => !isCompilerHelper(unit.name))
-    clock = mark("units+manifests", clock)
+    clock = mark("units+manifests", clock, yield* Clock.currentTimeMillis)
     const testDeclarations = units.filter((unit) => unit.test).length
     const excludedHelpers = allUnits.filter((unit) => isCompilerHelper(unit.name)).length
     const byName = new Map<string, Array<Unit>>()
