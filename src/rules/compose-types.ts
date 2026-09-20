@@ -45,7 +45,7 @@ const signatureOf = (unit: Unit): string => [...unit.fields].sort().join("\u0000
  * intersects to never. So the test is not equality but whether one declaration
  * mentions everything the other does.
  */
-const canCompose = (part: string | undefined, whole: string | undefined): boolean => {
+export const canCompose = (part: string | undefined, whole: string | undefined): boolean => {
   if (part === undefined || whole === undefined) return false
   if (part === whole) return true
   const words = (text: string): ReadonlyArray<string> =>

@@ -267,6 +267,39 @@ export const policy = {
   },
 
   /**
+   * A run of calls two declarations share without sharing the whole sequence.
+   *
+   * `minCalls` is what makes a shared run mean something: three calls in a row
+   * can be a habit, and a longer run is a helper someone inlined. Deterministic,
+   * so this only bounds the work and the report.
+   */
+  duplicateCallRun: {
+    minCalls: 4,
+    maxFindings: 200,
+  },
+
+  /**
+   * One field name with incompatible types in two declarations.
+   *
+   * Deterministic: it compares the recorded type text of every interface and type
+   * alias field. The bound is against a pathological repository rather than a
+   * budget anybody should reach.
+   */
+  fieldTypeDrift: {
+    maxFindings: 200,
+    /**
+     * Words a field name must have before its type is compared.
+     *
+     * A single-word field is a generic slot: `id`, `name`, `type`, `files` mean
+     * whatever their declaration says, and two of them with different types are
+     * two concepts, not one that drifted. A name of two words or more is a
+     * concept -- `supervisorRate`, `regularPayTotal` -- and one concept with two
+     * types is the defect.
+     */
+    minWords: 2,
+  },
+
+  /**
    * Documented declarations sent for a doc-vs-code check in one run.
    *
    * The candidate filter is structural: an exported declaration with a doc block

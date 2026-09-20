@@ -50,32 +50,20 @@ const DocEvidence = Schema.Struct({
 })
 
 const decisions = {
-  accurate: Decision.probability({
+  verdict: Decision.classify({
     instructions: [
-      "Does the JSDoc on `declaration.name` make a claim that `declaration.source` contradicts?",
-      "A contradiction is CONCRETE, not stylistic:",
-      "- the doc says a value is null, absent or optional, but the code or its types say it is always present (or the reverse);",
-      "- the doc describes behaviour the code does not have, or omits behaviour it does;",
-      "- the doc points at a symbol, note, option or parameter that does not exist;",
-      "- the doc names a casing, type or format the code does not produce.",
-      "Answer true when the doc matches the code. Style, brevity and missing detail are not contradictions.",
+      "Does the JSDoc on `declaration.name` state a fact that `declaration.source` contradicts?",
+      "Choose `no_issue` when the doc states no fact the code contradicts. This is the answer for a doc that is short, informal, high-level, or a summary rather than a full description.",
+      "Choose a contradiction ONLY when you can point to the source that contradicts the doc:",
+      "- `stale_reference`: the doc names a symbol, note, option or parameter that does not exist.",
+      "- `wrong_contract`: the doc states a nullability, default, type, casing or format the code contradicts.",
+      "- `wrong_behavior`: the doc describes behaviour the code does not have.",
     ].join("\n"),
     criteria: {
-      false: "The doc contradicts the code.",
-      true: "The doc matches the code.",
-    },
-  }),
-  problem: Decision.classify({
-    instructions: [
-      "What is wrong with the JSDoc on `declaration.name`?",
-      "Choose `no_issue` when the doc matches the code.",
-    ].join("\n"),
-    criteria: {
-      wrong_nullability: "The doc claims null, absent or optional where the contract is always present, or the reverse.",
-      wrong_behavior: "The doc describes behaviour the code does not have, or misses behaviour it does.",
-      stale_reference: "The doc points at a symbol, note, option or parameter that does not exist.",
-      wrong_format: "The doc names a casing, type or format the code does not produce.",
-      no_issue: "The doc matches the code.",
+      no_issue: "The doc states no fact the code contradicts.",
+      stale_reference: "The doc names a symbol, note, option or parameter that does not exist.",
+      wrong_contract: "The doc states a nullability, default, type, casing or format the code contradicts.",
+      wrong_behavior: "The doc describes behaviour the code does not have.",
     },
   }),
 }
@@ -84,6 +72,20 @@ const DocReview = Decision.make({
   input: DocEvidence,
   decisions,
 })
+
+/**
+ * The prose of a doc block.
+ *
+ * `@param`, `@returns` and `@see` are a second contract, and the type checker
+ * already reads the real one. Comparing the tags to the code reports the tag's
+ * wording rather than the doc's meaning, so the model sees the prose only.
+ */
+const proseOf = (doc: string): string =>
+  doc
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("@"))
+    .join("\n")
+    .trim()
 
 /** An exported declaration with a doc block and enough in it to document. */
 const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Unit> =>
@@ -122,7 +124,7 @@ export const docMatchesCode = defineRule({
               name: unit.name,
               path: unit.file,
               kind: unit.kind,
-              doc: (unit.doc ?? "").slice(0, policy.evidence.maxDocChars * 4),
+              doc: proseOf(unit.doc ?? "").slice(0, policy.evidence.maxDocChars * 4),
               source: unit.text.slice(0, policy.evidence.maxSourceChars * 2),
               types: unit.typeRefs,
             },
@@ -155,9 +157,8 @@ export const docMatchesCode = defineRule({
         })
         return
       }
-      const accurate = answer.value["accurate"]
-      const problem = answer.value["problem"]
-      if (accurate === undefined || !("probability" in accurate) || problem === undefined || !("label" in problem)) {
+      const verdict = answer.value["verdict"]
+      if (verdict === undefined || !("label" in verdict)) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
@@ -166,7 +167,7 @@ export const docMatchesCode = defineRule({
         })
         return
       }
-      if (declined(problem.label)) {
+      if (declined(verdict.label)) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
@@ -175,7 +176,9 @@ export const docMatchesCode = defineRule({
         })
         return
       }
-      const quality = qualityOf({ score: accurate.probability, margin: marginOfAnswer(problem) })
+      const margin = marginOfAnswer(verdict)
+      const chosen = Object.entries(verdict.probabilities).find(([label]) => label === verdict.label)?.[1] ?? 0
+      const quality = qualityOf({ score: chosen, margin })
       if (!quality.usable) {
         drops.push({
           ruleId: RULE_ID,
@@ -189,12 +192,12 @@ export const docMatchesCode = defineRule({
         finding({
           ruleId: RULE_ID,
           severity: "warn",
-          message: label(unit) + " has a doc block that contradicts the code: " + problem.label.replace(/_/g, " ") + ".",
+          message: label(unit) + " has a doc block that contradicts the code: " + verdict.label.replace(/_/g, " ") + ".",
           help: "Fix the doc to match the code, or the code to match the doc. The doc is the one artefact no checker reads, so it is the one that drifts.",
           location: unit.location,
           identity: [RULE_ID, unit.file, unit.name].join("\u0000"),
-          confidence: problem.confidence ?? 1,
-          score: accurate.probability,
+          confidence: verdict.confidence ?? 1,
+          score: chosen,
           judged: true,
         }),
       )

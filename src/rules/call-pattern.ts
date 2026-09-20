@@ -127,7 +127,7 @@ export const callPattern = defineRule({
 })
 
 /** `path/to/file.ts#name` reads better as `file:name` in a sentence. */
-function stripFile(resolved: string): string {
+export function stripFile(resolved: string): string {
   const cut = resolved.lastIndexOf("#")
   if (cut === -1) return resolved
   const path = resolved.slice(0, cut)
