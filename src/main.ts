@@ -87,7 +87,7 @@ const check = Command.make(
         // The run cache is machine-local on purpose: it is a performance
         // artifact, and a run should not write a report into a repository it is
         // only visiting.
-        runCacheDir: runCacheDirFor(cwd),
+        runCacheDir: yield* runCacheDirFor(cwd),
         replayUnchanged: !config.noReplay,
         changed: config.changed,
         baselinePath: Option.getOrUndefined(config.baseline),

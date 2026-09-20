@@ -1,3 +1,4 @@
+import { Config, Effect, Option } from "effect"
 import { createHash } from "node:crypto"
 
 /**
@@ -26,13 +27,16 @@ export const shortHash = (value: string): string =>
   createHash("sha1").update(value).digest("hex").slice(0, 16)
 
 /** The per-machine cache root, following the platform's convention. */
-export const machineCacheRoot = (): string => {
-  const home = process.env["HOME"] ?? "."
-  const xdg = process.env["XDG_CACHE_HOME"]
-  if (xdg !== undefined && xdg !== "") return xdg
+export const machineCacheRoot: Effect.Effect<string> = Effect.gen(function* () {
+  const home = yield* Config.String("HOME").pipe(Effect.orElseSucceed(() => "."))
+  const xdg = yield* Config.option(Config.String("XDG_CACHE_HOME")).pipe(
+    Effect.orElseSucceed(() => Option.none<string>()),
+  )
+  const root = Option.getOrUndefined(xdg)
+  if (root !== undefined && root !== "") return root
   return process.platform === "darwin" ? `${home}/Library/Caches` : `${home}/.cache`
-}
+}).pipe(Effect.orElseSucceed(() => "."))
 
 /** A machine-local directory for one analysed root. */
-export const runCacheDirFor = (root: string): string =>
-  `${machineCacheRoot()}/joggle/${shortHash(root)}`
+export const runCacheDirFor = (root: string): Effect.Effect<string> =>
+  Effect.map(machineCacheRoot, (base) => `${base}/joggle/${shortHash(root)}`)
