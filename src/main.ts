@@ -1,7 +1,7 @@
-import { Cause, Config, Effect, Exit, Layer, Option, Path } from "effect"
+import { Cause, Config, Effect, Exit, Layer, Option, Path, Runtime } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
-import { NodeServices } from "@effect/platform-node"
+import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { runCheck } from "./check.ts"
 import { layer as decisionLayer } from "./decision.ts"
 import { runCacheDirFor } from "./state.ts"
@@ -149,10 +149,22 @@ const describeFailure = (failure: unknown): string | undefined => {
   return undefined
 }
 
-Effect.runPromiseExit(program).then((exit) => {
-  if (Exit.isSuccess(exit)) return
+/**
+ * One sentence for a typed failure, and the runtime owns the rest.
+ *
+ * `NodeRuntime.runMain` sets the exit code, handles Ctrl+C, and runs finalizers.
+ * The teardown only has to say WHY, and to keep a success's own exit code -- the
+ * lint gate writes one into `process.exitCode`.
+ */
+const teardown: Runtime.Teardown = (exit, onExit) => {
+  if (Exit.isSuccess(exit)) {
+    onExit(typeof process.exitCode === "number" ? process.exitCode : 0)
+    return
+  }
   const failure = Cause.findErrorOption(exit.cause)
   const described = Option.isSome(failure) ? describeFailure(failure.value) : undefined
   process.stderr.write(described === undefined ? `${Cause.pretty(exit.cause)}\n` : `${described}\n`)
-  process.exitCode = 1
-})
+  onExit(1)
+}
+
+NodeRuntime.runMain(program, { disableErrorReporting: true, teardown })
