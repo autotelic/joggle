@@ -29,11 +29,41 @@ export const objectShape = defineRule({
   judged: false,
   run: Effect.fn("joggle/object-shape")(function* (workspace: Workspace, scope: Scope) {
     const { minKeys, maxFindings } = policy.objectShape
+    // A shape a declared type already names is not a shape nobody named. This is
+    // the precision half of the rule: every interface and type alias contributes
+    // its field set, and a literal whose keys are exactly that set is skipped.
+    // A shape a declared type already describes is not a shape nobody named.
+    // Every interface and type alias contributes its field set, and a
+    // `Schema.Struct` field object contributes its keys and the non-optional ones.
+    const declared: Array<{ all: ReadonlySet<string>; required: ReadonlySet<string> }> = []
+    for (const unit of workspace.units) {
+      if (unit.kind !== "interface" && unit.kind !== "type") continue
+      if (unit.fields.length < minKeys) continue
+      declared.push({ all: new Set(unit.fields), required: new Set(unit.fields) })
+    }
+    for (const file of workspace.files) {
+      for (const site of file.facts.objects) {
+        if (!site.declared) continue
+        declared.push({ all: new Set(site.keys), required: new Set(site.required) })
+      }
+    }
+    // A literal is a USE of a declared type when it carries every required field
+    // and adds nothing the type does not have. A subset that drops a required
+    // field is a different shape, and is still worth reporting.
+    const isDeclared = (keys: ReadonlySet<string>): boolean =>
+      declared.some(
+        (type) =>
+          type.required.size > 0 &&
+          [...type.required].every((key) => keys.has(key)) &&
+          [...keys].every((key) => type.all.has(key)),
+      )
+
     const groups = new Map<string, Array<{ file: string; start: number }>>()
     for (const file of workspace.files) {
       for (const site of file.facts.objects) {
         const keys = [...new Set(site.keys)]
         if (keys.length < minKeys) continue
+        if (isDeclared(new Set(keys))) continue
         const signature = [...keys].sort().join("\u0000")
         const existing = groups.get(signature)
         if (existing === undefined) groups.set(signature, [{ file: file.path, start: site.start }])

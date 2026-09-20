@@ -132,6 +132,18 @@ export interface Unit {
 export const ObjectSite = Schema.Struct({
   keys: Schema.Array(Schema.String),
   start: Schema.Number,
+  /**
+   * True when the literal IS a type declaration, such as the field object of a
+   * `Schema.Struct`. A declaration is not a shape that needs a name; it is the
+   * name.
+   */
+  declared: Schema.Boolean,
+  /**
+   * The declaration's non-optional keys, and empty for a literal that is not a
+   * declaration. A use of the type may omit its optional keys, so this is what
+   * tells a use from a shape that merely shares some keys.
+   */
+  required: Schema.Array(Schema.String),
 })
 
 /** One call, where it is, and what it names. */
@@ -714,11 +726,12 @@ const structureIn = (root: unknown): StructureFacts => {
   const callSites: Array<Schema.Schema.Type<typeof CallSite>> = []
   const jsx = new Set<string>()
   const objects: Array<Schema.Schema.Type<typeof ObjectSite>> = []
+  const declaredObjects = new Map<number, Array<string>>()
 
   const nameOf = (node: unknown): string | undefined => {
     if (!isRecord(node)) return undefined
     if (node["type"] === "Identifier" && typeof node["name"] === "string") return node["name"]
-    if (node["type"] === "StaticMemberExpression") {
+    if (node["type"] === "MemberExpression" || node["type"] === "StaticMemberExpression") {
       const object = nameOf(node["object"])
       const property = node["property"]
       const key =
@@ -732,6 +745,25 @@ const structureIn = (root: unknown): StructureFacts => {
       return object !== undefined && property !== undefined ? object + "." + property : undefined
     }
     return undefined
+  }
+
+  // The non-optional keys of a `Schema.Struct` field object: a key whose value is
+  // an `optional`/`optionalKey` call is optional, and the rest are required.
+  const requiredKeysOf = (object: Record<string, unknown>): Array<string> => {
+    const properties = object["properties"]
+    if (!Array.isArray(properties)) return []
+    const required: Array<string> = []
+    for (const property of properties) {
+      if (!isRecord(property)) continue
+      const key = property["key"]
+      const name = isRecord(key) && typeof key["name"] === "string" ? key["name"] : undefined
+      if (name === undefined) continue
+      const value = property["value"]
+      const callee =
+        isRecord(value) && value["type"] === "CallExpression" ? nameOf(value["callee"]) : undefined
+      if (callee !== "Schema.optionalKey" && callee !== "Schema.optional") required.push(name)
+    }
+    return required
   }
 
   const stack: Array<unknown> = [root]
@@ -756,6 +788,22 @@ const structureIn = (root: unknown): StructureFacts => {
         if (called !== undefined && typeof start === "number" && typeof end === "number") {
           callSites.push({ name: called, start, end })
         }
+        // A `Schema.Struct({...})` or `Schema.TaggedError<X>()("tag", {...})`
+        // argument IS a named type. Marking the field object lets the object-shape
+        // rule tell a declaration from a literal that needs a name.
+        const callee = node["callee"]
+        const inner =
+          isRecord(callee) && callee["type"] === "CallExpression" ? nameOf(callee["callee"]) : undefined
+        if (called === "Schema.Struct" || inner === "Schema.TaggedError") {
+          const args = node["arguments"]
+          if (Array.isArray(args)) {
+            for (const arg of args) {
+              if (isRecord(arg) && arg["type"] === "ObjectExpression" && typeof arg["start"] === "number") {
+                declaredObjects.set(arg["start"], requiredKeysOf(arg))
+              }
+            }
+          }
+        }
         break
       }
       case "JSXOpeningElement":
@@ -775,7 +823,10 @@ const structureIn = (root: unknown): StructureFacts => {
             else if (isRecord(key) && typeof key["value"] === "string") keys.push(key["value"])
           }
           const start = node["start"]
-          if (typeof start === "number") objects.push({ keys, start })
+          if (typeof start === "number") {
+            const required = declaredObjects.get(start)
+            objects.push({ keys, start, declared: required !== undefined, required: required ?? [] })
+          }
         }
         break
       }

@@ -44,7 +44,7 @@ import {
  * size, and the talk is honest about the overheads -- memory, and "global
  * algorithms harm incrementality" -- that such a system brings with it.
  */
-export const CACHE_VERSION = "1"
+export const CACHE_VERSION = "3"
 
 /** One parse's key: which file, and what it said. */
 export const keyOf = (file: string, text: string): string =>
