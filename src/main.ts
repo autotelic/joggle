@@ -4,11 +4,13 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { runCheck } from "./check.ts"
 import { layer as decisionLayer } from "./decision.ts"
+import { ask } from "./ask.ts"
 import { runCacheDirFor } from "./state.ts"
 import { loadConfig } from "./config.ts"
 import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
+import { loadWorkspace } from "./workspace.ts"
 import { allRules, builtIn, Rules } from "./rules/index.ts"
 import { layerFromConfig as tsgoLayer } from "./tsgo.ts"
 
@@ -108,6 +110,48 @@ const check = Command.make(
     }),
 ).pipe(Command.withDescription("Report cross-file duplication and naming drift."))
 
+const askCommand = Command.make(
+  "ask",
+  {
+    query: Argument.String("query"),
+    paths: Argument.String("paths").pipe(Argument.variadic()),
+    cacheDir: Flag.String("cache-dir").pipe(Flag.optional),
+    cwd: Flag.String("cwd").pipe(Flag.optional),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path
+      const cwd = Option.getOrUndefined(config.cwd) ?? process.cwd()
+      const cacheDir = Option.getOrUndefined(config.cacheDir) ?? path.join(cwd, ".joggle")
+      const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
+      const workspace = yield* loadWorkspace(cwd, config.paths.length > 0 ? config.paths : ["."])
+      const answer = yield* ask(workspace, config.query).pipe(
+        Effect.provide(decisionLayer({ cacheDir, offline: false, apiKey })),
+      )
+      yield* write(
+        [
+          answer.exists.toFixed(2) +
+            " that the code answers this; " +
+            answer.considered +
+            " declaration(s) ranked",
+          ...answer.matches.map(
+            (match) =>
+              match.score.toFixed(3) +
+              "  " +
+              match.path +
+              ":" +
+              match.line +
+              "  " +
+              match.symbol +
+              " (" +
+              match.kind +
+              ")",
+          ),
+        ].join("\n"),
+      )
+    }),
+).pipe(Command.withDescription("Ask a question about the code; rank the declarations that answer it."))
+
 const rules = Command.make(
   "rules",
   {},
@@ -127,7 +171,7 @@ const cli = Command.make("joggle").pipe(
   Command.withDescription(
     "Cross-file patterns and idioms for TypeScript, enforced like a linter: deterministic where it can prove, System One where it has to judge.",
   ),
-  Command.withSubcommands([check, rules]),
+  Command.withSubcommands([check, askCommand, rules]),
 )
 
 const services = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, builtIn)

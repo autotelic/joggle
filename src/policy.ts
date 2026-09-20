@@ -267,6 +267,25 @@ export const policy = {
   },
 
   /**
+   * Semantic search over the declarations.
+   *
+   * One request ranks the candidates with a Choice and asks a Noul whether the
+   * codebase answers at all. `maxCandidates` is the context bound -- the model
+   * reads worse as unrelated state grows -- and the keyword prefilter is what
+   * keeps the state to what the query is plausibly about.
+   */
+  ask: {
+    /** Tokens below which a declaration has nothing to match a query against. */
+    minTokens: 20,
+    /** Candidates per request. The state bound, not a cost bound. */
+    maxCandidates: 200,
+    /** Characters of a candidate's body sent as state. */
+    maxSourceChars: 800,
+    /** Matches printed. */
+    top: 10,
+  },
+
+  /**
    * A run of calls two declarations share without sharing the whole sequence.
    *
    * `minCalls` is what makes a shared run mean something: three calls in a row
