@@ -106,7 +106,7 @@ export const sortDiagnostics = (
   )
 
 /**
- * The report is a ranked list, not a file listing. A Noul per candidate gives
+ * The report is a ranked list, not a file listing. A probability decision per candidate gives
  * every finding a comparable score -- see the re-ranking cookbook -- so the
  * most likely real duplication is read first. File order is the tiebreak, which
  * keeps runs deterministic.

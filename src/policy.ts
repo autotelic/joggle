@@ -93,14 +93,14 @@ export const policy = {
     /**
      * How good an answer has to be before a rule may act on it.
      *
-     * A Noul is a yes/no question, so its probability is a VERDICT, not a
-     * ranking: 0.2 is the model saying no. Nothing read that. `worth_fixing` and
-     * `one_concept` and `redundant` were kept only as sort keys while the Choice
-     * decided, so on Shakti 237 findings were reported where the model had
+     * A probability decision is a yes/no question, so its answer is a VERDICT,
+     * not a ranking: 0.2 is the model saying no. Nothing read that. `worth_fixing`
+     * and `one_concept` and `redundant` were kept only as sort keys while the
+     * classification decided, so on Shakti 237 findings were reported where the model had
      * already answered "not worth a reviewer's time" and been overruled by a
      * different question.
      *
-     * The margin is winner minus runner-up in the Choice's own distribution:
+     * The margin is winner minus runner-up in the classification's own distribution:
      * whether the model picked an option or shrugged across two. Raw `confidence`
      * measured uninformative here and is still only reported, but `probabilities`
      * arrived with every answer from the first day and nothing ever read it.

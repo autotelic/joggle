@@ -152,7 +152,7 @@ export const moduleRoles = {
    * The machinery of the tool or library itself.
    *
    * Added because running joggle against its own source put `check.ts`,
-   * `report.ts`, `judge.ts` and `rule.ts` in `not_applicable` -- the bucket meant
+   * `report.ts`, `decision.ts` and `rule.ts` in `not_applicable` -- the bucket meant
    * for tests, scripts and configuration. Nothing should be hoisted out of an
    * engine either, so the outcome was right, but it was right by accident: the
    * model reached for the nearest option because the vocabulary had none for a
