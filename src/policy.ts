@@ -338,8 +338,8 @@ export const policy = {
   /**
    * Rule files sent for a self-audit in one run.
    *
-   * The candidate filter is a file that calls `defineRule`. The ceiling is
-   * against a repository with an unusual number of rules.
+   * The candidate filter is a `defineRule` call. The ceiling is against a
+   * repository with an unusual number of rules.
    */
   ruleJudgment: {
     maxRules: 200,
