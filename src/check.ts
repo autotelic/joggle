@@ -444,14 +444,27 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
 
   const drops: Array<Drop> = []
 
-  for (const rule of effective) {
-    const ruleStarted = yield* Clock.currentTimeMillis
-    // The config goes in, because a rule that enforces a layering is entitled to
-    // know what the layering is. Rules that need nothing take two parameters.
-    const result = yield* rule.run(workspace, scope, { config: options.config }).pipe(
-      Effect.map((value) => ({ _tag: "ok" as const, value })),
-      Effect.catch((error) => Effect.succeed({ _tag: "skipped" as const, error })),
-    )
+  // The rules are independent, and the judged ones wait on the network. Running
+  // them concurrently overlaps those waits; the results are collected in order, so
+  // the report is unchanged. The DecisionModel layer serializes its own cache
+  // writes, so two rules finishing at once cannot interleave a full write.
+  const ruleResults = yield* Effect.forEach(
+    effective,
+    (rule) =>
+      Effect.gen(function* () {
+        const ruleStarted = yield* Clock.currentTimeMillis
+        // The config goes in, because a rule that enforces a layering is entitled
+        // to know what the layering is. Rules that need nothing take two
+        // parameters.
+        const result = yield* rule.run(workspace, scope, { config: options.config }).pipe(
+          Effect.map((value) => ({ _tag: "ok" as const, value })),
+          Effect.catch((error) => Effect.succeed({ _tag: "skipped" as const, error })),
+        )
+        return { rule, result, ms: (yield* Clock.currentTimeMillis) - ruleStarted }
+      }),
+    { concurrency: policy.judge.requestConcurrency },
+  )
+  for (const { rule, result, ms } of ruleResults) {
     if (result._tag === "ok") {
       diagnostics.push(...result.value.diagnostics)
       for (const note of result.value.notes) notes.push({ ruleId: rule.id, reason: note })
@@ -459,7 +472,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     } else {
       skipped.push({ ruleId: rule.id, reason: reasonOf(result.error) })
     }
-    timings.push({ phase: rule.id.replace("joggle/", ""), ms: (yield* Clock.currentTimeMillis) - ruleStarted })
+    timings.push({ phase: rule.id.replace("joggle/", ""), ms })
   }
 
   // What the run did not look at.

@@ -1,4 +1,4 @@
-import { Cause, Config, Effect, Exit, Layer, Option, Path, Runtime } from "effect"
+import { Cause, Config, Console, Effect, Exit, Layer, Option, Path, Predicate, Runtime } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
@@ -12,10 +12,14 @@ import { exitCodeFor, render } from "./report.ts"
 import { allRules } from "./rules/index.ts"
 import { layerFromConfig as tsgoLayer } from "./tsgo.ts"
 
+/**
+ * One report, through Effect's Console rather than a raw stdout write.
+ *
+ * `Console.log` appends the newline, so a body that already ends in one is
+ * trimmed first; the output is byte-identical and a test can capture it.
+ */
 const write = (text: string): Effect.Effect<void> =>
-  Effect.sync(() => {
-    process.stdout.write(text.endsWith("\n") ? text : `${text}\n`)
-  })
+  Console.log(text.endsWith("\n") ? text.slice(0, -1) : text)
 
 const check = Command.make(
   "check",
@@ -158,7 +162,7 @@ const describeFailure = (failure: unknown): string | undefined => {
  */
 const teardown: Runtime.Teardown = (exit, onExit) => {
   if (Exit.isSuccess(exit)) {
-    onExit(typeof process.exitCode === "number" ? process.exitCode : 0)
+    onExit(Predicate.isNumber(process.exitCode) ? process.exitCode : 0)
     return
   }
   const failure = Cause.findErrorOption(exit.cause)

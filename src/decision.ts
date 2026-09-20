@@ -12,6 +12,7 @@ import {
   Schedule,
   Schema,
   SchemaParser,
+  Semaphore,
 } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { DecisionModel } from "effect/unstable/ai"
@@ -169,13 +170,19 @@ export const layer = (
 
       const entries = yield* Ref.make(yield* load)
       const stats = yield* Ref.make(emptyStats)
+      // Decisions run concurrently, so several calls can finish at once and each
+      // one writes the whole cache. The permit keeps one writer in the file at a
+      // time, so a full write cannot interleave with another.
+      const writer = yield* Semaphore.make(1)
 
-      const flush = Effect.gen(function* () {
-        const current = yield* Ref.get(entries)
-        const body = JSON.stringify({ version: policy.version, entries: current }, null, 2)
-        yield* Effect.orElseSucceed(fs.makeDirectory(options.cacheDir, { recursive: true }), () => undefined)
-        yield* Effect.orElseSucceed(fs.writeFileString(file, body), () => undefined)
-      })
+      const flush = writer.withPermits(1)(
+        Effect.gen(function* () {
+          const current = yield* Ref.get(entries)
+          const body = JSON.stringify({ version: policy.version, entries: current }, null, 2)
+          yield* Effect.orElseSucceed(fs.makeDirectory(options.cacheDir, { recursive: true }), () => undefined)
+          yield* Effect.orElseSucceed(fs.writeFileString(file, body), () => undefined)
+        }),
+      )
 
       const client: TypeSafeClient.Service = TypeSafeClient.TypeSafeClient.of({
         client: inner.client,
