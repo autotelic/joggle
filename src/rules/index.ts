@@ -5,12 +5,16 @@ import { importArchitectureRules } from "./import-architecture.ts"
 import { dependencyFit } from "./dependency-fit.ts"
 import { docMatchesCode } from "./doc-matches-code.ts"
 import { fieldTypeDrift } from "./field-type-drift.ts"
+import { languageDrift } from "./language-drift.ts"
 import { callPattern } from "./call-pattern.ts"
 import { nameAsAddress } from "./name-as-address.ts"
 import { moduleDirection } from "./module-direction.ts"
 import { objectShape } from "./object-shape.ts"
 import { composeTypes } from "./compose-types.ts"
 import { nameThePrimitive } from "./name-the-primitive.ts"
+import { ruleJudgment } from "./rule-judgment.ts"
+import { shallowModule } from "./shallow-module.ts"
+import { temporalCoupling } from "./temporal-coupling.ts"
 import { hoistToDomain } from "./hoist-to-domain.ts"
 import { namingDrift } from "./naming-drift.ts"
 import { Context, Layer } from "effect"
@@ -37,10 +41,14 @@ export const allRules: ReadonlyArray<Rule> = [
   nameAsAddress,
   objectShape,
   nameThePrimitive,
+  ruleJudgment,
+  shallowModule,
+  temporalCoupling,
   dependencyFit,
   docMatchesCode,
   fieldTypeDrift,
   hoistToDomain,
+  languageDrift,
   duplicateCallRun,
   duplicateImplementation,
   duplicateMeaning,

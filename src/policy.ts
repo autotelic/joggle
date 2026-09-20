@@ -309,6 +309,52 @@ export const policy = {
   },
 
   /**
+   * A file with a wide surface and little behind it.
+   *
+   * Ousterhout's ratio: implementation lines over exports. `minExports` keeps a
+   * small file out of it, and `minDepth` is the score below which a wide file is
+   * a grab bag rather than a module.
+   */
+  shallowModule: {
+    minExports: 5,
+    minDepth: 2,
+    /** Files judged per run. */
+    maxFiles: 400,
+  },
+
+  /**
+   * Functions sent for a paired-operation judgement in one run.
+   *
+   * The candidate filter is exact -- one half of a pair and not the other -- so
+   * this is a ceiling rather than a budget.
+   */
+  temporalCoupling: {
+    maxDeclarations: 400,
+  },
+
+  /**
+   * Rule files sent for a self-audit in one run.
+   *
+   * The candidate filter is a file that calls `defineRule`. The ceiling is
+   * against a repository with an unusual number of rules.
+   */
+  ruleJudgment: {
+    maxRules: 200,
+  },
+
+  /**
+   * A domain word the prose repeats and no name uses.
+   *
+   * `minMentions` is what separates a concept from a turn of phrase: a word the
+   * prose says once is a word, one it repeats is a thing.
+   */
+  languageDrift: {
+    minMentions: 3,
+    /** Files judged per run. */
+    maxFiles: 200,
+  },
+
+  /**
    * One field name with incompatible types in two declarations.
    *
    * Deterministic: it compares the recorded type text of every interface and type
