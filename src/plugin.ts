@@ -38,11 +38,12 @@ export * from "./similarity.ts"
 /*
  * Asking.
  *
- * `Service` and `layer` are the module's own names and both are too generic to
- * publish: a rule author writing `yield* Service` has no idea what they are
- * yielding, and `layer` reads as any other layer in a program. The aliases are
- * what the surface promises.
+ * A judged rule declares an Effect Decision and calls DecisionModel.decide. The
+ * two namespaces, and `Schema` for the input panel, are what that takes, so they
+ * are part of the promise rather than an import a rule author has to find.
  */
+export { Decision, DecisionModel } from "effect/unstable/ai"
+
 /* Deciding, and the vocabulary decisions are made in. */
 export * from "./policy.ts"
 export * from "./vocabulary.ts"
@@ -61,4 +62,4 @@ export * from "./rules/index.ts"
  * `Effect` itself, because a rule's `run` returns one. Leaving it out would make
  * the surface unusable for the one thing every rule must do.
  */
-export { Effect } from "effect"
+export { Effect, Schema } from "effect"

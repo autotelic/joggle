@@ -96,6 +96,24 @@ export const isUnreachable: Predicate.Predicate<AiError.AiError> = (error) =>
   error.reason._tag === "AuthenticationError" || error.reason._tag === "UnknownError"
 
 /**
+ * One place that builds joggle's AI errors.
+ *
+ * The module and method are how a failure is attributed, and two call sites that
+ * write them by hand are two chances to disagree. The parameters are positional
+ * so that the call does not recreate the shape the object-shape rule reports.
+ *
+ * @param module - The joggle module that failed.
+ * @param method - The operation within it.
+ * @param reason - The provider's reason.
+ * @returns The wrapped error.
+ */
+export const judgeError = (
+  module: string,
+  method: string,
+  reason: AiError.AiErrorReason,
+): AiError.AiError => AiError.make({ module, method, reason })
+
+/**
  * A judgement that cannot be made, in the provider's own error vocabulary.
  *
  * A missing key is an authentication failure, because that is what it is. An
@@ -104,21 +122,21 @@ export const isUnreachable: Predicate.Predicate<AiError.AiError> = (error) =>
  * rather than reporting every candidate as unreadable.
  */
 const missingKey = (): AiError.AiError =>
-  AiError.make({
-    module: "joggle/Decision",
-    method: "systemOne",
-    reason: new AiError.AuthenticationError({
+  judgeError(
+    "joggle/Decision",
+    "systemOne",
+    new AiError.AuthenticationError({
       kind: "MissingKey",
       description: "TYPESAFE_API_KEY is not set",
     }),
-  })
+  )
 
 const offlineMiss = (): AiError.AiError =>
-  AiError.make({
-    module: "joggle/Decision",
-    method: "systemOne",
-    reason: new AiError.UnknownError({ description: "offline mode and no cached judgement" }),
-  })
+  judgeError(
+    "joggle/Decision",
+    "systemOne",
+    new AiError.UnknownError({ description: "offline mode and no cached judgement" }),
+  )
 
 /**
  * Provides a caching DecisionModel and the run's judgement stats.

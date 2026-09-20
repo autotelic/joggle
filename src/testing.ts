@@ -1,6 +1,7 @@
 import { Effect, Layer } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { DecisionModel } from "effect/unstable/ai"
+import { judgeError } from "./decision.ts"
 import { everyFile, type Rule, type RunContext } from "./rule.ts"
 import type { Diagnostic } from "./schema.ts"
 import type { Workspace } from "./workspace.ts"
@@ -65,11 +66,7 @@ export const refusingJudge = (reason: string): Layer.Layer<DecisionModel.Decisio
     DecisionModel.make({
       decide: () =>
         Effect.fail(
-          AiError.make({
-            module: "joggle/testing",
-            method: "decide",
-            reason: new AiError.UnknownError({ description: reason }),
-          }),
+          judgeError("joggle/testing", "decide", new AiError.UnknownError({ description: reason })),
         ),
     }),
   )
