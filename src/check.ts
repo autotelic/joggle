@@ -160,14 +160,11 @@ const affectedBy = (
  */
 export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   const started = yield* Clock.currentTimeMillis
-  // Built-in rules plus the repository's own. A plugin rule is not special: it
-  // is selectable, configurable, severable and ignorable like any other, which is
-  // the whole point of it being a registry rather than an array.
-  const builtInRules = yield* Rules
-  const universe: ReadonlyArray<Rule> = [
-    ...builtInRules,
-    ...(options.plugins?.rules ?? []),
-  ]
+  // The rule set comes from the context, where a plugin's rules have already
+  // been merged with the built-in ones. A run does not know or care where a rule
+  // came from: a plugin rule is selectable, configurable, severable and ignorable
+  // like any other, which is the whole point of a registry rather than an array.
+  const universe: ReadonlyArray<Rule> = yield* Rules
   const selected = (
     options.rules === undefined
       ? universe

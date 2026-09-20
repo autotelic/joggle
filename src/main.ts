@@ -9,7 +9,7 @@ import { loadConfig } from "./config.ts"
 import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
-import { builtIn, Rules } from "./rules/index.ts"
+import { allRules, builtIn, Rules } from "./rules/index.ts"
 import { layerFromConfig as tsgoLayer } from "./tsgo.ts"
 
 /**
@@ -69,6 +69,9 @@ const check = Command.make(
         [...(settings.presets ?? []), ...(settings.plugins ?? [])],
         cwd,
       )
+      // The repository's rules join the built-in ones here, once, so the run
+      // itself reads one rule set from the context and never sees a plugin.
+      const rulesLayer = Layer.succeed(Rules, [...allRules, ...loaded.rules])
       // A preset's severities and scoping sit under the repository's own, per rule:
       // enabling twenty opinions and then turning one off should not mean
       // restating the other nineteen.
@@ -93,6 +96,7 @@ const check = Command.make(
         baselinePath: Option.getOrUndefined(config.baseline),
         updateBaselinePath: Option.getOrUndefined(config.updateBaseline),
       }).pipe(
+        Effect.provide(rulesLayer),
         Effect.provide(decisionLayer({ cacheDir, offline: config.offline, apiKey })),
         Effect.provide(tsgoLayer(cwd)),
       )
