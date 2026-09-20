@@ -171,7 +171,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       : universe.filter((rule) => options.rules?.includes(rule.id) === true)
   ).filter((rule) => isEnabled(options.config, rule.id, rule.severity))
 
-  const judgeStats = yield* DecisionStats
+  const decisionStats = yield* DecisionStats
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
 
@@ -543,7 +543,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // "workspace 4.4s" and nothing else is a run nobody can make faster.
   timings.push(...workspace.phases)
 
-  const judgeTotals: DecisionTotals = yield* judgeStats.read
+  const decisionTotals: DecisionTotals = yield* decisionStats.read
   const elapsedMs = (yield* Clock.currentTimeMillis) - started
   const report: Report = {
     diagnostics: rankDiagnostics(configured),
@@ -553,7 +553,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     notes,
     drops,
     timings,
-    decision: judgeTotals,
+    decision: decisionTotals,
     elapsedMs,
     replayed: false,
   }
@@ -577,7 +577,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       skipped: report.skipped,
       notes: report.notes,
       drops: report.drops,
-      decision: judgeTotals,
+      decision: decisionTotals,
       elapsedMs,
     })
   }
