@@ -1,4 +1,5 @@
 import { Clock, Effect, FileSystem, Match, Path, Result, Schema, SchemaParser } from "effect"
+import * as AiError from "effect/unstable/ai/AiError"
 import { shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 import { loadParses } from "./parsecache.ts"
@@ -67,13 +68,15 @@ export interface Options {
   readonly updateBaselinePath: string | undefined
 }
 
-const reasonOf = (error: JudgeError): string =>
-  Match.valueTags(error, {
-    "joggle/JudgeUnavailable": (reason) => reason.reason,
-    "joggle/JudgeRejected": (reason) => `HTTP ${reason.status}: ${reason.detail}`,
-    "joggle/JudgeMalformed": (reason) => reason.detail,
-    "joggle/JudgeTransport": (reason) => reason.detail,
-  })
+const reasonOf = (error: JudgeError | AiError.AiError): string =>
+  error._tag === "AiError"
+    ? error.message
+    : Match.valueTags(error, {
+        "joggle/JudgeUnavailable": (reason) => reason.reason,
+        "joggle/JudgeRejected": (reason) => `HTTP ${reason.status}: ${reason.detail}`,
+        "joggle/JudgeMalformed": (reason) => reason.detail,
+        "joggle/JudgeTransport": (reason) => reason.detail,
+      })
 
 const typecheckFindings = (output: ReadonlyArray<{ readonly file: string; readonly line: number; readonly column: number; readonly severity: "error" | "warning"; readonly code: string; readonly message: string }>): ReadonlyArray<Diagnostic> =>
   output.map((diagnostic) =>

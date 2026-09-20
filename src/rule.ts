@@ -1,6 +1,8 @@
 import type { Effect } from "effect"
 import { policy } from "./policy.ts"
 import type { JoggleConfig } from "./config.ts"
+import type * as AiError from "effect/unstable/ai/AiError"
+import type { DecisionModel } from "effect/unstable/ai"
 import type { Service as JudgeService } from "./judge.ts"
 import type { Answer, Diagnostic, Drop, JudgeError, Severity, SourceLocation } from "./schema.ts"
 import type { Workspace } from "./workspace.ts"
@@ -94,7 +96,7 @@ export interface Rule {
     workspace: Workspace,
     scope: Scope,
     context: RunContext,
-  ) => Effect.Effect<RuleOutcome, JudgeError, JudgeService>
+  ) => Effect.Effect<RuleOutcome, JudgeError | AiError.AiError, JudgeService | DecisionModel.DecisionModel>
 }
 
 export const defineRule = (rule: Rule): Rule => rule

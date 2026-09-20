@@ -168,7 +168,7 @@ const toAnswer = (
  * Stable JSON. The cache key must not depend on property insertion order, or a
  * replay in CI would miss the judgement recorded locally.
  */
-const canonical = (value: unknown): string => {
+export const canonical = (value: unknown): string => {
   const encode = (input: unknown): unknown => {
     if (Array.isArray(input)) return input.map(encode)
     if (isRecord(input)) {

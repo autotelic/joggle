@@ -1,9 +1,10 @@
-import { Effect, Option } from "effect"
+import { Effect, Option, Schema } from "effect"
+import * as AiError from "effect/unstable/ai/AiError"
+import { Decision, DecisionModel } from "effect/unstable/ai"
 import { policy } from "./policy.ts"
-import { Service as Judge } from "./judge.ts"
-import { budgetNote, choiceOf, type RunContext } from "./rule.ts"
+import { budgetNote, type RunContext } from "./rule.ts"
 import { moduleRoles } from "./vocabulary.ts"
-import type { Drop, Question } from "./schema.ts"
+import type { Drop } from "./schema.ts"
 import type { Unit, Workspace } from "./workspace.ts"
 
 /**
@@ -94,19 +95,34 @@ export const modulesOf = (
   return modules
 }
 
-export const moduleQuestions = {
-  role: {
-    type: "choice",
-    instructions: {
-      question: "What is `module.path` for?",
-      inspect: ["module", "repository"],
-      fallback: "Choose `utilities` when it is a generic helper with no business meaning.",
-      focus:
-        "`repository` describes what this codebase is trying to be. Classify the module by what it IS, not by whether it is doing it well: a route directory full of business rules is still a transport edge.",
-    },
+export const moduleDecisions = {
+  role: Decision.classify({
+    instructions: [
+      "What is `module.path` for?",
+      "Inspect `module` and `repository`.",
+      "`repository` describes what this codebase is trying to be. Classify the module by what it IS, not by whether it is doing it well: a route directory full of business rules is still a transport edge.",
+      "Choose `utilities` when it is a generic helper with no business meaning.",
+    ].join("\n"),
     criteria: moduleRoles,
-  },
-} satisfies Record<string, Question>
+  }),
+}
+
+/** The evidence panel, as a Schema, because it is exactly what the model is asked about. */
+const ModuleEvidence = Schema.Struct({
+  repository: Schema.optionalKey(Schema.String),
+  module: Schema.Struct({
+    path: Schema.String,
+    declarations: Schema.Number,
+    examples: Schema.Array(Schema.String),
+    imports: Schema.Array(Schema.String),
+    shares_a_name_with_a_dependency: Schema.NullOr(Schema.String),
+  }),
+})
+
+const ModuleClassification = Decision.make({
+  input: ModuleEvidence,
+  decisions: moduleDecisions,
+})
 
 /**
  * Roles ordered from most depended-upon to least.
@@ -141,7 +157,7 @@ export const classifyModules = (
   workspace: Workspace,
   context: RunContext,
   ruleId: string,
-): Effect.Effect<Classified, import("./schema.ts").JudgeError, Judge> =>
+): Effect.Effect<Classified, AiError.AiError, DecisionModel.DecisionModel> =>
   Effect.gen(function* () {
     const modules = modulesOf(workspace)
     const listed = [...modules.entries()]
@@ -151,7 +167,6 @@ export const classifyModules = (
       return { roles: new Map(), notes: ["no module to classify"], drops: [] }
     }
 
-    const judge = yield* Judge
     const names = externalNames(workspace)
 
     // Which file belongs to which module, so an import can be attributed to the
@@ -176,39 +191,49 @@ export const classifyModules = (
       externalByModule.set(module, found)
     }
 
-    const answered = yield* judge.askMany(
-      listed.map(([path, units]) => {
+    const answered = yield* Effect.forEach(
+      listed,
+      ([path, units]) => {
         // A module whose last path segment matches something the repository
         // depends on. `null` is the useful answer: nothing here is called that.
         const last = path.split("/").at(-1) ?? path
         const collision = names.has(last) ? last : null
-        return {
-          evidence: {
-            repository: context.config.evidence?.repository ?? null,
-            module: {
-              path,
-              declarations: units.length,
-              examples: [...new Set(units.map((unit) => unit.file))].slice(
-                0,
-                policy.evidence.maxListedPaths,
-              ),
-              imports: [...(externalByModule.get(path) ?? [])]
-                .sort()
-                .slice(0, policy.evidence.maxListedPaths),
-              shares_a_name_with_a_dependency: collision,
-            },
+        const repository = context.config.evidence?.repository
+        const panel = {
+          module: {
+            path,
+            declarations: units.length,
+            examples: [...new Set(units.map((unit) => unit.file))].slice(
+              0,
+              policy.evidence.maxListedPaths,
+            ),
+            imports: [...(externalByModule.get(path) ?? [])]
+              .sort()
+              .slice(0, policy.evidence.maxListedPaths),
+            shares_a_name_with_a_dependency: collision,
           },
-          questions: moduleQuestions,
         }
-      }),
+        const evidence = repository === undefined ? panel : { ...panel, repository }
+        return DecisionModel.decide(ModuleClassification, { input: evidence }).pipe(
+          Effect.map((result) => Option.some(result.answers.role.label)),
+          // One candidate that cannot be read is a drop for that candidate, not a
+          // failed run: the other modules still deserve an answer. A model that
+          // was never reached is different -- the whole rule steps aside.
+          Effect.catch((error) =>
+            error.reason._tag === "AuthenticationError" || error.reason._tag === "UnknownError"
+              ? Effect.fail(error)
+              : Effect.succeed(Option.none<string>()),
+          ),
+        )
+      },
+      { concurrency: policy.judge.requestConcurrency },
     )
 
     const roles = new Map<string, string>()
     const drops: Array<Drop> = []
     listed.forEach(([path, units], index) => {
-      const answer = answered[index]
-      const role = answer === undefined ? undefined : choiceOf(answer.answers, "role")
-      if (role === undefined) {
+      const role = answered[index]
+      if (role === undefined || Option.isNone(role)) {
         for (const unit of units) {
           drops.push({
             ruleId,
@@ -219,7 +244,7 @@ export const classifyModules = (
         }
         return
       }
-      roles.set(path, role.choice)
+      roles.set(path, role.value)
     })
 
     const unclassified = listed.filter(([path]) => !roles.has(path)).length

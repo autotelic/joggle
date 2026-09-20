@@ -2,6 +2,7 @@ import { Effect, Layer, Option } from "effect"
 import { NodeServices } from "@effect/platform-node"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { Service as JudgeService } from "../src/judge.ts"
+import { decisionStub } from "../src/testing.ts"
 import { JudgeUnavailable, type Answer, type WorkspaceError } from "../src/schema.ts"
 import { Service as TsgoService } from "../src/tsgo.ts"
 import { loadWorkspace, type Workspace } from "../src/workspace.ts"
@@ -30,26 +31,34 @@ const stubStats = {
 }
 
 export const judgeStub = (answers: Readonly<Record<string, Answer>>) =>
-  Layer.succeed(
-    JudgeService,
-    JudgeService.of({
-      ask: () => Effect.succeed({ answers, replayed: false }),
-      // Every candidate gets the same stubbed verdict, batched or not: the
-      // stubs are about policy, and batching must not change the policy.
-      askMany: (requests) =>
-        Effect.succeed(requests.map(() => ({ answers, replayed: false }))),
-      stats: Effect.succeed(stubStats),
-    }),
+  Layer.mergeAll(
+    Layer.succeed(
+      JudgeService,
+      JudgeService.of({
+        ask: () => Effect.succeed({ answers, replayed: false }),
+        // Every candidate gets the same stubbed verdict, batched or not: the
+        // stubs are about policy, and batching must not change the policy.
+        askMany: (requests) =>
+          Effect.succeed(requests.map(() => ({ answers, replayed: false }))),
+        stats: Effect.succeed(stubStats),
+      }),
+    ),
+    // A migrated rule asks the DecisionModel; an unmigrated one asks the Judge.
+    // Both are provided so a test says what it is about, not which surface it uses.
+    decisionStub(),
   )
 
 export const judgeFailing = (reason: string) =>
-  Layer.succeed(
-    JudgeService,
-    JudgeService.of({
-      ask: () => Effect.fail(new JudgeUnavailable({ reason })),
-      askMany: () => Effect.fail(new JudgeUnavailable({ reason })),
-      stats: Effect.succeed(stubStats),
-    }),
+  Layer.mergeAll(
+    Layer.succeed(
+      JudgeService,
+      JudgeService.of({
+        ask: () => Effect.fail(new JudgeUnavailable({ reason })),
+        askMany: () => Effect.fail(new JudgeUnavailable({ reason })),
+        stats: Effect.succeed(stubStats),
+      }),
+    ),
+    decisionStub(),
   )
 
 /**

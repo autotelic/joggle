@@ -1,6 +1,7 @@
 import { expect, it } from "@effect/vitest"
 import { Effect, Option } from "effect"
 import { runCheck } from "../src/check.ts"
+import { layer as decisionLayer } from "../src/decision.ts"
 import { layer as judgeLayer } from "../src/judge.ts"
 import { corpus, nodeLayer, tsgoStub } from "./support.ts"
 
@@ -23,6 +24,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       config: {},
     }).pipe(
       Effect.provide(judgeLayer({ cacheDir, offline: true, apiKey: Option.none() })),
+      Effect.provide(decisionLayer({ cacheDir, offline: true, apiKey: Option.none() })),
       Effect.provide(tsgoStub),
       Effect.provide(nodeLayer),
     )
@@ -66,6 +68,7 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
       config: {},
     }).pipe(
       Effect.provide(judgeLayer({ cacheDir, offline: false, apiKey: Option.none() })),
+      Effect.provide(decisionLayer({ cacheDir, offline: false, apiKey: Option.none() })),
       Effect.provide(tsgoStub),
       Effect.provide(nodeLayer),
     )
@@ -114,6 +117,7 @@ it.effect("a rule filter runs exactly one rule and skips nothing", () =>
       config: {},
     }).pipe(
       Effect.provide(judgeLayer({ cacheDir, offline: true, apiKey: Option.none() })),
+      Effect.provide(decisionLayer({ cacheDir, offline: true, apiKey: Option.none() })),
       Effect.provide(tsgoStub),
       Effect.provide(nodeLayer),
     )

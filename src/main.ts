@@ -3,6 +3,7 @@ import { Argument, Command, Flag } from "effect/unstable/cli"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeServices } from "@effect/platform-node"
 import { runCheck } from "./check.ts"
+import { layer as decisionLayer } from "./decision.ts"
 import { layer as judgeLayer } from "./judge.ts"
 import { runCacheDirFor } from "./state.ts"
 import { loadConfig } from "./config.ts"
@@ -97,6 +98,7 @@ const check = Command.make(
             evidenceContext: effective.evidence?.repository,
           }),
         ),
+        Effect.provide(decisionLayer({ cacheDir, offline: config.offline, apiKey })),
         Effect.provide(tsgoLayer(cwd)),
       )
 

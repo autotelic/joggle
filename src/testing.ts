@@ -1,4 +1,6 @@
 import { Effect, Layer } from "effect"
+import { DecisionModel } from "effect/unstable/ai"
+import type * as AiError from "effect/unstable/ai/AiError"
 import { Service as JudgeService, type JudgeResult } from "./judge.ts"
 import { everyFile, type Rule, type RunContext } from "./rule.ts"
 import { JudgeUnavailable, type Answer, type Diagnostic, type JudgeError } from "./schema.ts"
@@ -27,14 +29,14 @@ export interface RuleTestOptions {
    * refusal rather than to silence means a rule that DOES ask fails loudly
    * instead of quietly reporting nothing.
    */
-  readonly judge?: Layer.Layer<JudgeService> | undefined
+  readonly judge?: Layer.Layer<JudgeService | DecisionModel.DecisionModel> | undefined
 }
 
 export const diagnosticsOf = (
   rule: Rule,
   workspace: Workspace,
   options: RuleTestOptions = {},
-): Effect.Effect<ReadonlyArray<Diagnostic>, JudgeError> =>
+): Effect.Effect<ReadonlyArray<Diagnostic>, JudgeError | AiError.AiError> =>
   rule.run(workspace, everyFile, options.context ?? { config: {} }).pipe(
     Effect.map((result) => result.diagnostics),
     Effect.provide(
@@ -51,40 +53,104 @@ export const diagnosticsOf = (
  */
 export const answeringJudge = (
   answers: Readonly<Record<string, Answer>>,
-): Layer.Layer<JudgeService> =>
-  Layer.succeed(
-    JudgeService,
-    JudgeService.of({
-      ask: () => Effect.succeed({ answers, replayed: false }),
-      askMany: (requests) =>
-        Effect.succeed(
-          requests.map((): JudgeResult => ({ answers, replayed: false })),
-        ),
-      stats: Effect.succeed({
-        requests: 0,
-        replayed: 0,
-        calls: 0,
-        unavailable: 0,
-        inputTokens: 0,
-        outputTokens: 0,
+): Layer.Layer<JudgeService | DecisionModel.DecisionModel> =>
+  Layer.mergeAll(
+    Layer.succeed(
+      JudgeService,
+      JudgeService.of({
+        ask: () => Effect.succeed({ answers, replayed: false }),
+        askMany: (requests) =>
+          Effect.succeed(
+            requests.map((): JudgeResult => ({ answers, replayed: false })),
+          ),
+        stats: Effect.succeed({
+          requests: 0,
+          replayed: 0,
+          calls: 0,
+          unavailable: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+        }),
       }),
-    }),
+    ),
+    decisionStub(),
   )
 
 /** A judge that cannot answer, for testing what a rule does without one. */
-export const refusingJudge = (reason: string): Layer.Layer<JudgeService> =>
-  Layer.succeed(
-    JudgeService,
-    JudgeService.of({
-      ask: () => Effect.fail(new JudgeUnavailable({ reason })),
-      askMany: () => Effect.fail(new JudgeUnavailable({ reason })),
-      stats: Effect.succeed({
-        requests: 0,
-        replayed: 0,
-        calls: 0,
-        unavailable: 0,
-        inputTokens: 0,
-        outputTokens: 0,
+export const refusingJudge = (reason: string): Layer.Layer<JudgeService | DecisionModel.DecisionModel> =>
+  Layer.mergeAll(
+    Layer.succeed(
+      JudgeService,
+      JudgeService.of({
+        ask: () => Effect.fail(new JudgeUnavailable({ reason })),
+        askMany: () => Effect.fail(new JudgeUnavailable({ reason })),
+        stats: Effect.succeed({
+          requests: 0,
+          replayed: 0,
+          calls: 0,
+          unavailable: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+        }),
       }),
+    ),
+    decisionStub(),
+  )
+
+/**
+ * A DecisionModel that answers every decision consistently.
+ *
+ * A test asserts policy, not the provider, so classify decisions choose one label
+ * and probability decisions answer one number. The answers still pass Effect's
+ * validation, so a rule under test sees a real Decision answer.
+ */
+export const decisionStub = (options: {
+  readonly label?: string | undefined
+  readonly probability?: number | undefined
+} = {}): Layer.Layer<DecisionModel.DecisionModel> =>
+  Layer.effect(
+    DecisionModel.DecisionModel,
+    DecisionModel.make({
+      decide: ({ decisions }) =>
+        Effect.succeed({
+          answers: Object.fromEntries(
+            Object.entries(decisions).map(([key, decision]) => {
+              if (decision._tag === "Classify") {
+                const labels = Object.keys(decision.criteria)
+                const chosen =
+                  options.label !== undefined && labels.includes(options.label)
+                    ? options.label
+                    : (labels[0] ?? "")
+                return [
+                  key,
+                  {
+                    _tag: "Classify" as const,
+                    label: chosen,
+                    probabilities: Object.fromEntries(
+                      labels.map((label) => [label, label === chosen ? 1 : 0]),
+                    ),
+                    confidence: 0.9,
+                  },
+                ]
+              }
+              if (decision._tag === "Rate") {
+                const levels = decision.criteria
+                return [
+                  key,
+                  {
+                    _tag: "Rate" as const,
+                    rating: 0,
+                    probabilities: Object.fromEntries(
+                      levels.map((level, index) => [level, index === 0 ? 1 : 0]),
+                    ),
+                    confidence: 0.9,
+                  },
+                ]
+              }
+              return [key, { _tag: "Probability" as const, probability: options.probability ?? 0.9 }]
+            }),
+          ),
+          usage: { inputTokens: 0, outputTokens: 0 },
+        }),
     }),
   )
