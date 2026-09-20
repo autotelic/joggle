@@ -3,6 +3,7 @@ import * as AiError from "effect/unstable/ai/AiError"
 import { shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 import { loadParses } from "./parsecache.ts"
+import { JudgeStats } from "./decision.ts"
 import { Service as Judge } from "./judge.ts"
 import { policy } from "./policy.ts"
 import { finding } from "./rule.ts"
@@ -269,6 +270,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   ).filter((rule) => isEnabled(options.config, rule.id, rule.severity))
 
   const judge = yield* Judge
+  const judgeStats = yield* JudgeStats
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
 
@@ -627,7 +629,19 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // "workspace 4.4s" and nothing else is a run nobody can make faster.
   timings.push(...workspace.phases)
 
-  const judgeTotals: JudgeTotals = yield* judge.stats
+  // Both surfaces during the migration: the old judge counts what it spent, and
+  // the DecisionModel layer counts what it spent. When judge.ts is gone this is
+  // one read.
+  const legacy = yield* judge.stats
+  const fresh = yield* judgeStats.read
+  const judgeTotals: JudgeTotals = {
+    requests: legacy.requests + fresh.requests,
+    replayed: legacy.replayed + fresh.replayed,
+    calls: legacy.calls + fresh.calls,
+    unavailable: legacy.unavailable + fresh.unavailable,
+    inputTokens: legacy.inputTokens + fresh.inputTokens,
+    outputTokens: legacy.outputTokens + fresh.outputTokens,
+  }
   const elapsedMs = (yield* Clock.currentTimeMillis) - started
   const report: Report = {
     diagnostics: rankDiagnostics(configured),
