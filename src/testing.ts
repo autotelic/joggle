@@ -66,7 +66,7 @@ export const refusingJudge = (reason: string): Layer.Layer<DecisionModel.Decisio
     DecisionModel.make({
       decide: () =>
         Effect.fail(
-          judgeError("joggle/testing", "decide", new AiError.UnknownError({ description: reason })),
+          judgeError(["joggle/testing", "decide"], new AiError.UnknownError({ description: reason })),
         ),
     }),
   )

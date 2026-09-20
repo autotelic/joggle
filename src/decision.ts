@@ -102,16 +102,15 @@ export const isUnreachable: Predicate.Predicate<AiError.AiError> = (error) =>
  * write them by hand are two chances to disagree. The parameters are positional
  * so that the call does not recreate the shape the object-shape rule reports.
  *
- * @param module - The joggle module that failed.
- * @param method - The operation within it.
+ * @param at - The joggle module and the operation within it, as one value so a
+ *   transposed call cannot compile.
  * @param reason - The provider's reason.
  * @returns The wrapped error.
  */
 export const judgeError = (
-  module: string,
-  method: string,
+  at: readonly [module: string, method: string],
   reason: AiError.AiErrorReason,
-): AiError.AiError => AiError.make({ module, method, reason })
+): AiError.AiError => AiError.make({ module: at[0], method: at[1], reason })
 
 /**
  * A judgement that cannot be made, in the provider's own error vocabulary.
@@ -123,8 +122,7 @@ export const judgeError = (
  */
 const missingKey = (): AiError.AiError =>
   judgeError(
-    "joggle/Decision",
-    "systemOne",
+    ["joggle/Decision", "systemOne"],
     new AiError.AuthenticationError({
       kind: "MissingKey",
       description: "TYPESAFE_API_KEY is not set",
@@ -133,8 +131,7 @@ const missingKey = (): AiError.AiError =>
 
 const offlineMiss = (): AiError.AiError =>
   judgeError(
-    "joggle/Decision",
-    "systemOne",
+    ["joggle/Decision", "systemOne"],
     new AiError.UnknownError({ description: "offline mode and no cached judgement" }),
   )
 
