@@ -45,7 +45,7 @@ export const judgeStub = (answers: Readonly<Record<string, Answer>>) =>
     ),
     // A migrated rule asks the DecisionModel; an unmigrated one asks the Judge.
     // Both are provided so a test says what it is about, not which surface it uses.
-    decisionStub(),
+    decisionStub(answers),
   )
 
 export const judgeFailing = (reason: string) =>

@@ -49,7 +49,10 @@ it.effect("a cluster of identical declarations is one finding", () =>
         expect(entry.judged).toBe(true)
         expect(entry.score).toBeCloseTo(0.9)
         expect(entry.message).toContain("is declared 2 times")
-        expect(entry.help).toContain("Delete or import instead of redeclaring")
+        // The model answers role and relationship, so the prescription is the
+        // model's. The declared-layers fallback is only for a repository whose
+        // judgement did not include them.
+        expect(entry.help).toContain("Delete the copies and import one")
       }
     }).pipe(Effect.provide(judgeStub(collapse("member_0")))),
   ),

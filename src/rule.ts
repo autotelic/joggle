@@ -2,7 +2,7 @@ import type { Effect } from "effect"
 import { policy } from "./policy.ts"
 import type { JoggleConfig } from "./config.ts"
 import type * as AiError from "effect/unstable/ai/AiError"
-import type { DecisionModel } from "effect/unstable/ai"
+import type { Decision, DecisionModel } from "effect/unstable/ai"
 import type { Service as JudgeService } from "./judge.ts"
 import type { Answer, Diagnostic, Drop, JudgeError, Severity, SourceLocation } from "./schema.ts"
 import type { Workspace } from "./workspace.ts"
@@ -230,6 +230,19 @@ export const declineNames: ReadonlyArray<string> = [decline.noIssue, decline.not
  */
 export const declined = (choice: string | undefined): boolean =>
   choice === decline.noIssue || choice === decline.notApplicable
+
+/** The answers a DecisionModel returns, keyed by decision name. */
+export type DecisionAnswers = Readonly<Record<string, Decision.Answer<Decision.Any>>>
+
+/** Winner minus runner-up in a classify answer's own distribution. */
+export const marginOfAnswer = (
+  answer: Decision.ClassifyAnswer<string> | Decision.RateAnswer<string>,
+): number => {
+  const ranked = Object.values(answer.probabilities).sort((left, right) => right - left)
+  const [first, second] = ranked
+  if (first === undefined) return 1
+  return second === undefined ? 1 : first - second
+}
 
 export const choiceOf = (
   answers: Readonly<Record<string, Answer>>,

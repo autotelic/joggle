@@ -1,10 +1,11 @@
-import { Effect, Option } from "effect"
+import { Effect, Option, Schema } from "effect"
+import * as AiError from "effect/unstable/ai/AiError"
+import { Decision, DecisionModel } from "effect/unstable/ai"
 import { policy } from "../policy.ts"
-import { Service as Judge, type JudgeRequest, type JudgeResult } from "../judge.ts"
 import { canImport, sharedLayerFor, type Layer } from "../architecture.ts"
-import { choiceOf, declined, finding, marginOf, noulOf, qualityOf } from "../rule.ts"
+import { declined, finding, marginOfAnswer, qualityOf, type DecisionAnswers } from "../rule.ts"
 import { duplicateVocabulary } from "../vocabulary.ts"
-import type { Answer, Diagnostic, Drop, DropStage, Question, Severity } from "../schema.ts"
+import type { Diagnostic, Drop, DropStage, Severity } from "../schema.ts"
 import { namesOf, type Cluster } from "../cluster.ts"
 import type { ImportGraph } from "../imports.ts"
 import type { Unit } from "../workspace.ts"
@@ -52,16 +53,16 @@ export interface ClusterVerdict {
  * `candidates[3].` and the questions stay unambiguous.
  */
 export interface Questionnaire {
-  /** Merged into the request state alongside `declarations`. */
-  readonly state: Record<string, unknown>
-  readonly questions: Record<string, Question>
+  /** Merged into the input alongside `declarations`. */
+  readonly state: Record<string, Schema.Json>
+  readonly decisions: Record<string, Decision.Any>
   /**
    * Read the answer, or return undefined when the response did not contain one
    * that can be used. That is not the same as "leave it alone": an unreadable
    * response cannot be claimed as a judgement, and for a fact-based rule it means
    * the finding is reported unverified rather than quietly dropped.
    */
-  readonly read: (answers: Readonly<Record<string, Answer>>) => ClusterVerdict | undefined
+  readonly read: (answers: DecisionAnswers) => ClusterVerdict | undefined
 }
 
 export interface ClusterRule {
@@ -131,101 +132,85 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
       files: [...new Set(cluster.members.map((member) => member.file))],
       common_directory: commonDirectory(cluster.members.map((member) => member.file)),
     },
-    questions: {
-      redundant: {
-        type: "noul",
-        instructions: {
-          question: `Are these ${cluster.members.length} declarations one thing written repeatedly?`,
-          focus: "Answer yes only if a reader is worse off for there being more than one.",
-        },
+    decisions: {
+      redundant: Decision.probability({
+        instructions: `Are these ${cluster.members.length} declarations one thing written repeatedly? Answer yes only if a reader is worse off for there being more than one.`,
         criteria: duplicateVocabulary.redundant,
-      },
-      role: {
-        type: "choice",
-        instructions: {
-          question: "What IS this declaration, apart from the fact that it is duplicated?",
-          inspect: ["{candidate}declarations", "{candidate}files"],
-          fallback: "Choose `implementation_detail` when it is a helper with no meaning of its own.",
-          focus:
-            "Answer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.",
-        },
+      }),
+      role: Decision.classify({
+        instructions: [
+          "What IS this declaration, apart from the fact that it is duplicated?",
+          "Inspect `declarations` and `files`.",
+          "Answer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.",
+          "Choose `implementation_detail` when it is a helper with no meaning of its own.",
+        ].join("\n"),
         criteria: duplicateVocabulary.role,
-      },
-      relationship: {
-        type: "choice",
-        instructions: {
-          question: "How do `{candidate}common_directory` and the files inside it relate?",
-          inspect: ["{candidate}files"],
-          fallback: "Choose `different_deployables` when nothing suggests they can share code.",
-          focus:
-            "Decide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.",
-        },
+      }),
+      relationship: Decision.classify({
+        instructions: [
+          "How do `common_directory` and the files inside it relate?",
+          "Inspect `files`.",
+          "Decide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.",
+          "Choose `different_deployables` when nothing suggests they can share code.",
+        ].join("\n"),
         criteria: duplicateVocabulary.relationship,
-      },
-      verdict: {
-        type: "choice",
-        instructions: {
-          question: "What should happen to these declarations?",
-          fallback: "Choose \`no_issue\` when the similarity is coincidence rather than repetition.",
-          compare: ["{candidate}declarations"],
-          focus: cluster.identical
+      }),
+      verdict: Decision.classify({
+        instructions: [
+          "What should happen to these declarations?",
+          cluster.identical
             ? `They are syntactically identical, including property names and types.${note}`
             : `They are up to ${Math.round(cluster.overlap * 100)}% structurally similar but not identical.${note}`,
-        },
+          "Choose `no_issue` when the similarity is coincidence rather than repetition.",
+        ].join("\n"),
         criteria: duplicateVocabulary.verdict,
-      },
-      consequence: {
-        type: "noul",
-        instructions: {
-          question: "Would a reader be better off if these declarations were one?",
-          focus:
-            "Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.",
-        },
+      }),
+      consequence: Decision.probability({
+        instructions:
+          "Would a reader be better off if these declarations were one? Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.",
         criteria: duplicateVocabulary.consequence,
-      },
-      canonical: {
-        type: "choice",
-        instructions: {
-          question: "If one of them should be kept, which one?",
-          focus: "Choose the declaration that best fits this codebase's conventions, its location, and its name.",
-        },
+      }),
+      canonical: Decision.classify({
+        instructions:
+          "If one of them should be kept, which one? Choose the declaration that best fits this codebase's conventions, its location, and its name.",
         criteria,
-      },
+      }),
     },
     read: (answers) => {
-      const verdict = choiceOf(answers, "verdict")
-      const redundant = noulOf(answers, "redundant")
-      if (verdict === undefined) return undefined
-      const redundancy = redundant ?? verdict.confidence
-      const role = choiceOf(answers, "role")
-      const relationship = choiceOf(answers, "relationship")
+      const verdict = answers["verdict"]
+      if (verdict === undefined || !("label" in verdict)) return undefined
+      const redundant = answers["redundant"]
+      const redundancy =
+        redundant !== undefined && "probability" in redundant
+          ? redundant.probability
+          : (verdict.confidence ?? 1)
+      const role = answers["role"]
+      const relationship = answers["relationship"]
       const prescription =
-        role === undefined || relationship === undefined
+        role === undefined || !("label" in role) || relationship === undefined || !("label" in relationship)
           ? undefined
-          : prescriptionFor(role.choice, relationship.choice)
+          : prescriptionFor(role.label, relationship.label)
       // Ranked by consequence, gated by redundancy. A finding that does not
       // matter is still a finding and still reported; it sorts last.
-      const score = noulOf(answers, "consequence") ?? redundancy
-      const margin = marginOf(answers, "verdict") ?? 1
+      const consequence = answers["consequence"]
+      const score =
+        consequence !== undefined && "probability" in consequence ? consequence.probability : redundancy
+      const margin = marginOfAnswer(verdict)
+      const confidence = verdict.confidence ?? 1
       // `keep_variants` is a decision about the declarations; a decline is a
       // decision about the question. Both suppress the finding, and only the
       // second says the rule should not have asked.
-      if (verdict.choice === "keep_variants" || declined(verdict.choice)) {
-        return {
-          keep: undefined,
-          confidence: verdict.confidence,
-          score,
-          redundancy,
-          margin,
-          prescription,
-        }
+      if (verdict.label === "keep_variants" || declined(verdict.label)) {
+        return { keep: undefined, confidence, score, redundancy, margin, prescription }
       }
-      const canonical = choiceOf(answers, "canonical")
+      const canonical = answers["canonical"]
       const index =
-        canonical === undefined ? 0 : Number.parseInt(canonical.choice.replace("member_", ""), 10)
+        canonical === undefined || !("label" in canonical)
+          ? 0
+          : Number.parseInt(canonical.label.replace("member_", ""), 10)
       return {
         keep: Number.isNaN(index) ? 0 : index,
-        confidence: verdict.confidence,
+        confidence,
         score,
         redundancy,
         margin,
@@ -392,11 +377,12 @@ const dependents = (imports: ImportGraph, unit: Unit): string => {
   return `${files.length} file${files.length === 1 ? "" : "s"} import \`${unit.name}\`: ${shown}${more}`
 }
 
-/** One cluster's request, plus how to read its share of the answer. */
+/** One cluster's Decision definition, plus how to read its share of the answer. */
 export interface ClusterPlan {
   readonly cluster: Cluster
-  readonly request: JudgeRequest
-  readonly read: (answers: Readonly<Record<string, Answer>>) => ClusterVerdict | undefined
+  readonly input: Schema.Json
+  readonly decisions: Record<string, Decision.Any>
+  readonly read: (answers: DecisionAnswers) => ClusterVerdict | undefined
 }
 
 export const planCluster = (rule: ClusterRule, cluster: Cluster): ClusterPlan | undefined => {
@@ -405,10 +391,8 @@ export const planCluster = (rule: ClusterRule, cluster: Cluster): ClusterPlan | 
   const questionnaire = rule.questionnaire(cluster, described)
   return {
     cluster,
-    request: {
-      evidence: { ...baseEvidence(cluster, described), ...questionnaire.state },
-      questions: questionnaire.questions,
-    },
+    input: { ...baseEvidence(cluster, described), ...questionnaire.state },
+    decisions: questionnaire.decisions,
     read: questionnaire.read,
   }
 }
@@ -515,7 +499,7 @@ export const assessClusters = (
   imports: ImportGraph,
   clusters: ReadonlyArray<Cluster>,
   layers: ReadonlyArray<Layer> = [],
-): Effect.Effect<Assessment, import("../schema.ts").JudgeError, Judge> =>
+): Effect.Effect<Assessment, AiError.AiError, DecisionModel.DecisionModel> =>
   Effect.gen(function* () {
     const unreadable: Array<Drop> = []
     const plans = clusters
@@ -530,37 +514,33 @@ export const assessClusters = (
       })
       .filter((plan): plan is ClusterPlan => plan !== undefined)
     if (plans.length === 0) return { diagnostics: [], drops: unreadable }
-    const judge = yield* Judge
-    const requests = plans.map((plan) => plan.request)
 
-    // One call for the whole batch, so availability is decided once for the rule
-    // rather than once per cluster. A fact-based rule degrades to unverified
-    // findings; a guess-based rule stays silent and the engine reports it as
-    // skipped.
-    const asked =
-      rule.onUnavailable === "report"
-        ? yield* judge.askMany(requests).pipe(
-            Effect.map((results) => Option.some<ReadonlyArray<JudgeResult>>(results)),
-            Effect.catch(() => Effect.succeed(Option.none<ReadonlyArray<JudgeResult>>())),
-          )
-        : yield* judge
-            .askMany(requests)
-            .pipe(Effect.map((results) => Option.some<ReadonlyArray<JudgeResult>>(results)))
+    // One DecisionModel.decide per cluster. A fact-based rule still reports its
+    // facts when the model was never reached; a guess-based rule steps aside and
+    // the engine reports it as skipped.
+    const answers = yield* Effect.forEach(
+      plans,
+      (plan) => {
+        const definition = Decision.make({ input: Schema.Json, decisions: plan.decisions })
+        return DecisionModel.decide(definition, { input: plan.input }).pipe(
+          Effect.map((result) => Option.some(result.answers)),
+          Effect.catch((error) => {
+            const unreached =
+              error.reason._tag === "AuthenticationError" || error.reason._tag === "UnknownError"
+            return rule.onUnavailable === "report" || !unreached
+              ? Effect.succeed(Option.none<DecisionAnswers>())
+              : Effect.fail(error)
+          }),
+        )
+      },
+      { concurrency: policy.judge.requestConcurrency },
+    )
 
     const diagnostics: Array<Diagnostic> = []
     const drops: Array<Drop> = [...unreadable]
-    if (Option.isNone(asked)) {
-      for (const plan of plans) {
-        const fallback = unverifiedFinding(rule, plan.cluster)
-        if (fallback !== undefined) diagnostics.push(fallback)
-        else drops.push(dropOf(rule, plan.cluster, "unreadable", "no judgement available"))
-      }
-      return { diagnostics, drops }
-    }
-    const results = asked.value
     plans.forEach((plan, index) => {
-      const result = results[index]
-      const verdict = result === undefined ? undefined : plan.read(result.answers)
+      const answer = answers[index]
+      const verdict = answer === undefined || Option.isNone(answer) ? undefined : plan.read(answer.value)
       const outcome = findingFor(rule, imports, plan.cluster, verdict, layers)
       if (outcome.diagnostic !== undefined) diagnostics.push(outcome.diagnostic)
       if (outcome.drop !== undefined) drops.push(outcome.drop)

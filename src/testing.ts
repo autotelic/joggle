@@ -73,7 +73,7 @@ export const answeringJudge = (
         }),
       }),
     ),
-    decisionStub(),
+    decisionStub(answers),
   )
 
 /** A judge that cannot answer, for testing what a rule does without one. */
@@ -104,10 +104,9 @@ export const refusingJudge = (reason: string): Layer.Layer<JudgeService | Decisi
  * and probability decisions answer one number. The answers still pass Effect's
  * validation, so a rule under test sees a real Decision answer.
  */
-export const decisionStub = (options: {
-  readonly label?: string | undefined
-  readonly probability?: number | undefined
-} = {}): Layer.Layer<DecisionModel.DecisionModel> =>
+export const decisionStub = (
+  supplied: Readonly<Record<string, Answer>> = {},
+): Layer.Layer<DecisionModel.DecisionModel> =>
   Layer.effect(
     DecisionModel.DecisionModel,
     DecisionModel.make({
@@ -115,21 +114,25 @@ export const decisionStub = (options: {
         Effect.succeed({
           answers: Object.fromEntries(
             Object.entries(decisions).map(([key, decision]) => {
+              const answer = supplied[key]
               if (decision._tag === "Classify") {
                 const labels = Object.keys(decision.criteria)
-                const chosen =
-                  options.label !== undefined && labels.includes(options.label)
-                    ? options.label
-                    : (labels[0] ?? "")
+                const label =
+                  answer !== undefined && answer.type === "choice" ? answer.choice : (labels[0] ?? "")
+                const given =
+                  answer !== undefined && answer.type === "choice" ? answer.probabilities : {}
+                const missing = labels.filter((candidate) => given[candidate] === undefined)
+                const total = Object.values(given).reduce((sum, value) => sum + value, 0)
+                const remainder = missing.length === 0 ? 0 : Math.max(0, (1 - total) / missing.length)
                 return [
                   key,
                   {
                     _tag: "Classify" as const,
-                    label: chosen,
+                    label,
                     probabilities: Object.fromEntries(
-                      labels.map((label) => [label, label === chosen ? 1 : 0]),
+                      labels.map((candidate) => [candidate, given[candidate] ?? remainder]),
                     ),
-                    confidence: 0.9,
+                    confidence: answer !== undefined && answer.type === "choice" ? answer.confidence : 0.9,
                   },
                 ]
               }
@@ -147,7 +150,13 @@ export const decisionStub = (options: {
                   },
                 ]
               }
-              return [key, { _tag: "Probability" as const, probability: options.probability ?? 0.9 }]
+              return [
+                key,
+                {
+                  _tag: "Probability" as const,
+                  probability: answer !== undefined && answer.type === "noul" ? answer.noul : 0.9,
+                },
+              ]
             }),
           ),
           usage: { inputTokens: 0, outputTokens: 0 },

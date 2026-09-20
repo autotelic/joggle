@@ -1,20 +1,18 @@
 import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
 import { policy } from "../policy.ts"
 import { makeCluster, nameList, type Cluster } from "../cluster.ts"
 import {
   budgetNote,
-  choiceOf,
   declined,
   defineRule,
   inScope,
-  marginOf,
-  noulOf,
+  marginOfAnswer,
   outcome,
   type Scope,
 } from "../rule.ts"
 import { assessClusters, type ClusterRule } from "./cluster-verdict.ts"
 import { layersFrom } from "../architecture.ts"
-import type { Answer } from "../schema.ts"
 import { nameVocabulary } from "../vocabulary.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -42,45 +40,38 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
       right: { symbol: right?.name ?? null, words: rightWords, kind: right?.kind ?? null, path: right?.file ?? null },
       same_words: sameWords,
     },
-    questions: {
-      one_concept: {
-        type: "noul",
-        instructions: {
-          question: "Do `left.symbol` and `right.symbol` denote the same concept?",
-          compare: ["{candidate}left.words", "{candidate}right.words"],
-          focus:
-            "Compare what each name means word by word. Two names for one concept are a spelling problem; two names for two different things are not, however similar they read.",
-        },
+    decisions: {
+      one_concept: Decision.probability({
+        instructions:
+          "Do `left.symbol` and `right.symbol` denote the same concept? Compare `left.words` and `right.words` word by word. Two names for one concept are a spelling problem; two names for two different things are not, however similar they read.",
         criteria: nameVocabulary.oneConcept,
-      },
-      verdict: {
-        type: "choice",
-        instructions: {
-          question: "What should happen to these two names?",
-          fallback: "Choose \`no_issue\` when the names denote two different concepts.",
-          compare: ["{candidate}left.symbol", "{candidate}right.symbol"],
-          focus:
-            "{candidate}left.words and {candidate}right.words are what each name means; {candidate}same_words is true when only the spelling differs.",
-        },
+      }),
+      verdict: Decision.classify({
+        instructions:
+          "What should happen to these two names? Compare `left.symbol` and `right.symbol`. `left.words` and `right.words` are what each name means; `same_words` is true when only the spelling differs. Choose `no_issue` when the names denote two different concepts.",
         criteria: {
           same_use_left: nameVocabulary.standardize(left?.name ?? "left"),
           same_use_right: `One concept, two spellings. Standardize on \`${right?.name ?? "right"}\`.`,
           no_issue: "Two different concepts. Both names are correct. Change nothing.",
         },
-      },
+      }),
     },
-    read: (answers: Readonly<Record<string, Answer>>) => {
-      const verdict = choiceOf(answers, "verdict")
-      const oneConcept = noulOf(answers, "one_concept")
-      if (verdict === undefined) return undefined
-      const score = oneConcept ?? verdict.confidence
-      const margin = marginOf(answers, "verdict") ?? 1
-      if (declined(verdict.choice)) {
-        return { keep: undefined, confidence: verdict.confidence, score, redundancy: score, margin }
+    read: (answers) => {
+      const verdict = answers["verdict"]
+      if (verdict === undefined || !("label" in verdict)) return undefined
+      const oneConcept = answers["one_concept"]
+      const score =
+        oneConcept !== undefined && "probability" in oneConcept
+          ? oneConcept.probability
+          : (verdict.confidence ?? 1)
+      const margin = marginOfAnswer(verdict)
+      const confidence = verdict.confidence ?? 1
+      if (declined(verdict.label)) {
+        return { keep: undefined, confidence, score, redundancy: score, margin }
       }
       return {
-        keep: verdict.choice === "same_use_right" ? 1 : 0,
-        confidence: verdict.confidence,
+        keep: verdict.label === "same_use_right" ? 1 : 0,
+        confidence,
         score,
         // Names have no consequence axis: whether two spellings matter is what
         // `one_concept` already asks.
