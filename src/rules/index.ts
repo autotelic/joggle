@@ -10,6 +10,7 @@ import { composeTypes } from "./compose-types.ts"
 import { nameThePrimitive } from "./name-the-primitive.ts"
 import { hoistToDomain } from "./hoist-to-domain.ts"
 import { namingDrift } from "./naming-drift.ts"
+import { Context, Layer } from "effect"
 import type { Rule } from "../rule.ts"
 
 /**
@@ -40,4 +41,14 @@ export const allRules: ReadonlyArray<Rule> = [
   namingDrift,
 ]
 
-export const ruleById = (id: string): Rule | undefined => allRules.find((rule) => rule.id === id)
+/**
+ * The rule set, as a service.
+ *
+ * A run does not read a hardcoded array; it reads whatever the context provides.
+ * That is what lets a preset be a layer, a test provide three rules, and a
+ * repository add its own without editing this file.
+ */
+export class Rules extends Context.Service<Rules, ReadonlyArray<Rule>>()("@joggle/Rules") {}
+
+/** The built-in rules, as the default `Rules` layer. */
+export const builtIn: Layer.Layer<Rules> = Layer.succeed(Rules, allRules)

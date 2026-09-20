@@ -6,7 +6,7 @@ import { loadParses } from "./parsecache.ts"
 import { JudgeStats } from "./decision.ts"
 import { policy } from "./policy.ts"
 import { finding } from "./rule.ts"
-import { allRules } from "./rules/index.ts"
+import { Rules } from "./rules/index.ts"
 import type { Rule } from "./rule.ts"
 import type { Loaded } from "./plugins.ts"
 import { funnelNotes, rankDiagnostics, type Report, type Skipped } from "./report.ts"
@@ -249,8 +249,9 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // Built-in rules plus the repository's own. A plugin rule is not special: it
   // is selectable, configurable, severable and ignorable like any other, which is
   // the whole point of it being a registry rather than an array.
+  const builtInRules = yield* Rules
   const universe: ReadonlyArray<Rule> = [
-    ...allRules,
+    ...builtInRules,
     ...(options.plugins?.rules ?? []),
   ]
   const selected = (

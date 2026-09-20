@@ -9,7 +9,7 @@ import { loadConfig } from "./config.ts"
 import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
-import { allRules } from "./rules/index.ts"
+import { builtIn, Rules } from "./rules/index.ts"
 import { layerFromConfig as tsgoLayer } from "./tsgo.ts"
 
 /**
@@ -109,8 +109,9 @@ const rules = Command.make(
   {},
   () =>
     Effect.gen(function* () {
-      const width = allRules.reduce((max, rule) => Math.max(max, rule.id.length), 0)
-      const lines = allRules.map(
+      const all = yield* Rules
+      const width = all.reduce((max, rule) => Math.max(max, rule.id.length), 0)
+      const lines = all.map(
         (rule) =>
           `${rule.id.padEnd(width)}  ${rule.severity.padEnd(5)}  ${rule.judged ? "judged" : "static"}  ${rule.description}`,
       )
@@ -125,7 +126,7 @@ const cli = Command.make("joggle").pipe(
   Command.withSubcommands([check, rules]),
 )
 
-const services = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer)
+const services = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, builtIn)
 
 const program = Command.run(cli, { version: policy.version }).pipe(Effect.provide(services))
 
