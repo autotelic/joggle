@@ -10,6 +10,7 @@ import {
   outcome,
   type Scope,
 } from "../rule.ts"
+import { packageNameOf } from "../roles.ts"
 import { dependencyVocabulary } from "../vocabulary.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { Workspace } from "../workspace.ts"
@@ -58,21 +59,6 @@ interface Dependency {
  * code some other way still gets questions about the groups it actually has.
  */
 const moduleOf = (file: string): string => file.split("/").slice(0, 2).join("/")
-
-/**
- * The package a specifier names, which is not the specifier.
- *
- * `fastify-cli/start.js` is a path INTO `fastify-cli`, and `@fastify/cookie` is
- * one package rather than two. Comparing raw specifiers against a manifest's
- * dependency list therefore reports subpath imports as undeclared -- which is how
- * a package that declares a dependency gets flagged for using it.
- */
-export const packageNameOf = (specifier: string): string => {
-  const parts = specifier.split("/")
-  const [first, second] = parts
-  if (first === undefined) return specifier
-  return first.startsWith("@") && second !== undefined ? first + "/" + second : first
-}
 
 /**
  * Node's own modules, which no manifest declares and no repository should.

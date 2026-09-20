@@ -21,47 +21,32 @@ import type * as HttpClient from "effect/unstable/http/HttpClient"
 import { TypeSafeClient, TypeSafeDecisionModel, TypeSafeSchema } from "@effect/ai-typesafe"
 import { canonical } from "./canonical.ts"
 import { policy } from "./policy.ts"
+import type { JudgeTotals } from "./schema.ts"
 
-/**
- * The judged half of joggle, as Effect's own DecisionModel.
- *
- * Built from scratch, this is the shape the AI surface wants:
- *
- *   a rule declares a Decision.Definition with a typed input and named decisions
- *   the rule calls DecisionModel.decide once per candidate
- *   Effect builds the System One questions, calls the provider, validates the
- *     answers and returns them typed
- *
- * joggle adds exactly three things, and nothing about the questions:
- *
- *   a persisted cache, so CI replays reviewed verdicts with no API key
- *   offline mode, so a run can be answered from the cache alone
- *   token accounting, so a run can say what it spent
- *
- * The cache sits on the WIRE, not above the answers. A caching TypeSafeClient is
- * provided to TypeSafeDecisionModel, so every decide -- a fresh call and a replay
- * alike -- runs through Effect's validation. A cached answer cannot become a
- * malformed answer just because it took the short path.
- *
- * The cache key is derived from the encoded state and the questions, which is the
- * thing the provider is asked. An input that is part of the request is therefore
- * part of the key by construction: the old judge carried the repository in the
- * state and forgot it in the key, and the fix is to have only one of them.
- */
-
-// What a run spent on judgements, and how much of it was a replay.
-export interface Stats {
-  readonly requests: number
-  readonly replayed: number
-  /** Wire calls. Fewer than requests means the cache answered. */
-  readonly calls: number
-  readonly unavailable: number
-  readonly inputTokens: number
-  readonly outputTokens: number
-}
+// The judged half of joggle, as Effect's own DecisionModel.
+//
+// Built from scratch, this is the shape the AI surface wants: a rule declares a
+// Decision.Definition with a typed input and named decisions; the rule calls
+// DecisionModel.decide once per candidate; Effect builds the System One
+// questions, calls the provider, validates the answers and returns them typed.
+//
+// joggle adds exactly three things, and nothing about the questions: a persisted
+// cache, so CI replays reviewed verdicts with no API key; offline mode, so a run
+// can be answered from the cache alone; and token accounting, so a run can say
+// what it spent.
+//
+// The cache sits on the WIRE, not above the answers. A caching TypeSafeClient is
+// provided to TypeSafeDecisionModel, so every decide -- a fresh call and a replay
+// alike -- runs through Effect's validation. A cached answer cannot become a
+// malformed answer just because it took the short path.
+//
+// The cache key is derived from the encoded state and the questions, which is the
+// thing the provider is asked. An input that is part of the request is therefore
+// part of the key by construction: the old judge carried the repository in the
+// state and forgot it in the key, and the fix is to have only one of them.
 
 /** The run's judgement accounting, read once at the end of a run. */
-export class JudgeStats extends Context.Service<JudgeStats, { readonly read: Effect.Effect<Stats> }>()(
+export class JudgeStats extends Context.Service<JudgeStats, { readonly read: Effect.Effect<JudgeTotals> }>()(
   "@joggle/JudgeStats",
 ) {}
 
@@ -74,7 +59,7 @@ export interface Options {
   readonly apiKey: Option.Option<string>
 }
 
-const emptyStats: Stats = {
+const emptyStats: JudgeTotals = {
   requests: 0,
   replayed: 0,
   calls: 0,
