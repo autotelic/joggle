@@ -20,6 +20,72 @@ export const SourceLocation = Schema.Struct({
 export interface SourceLocation extends Schema.Schema.Type<typeof SourceLocation> {}
 
 /**
+ * What a finding asks you to do.
+ *
+ * Five operations. A decline is not one of them: `no_issue` already exists as
+ * the way a question says "leave it", and a rule that finds nothing proposes
+ * nothing.
+ */
+export const Operation = Schema.Literals(["merge", "split", "move", "replace", "migrate"])
+
+export type Operation = Schema.Schema.Type<typeof Operation>
+
+/** One place that must change, and what to do there. */
+export const Edit = Schema.Struct({
+  file: Schema.String,
+  /** 1-based, like every other location in this program. */
+  line: Schema.Number,
+  column: Schema.Number,
+  /** One sentence a person or an agent can act on. */
+  instruction: Schema.String,
+})
+
+export interface Edit extends Schema.Schema.Type<typeof Edit> {}
+
+/**
+ * The smaller form, and everything that changes with it.
+ *
+ * The operation is settled by two estimators: a table in code, and the model's
+ * own read of the candidate. The cascade is never the model's -- a model that
+ * listed forty-seven call sites would invent them -- and neither is the set of
+ * operations on offer, which the import graph decides.
+ */
+export const Repair = Schema.Struct({
+  operation: Operation,
+  /** The declaration that survives, when one does. */
+  keep: Schema.optionalKey(SourceLocation),
+  /** The declarations that go. */
+  remove: Schema.Array(SourceLocation),
+  /** The sites that must change, in the order they must change. */
+  cascade: Schema.Array(Edit),
+  /** True when every site is listed, so an agent needs no search of its own. */
+  complete: Schema.Boolean,
+  /** Why the operation settled where it did, in one sentence. */
+  settled: Schema.String,
+})
+
+export interface Repair extends Schema.Schema.Type<typeof Repair> {}
+
+/**
+ * The shape of the codebase, for the line a reader watches.
+ *
+ * A change that adds three declarations and one concept is healthy. A change
+ * that adds three declarations and no concept is pure entropy, and that is the
+ * number worth putting in front of a person.
+ */
+export const Structure = Schema.Struct({
+  /** Distinct declared names, as the index counts them. */
+  concepts: Schema.Number,
+  declarations: Schema.Number,
+  /** Declarations sharing a name with another declaration. */
+  duplicated: Schema.Number,
+  /** Names resolving to more than one type. */
+  overloaded: Schema.Number,
+})
+
+export interface Structure extends Schema.Schema.Type<typeof Structure> {}
+
+/**
  * The only thing joggle produces. Everything else -- scanning, candidate
  * generation, judgement -- exists to manufacture one of these, in the same
  * shape a linter or a typechecker emits so that hosts do not have to care
@@ -53,6 +119,14 @@ export const Diagnostic = Schema.Struct({
    */
   identity: Schema.optionalKey(Schema.String),
   judged: Schema.Boolean,
+  /**
+   * The smaller form this finding proposes, when the rule can propose one.
+   *
+   * Absent means the finding is an observation: a rule that only warns, or a
+   * candidate whose operation the graph does not permit. A host that ignores
+   * this field still gets a working linter.
+   */
+  repair: Schema.optionalKey(Repair),
 })
 
 export interface Diagnostic extends Schema.Schema.Type<typeof Diagnostic> {}

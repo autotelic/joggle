@@ -5,7 +5,7 @@ import { policy } from "./policy.ts"
 import type { JoggleConfig } from "./config.ts"
 import type * as AiError from "effect/unstable/ai/AiError"
 import type { Decision, DecisionModel } from "effect/unstable/ai"
-import type { Diagnostic, Drop, Severity, SourceLocation } from "./schema.ts"
+import type { Diagnostic, Drop, Operation, Repair, Severity, SourceLocation } from "./schema.ts"
 import type { Workspace } from "./workspace.ts"
 
 /**
@@ -93,6 +93,13 @@ export interface Rule {
   readonly description: string
   /** Whether this rule needs the model. Deterministic rules must run without it. */
   readonly judged: boolean
+  /**
+   * The operations this rule can propose. Absent means it only warns.
+   *
+   * The model never sees this list. It is what the report groups by, and what
+   * tells a reader whether a finding is an observation or a work order.
+   */
+  readonly operations?: ReadonlyArray<Operation> | undefined
   readonly run: (
     workspace: Workspace,
     scope: Scope,
@@ -123,6 +130,8 @@ export interface PlannedRule {
   readonly severity: Severity
   readonly description: string
   readonly judged: true
+  /** The operations this rule can propose. Absent means it only warns. */
+  readonly operations?: ReadonlyArray<Operation> | undefined
   /**
    * What to do when no judgement is available. `report` still reports its facts;
    * `propagate` steps aside and the engine reports the rule as skipped.
@@ -224,6 +233,8 @@ export const finding = (input: {
   readonly score?: number | undefined
   /** A stable name for this finding, for comparing one run against the next. */
   readonly identity?: string | undefined
+  /** The smaller form this finding proposes, when the rule can propose one. */
+  readonly repair?: Repair | undefined
 }): Diagnostic => ({
   ruleId: input.ruleId,
   severity: input.severity,
@@ -234,6 +245,7 @@ export const finding = (input: {
   ...(input.confidence === undefined ? {} : { confidence: input.confidence }),
   ...(input.score === undefined ? {} : { score: input.score }),
   ...(input.identity === undefined ? {} : { identity: input.identity }),
+  ...(input.repair === undefined ? {} : { repair: input.repair }),
 })
 
 /**
