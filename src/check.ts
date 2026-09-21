@@ -103,6 +103,11 @@ export interface Options {
    * finding always has at least one changed member.
    */
   readonly changedPaths?: ReadonlyArray<string> | undefined
+  /**
+   * A human name for the git base the scope came from, for the note that says
+   * the base produced nothing. Absent for a stored-run scope.
+   */
+  readonly changedBase?: string | undefined
   /** Report only findings that are not already accepted in this baseline. */
   readonly baselinePath: string | undefined
   /** Write the current findings as the accepted baseline. */
@@ -228,10 +233,15 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // nothing at all while appearing clean, when the tool was invoked with no path
   // argument and TypeScript discovery came back empty.
   if (files.length === 0) {
+    // Name the source of the emptiness. The old message blamed a missing path
+    // argument even when one was given, and even when the real cause was tsgo
+    // returning a list that did not survive the root comparison.
     const where =
-      options.paths.length === 0
-        ? "no source files under " + options.cwd + ", and no path argument was given"
-        : "no source files under " + options.paths.join(", ") + " in " + options.cwd
+      discovered !== undefined
+        ? "tsgo listed no source files under " + options.cwd
+        : options.paths.length === 0
+          ? "no source files under " + options.cwd
+          : "no source files under " + options.paths.join(", ") + " in " + options.cwd
     return yield* Effect.fail(
       new WorkspaceError({ path: options.cwd, operation: "discover", cause: new Error(where) }),
     )
@@ -308,6 +318,10 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
             ruleId: "joggle",
             reason: `replayed the previous run: nothing it depends on changed across ${stored.files} files`,
           },
+          // The stored run's own notes -- the funnel, the skipped judged rules,
+          // the counts -- are part of the report it replayed. Dropping them made
+          // a replay look like a run that had nothing to say.
+          ...stored.notes,
         ],
         structure: stored.structure ?? { concepts: 0, declarations: 0, duplicated: 0, overloaded: 0 },
         timings: [{ phase: "replay-check", ms: discoverMs }],
@@ -392,12 +406,17 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   if (options.changedPaths !== undefined) {
     const changed = new Set(options.changedPaths)
     scope = { changed }
+    const base = options.changedBase === undefined ? "the git base" : options.changedBase
     notes.push({
       ruleId: "joggle",
       reason:
-        "scoped to " +
-        changed.size +
-        " file(s) that differ from the git base: this answers what the change introduced, not what is wrong with the repository",
+        changed.size === 0
+          ? "the changed-file list for " + base + " is empty: nothing is in scope, so this run reports nothing"
+          : "scoped to " +
+            changed.size +
+            " file(s) that differ from " +
+            base +
+            ": this answers what the change introduced, not what is wrong with the repository",
     })
   } else if (options.changed) {
     const changed = changedSince(stored, hashOf)

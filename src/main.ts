@@ -140,7 +140,10 @@ const check = Command.make(
   (config) =>
     Effect.gen(function* () {
       const path = yield* Path.Path
-      const cwd = Option.getOrUndefined(config.cwd) ?? process.cwd()
+      // Absolute at the boundary. Everything downstream compares paths -- tsgo's
+      // file list against the root, git's changed files against the workspace --
+      // and a relative root makes those comparisons fail quietly.
+      const cwd = path.resolve(Option.getOrUndefined(config.cwd) ?? process.cwd())
       const cacheDir = Option.getOrUndefined(config.cacheDir) ?? path.join(cwd, ".joggle")
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
       const ruleFlag = Option.getOrUndefined(config.rule)
@@ -173,6 +176,14 @@ const check = Command.make(
             : { since }
       const changedPaths =
         gitScope === undefined ? undefined : yield* git.changedFiles(cwd, gitScope)
+      const changedBase =
+        gitScope === undefined
+          ? undefined
+          : gitScope.pr !== undefined
+            ? gitScope.pr === ""
+              ? "the current branch's pull request"
+              : "PR " + gitScope.pr
+            : gitScope.since
 
       // The machine cache holds the run cache and the wire cache. The
       // per-decision answer cache in `cacheDir` is the one CI replays.
@@ -199,6 +210,7 @@ const check = Command.make(
         replayUnchanged: !config.noReplay && changedPaths === undefined,
         changed: config.changed,
         changedPaths,
+        changedBase,
         baselinePath: Option.getOrUndefined(config.baseline),
         updateBaselinePath: Option.getOrUndefined(config.updateBaseline),
       }).pipe(
@@ -253,6 +265,10 @@ const askCommand = Command.make(
       Flag.withDescription("Where the committed answer cache lives (default <cwd>/.joggle)."),
       Flag.optional,
     ),
+    maxTokens: Flag.Int("max-tokens").pipe(
+      Flag.withDescription("Input-token budget; candidates are trimmed to fit and the request is halved if the provider still rejects it."),
+      Flag.withDefault(policy.ask.maxInputTokens),
+    ),
     cwd: Flag.String("cwd").pipe(
       Flag.withDescription("Project root to analyse (default: the current directory)."),
       Flag.optional,
@@ -261,11 +277,11 @@ const askCommand = Command.make(
   (config) =>
     Effect.gen(function* () {
       const path = yield* Path.Path
-      const cwd = Option.getOrUndefined(config.cwd) ?? process.cwd()
+      const cwd = path.resolve(Option.getOrUndefined(config.cwd) ?? process.cwd())
       const cacheDir = Option.getOrUndefined(config.cacheDir) ?? path.join(cwd, ".joggle")
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
       const workspace = yield* loadWorkspace(cwd, config.paths.length > 0 ? config.paths : ["."])
-      const answer = yield* ask(workspace, config.query).pipe(
+      const answer = yield* ask(workspace, config.query, { maxInputTokens: config.maxTokens }).pipe(
         Effect.provide(
           decisionLayer({
             cacheDir,
@@ -322,7 +338,8 @@ const rules = Command.make(
   },
   (config) =>
     Effect.gen(function* () {
-      const cwd = Option.getOrUndefined(config.cwd) ?? process.cwd()
+      const path = yield* Path.Path
+      const cwd = path.resolve(Option.getOrUndefined(config.cwd) ?? process.cwd())
       // The same rule set the check runs, so this answers "what is enforced"
       // rather than "what ships".
       const ruleSet = yield* ruleSetFor(cwd, Option.getOrUndefined(config.config))
@@ -395,6 +412,11 @@ const describeFailure = (failure: unknown): string | undefined => {
   // what it said. A stack trace here buries it.
   if (tag === "joggle/GitError" || tag === "joggle/TsgoError") {
     return String(record["operation"]) + ": " + String(record["detail"] ?? "")
+  }
+  // Any other typed failure -- AiError, ConfigError -- has a message, and that
+  // sentence is what a person needs. The stack is for a defect.
+  if (Predicate.isString(record["message"]) && record["message"] !== "") {
+    return record["message"]
   }
   return undefined
 }

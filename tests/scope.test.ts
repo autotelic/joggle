@@ -216,6 +216,46 @@ test("a git-changed scope judges only the files that moved", async () => {
   expect(result.replayed).toBe(false)
 })
 
+test("an empty git scope says so instead of looking like a clean repository", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const seen = yield* Ref.make<ReadonlyArray<string>>([])
+      const report = yield* runCheck({
+        cwd: corpus,
+        paths: ["src"],
+        rules: undefined,
+        typecheck: false,
+        types: "off",
+        useTsgo: false,
+        cacheDirExplicit: true,
+        cacheDir: mkdtempSync(join(tmpdir(), "joggle-empty-scope-")),
+        replayUnchanged: true,
+        changed: false,
+        changedPaths: [],
+        changedBase: "origin/develop",
+        baselinePath: undefined,
+        updateBaselinePath: undefined,
+        config: {},
+      }).pipe(
+        Effect.provide(recordingModel(seen)),
+        Effect.provide(planAnswersLayer),
+        Effect.provide(Layer.succeed(DecisionStats, { read: Effect.succeed(totals) })),
+        Effect.provide(tsgoStub),
+        Effect.provide(Layer.succeed(Rules, [probe])),
+      )
+      return { asked: yield* Ref.get(seen), notes: report.notes.map((note) => note.reason) }
+    }).pipe(Effect.provide(nodeLayer)) as Effect.Effect<
+      { asked: ReadonlyArray<string>; notes: ReadonlyArray<string> },
+      unknown,
+      never
+    >,
+  )
+  // Nothing was judged, and the report explains why rather than reporting zero.
+  expect(result.asked).toEqual([])
+  expect(result.notes.some((note) => note.includes("origin/develop"))).toBe(true)
+  expect(result.notes.some((note) => note.includes("empty"))).toBe(true)
+})
+
 test("a candidate past the run's token budget is reported, not judged", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {

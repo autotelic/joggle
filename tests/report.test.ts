@@ -106,6 +106,17 @@ it("json output is machine readable", () => {
   expect(parsed.diagnostics[0].ruleId).toBe("joggle/duplicate-implementation")
 })
 
+it("a run with no model key says so, rather than only counting it unavailable", () => {
+  const out = render(
+    {
+      ...report([]),
+      decision: { requests: 2, replayed: 0, calls: 0, unavailable: 2, inputTokens: 0, outputTokens: 0 },
+    },
+    "text",
+  )
+  expect(out).toContain("no model key reached the provider")
+})
+
 it("exit codes follow errors and the warning budget", () => {
   expect(exitCodeFor(report([]), -1)).toBe(0)
   expect(exitCodeFor(report([diagnostic()]), -1)).toBe(0)

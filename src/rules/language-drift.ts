@@ -38,6 +38,12 @@ const STOPWORDS = new Set([
   "api", "url", "uri", "uuid", "sql", "yaml", "toml", "xml", "npm", "pnpm", "cli", "sdk",
   "note", "example", "usage", "param", "params", "returns", "return", "throws", "see",
   "todo", "fixme", "hack", "workaround", "important", "warning", "deprecated",
+  // Language primitives and the decline label itself. "none" also has to be
+  // filtered because it is the Choice's decline option: a candidate word that
+  // equals it collides with the option in the criteria map.
+  "none", "null", "undefined", "true", "false", "void", "never", "unknown", "any",
+  "string", "number", "boolean", "object", "array", "function", "method", "symbol", "bigint",
+  "failure", "success", "error",
 ])
 
 const wordsOf = (name: string): ReadonlyArray<string> =>
@@ -57,8 +63,12 @@ const termsOf = (doc: string): ReadonlyArray<string> => {
     if (clean === undefined) continue
     const previous = words[index - 1] ?? ""
     if (index === 0 || previous === "" || /[.:;!?]$/.test(previous)) continue
-    const lower = clean.toLowerCase()
-    if (!STOPWORDS.has(lower)) terms.push(lower)
+    // Split a camel-cased word the same way a declaration name is split, so
+    // prose that writes `SortedByDate` is compared as `sorted`/`by`/`date` and
+    // not as one lowercase blob that no name can ever contain.
+    for (const part of wordsOf(clean)) {
+      if (!STOPWORDS.has(part)) terms.push(part)
+    }
   }
   return terms
 }

@@ -195,10 +195,22 @@ const provenance = (report: Report): string => {
   return `Finished in ${Math.round(report.elapsedMs / 100) / 10}s on ${plural(report.files, "file")} using ${plural(report.rules, "rule")}${where}. ${judged} of ${report.diagnostics.length} findings verified by the model; ${requests} decisions in ${calls} API calls, ${replayed} replayed${u}, ${tokens}.`
 }
 
-const notes = (report: Report): ReadonlyArray<string> => [
-  ...report.skipped.map((skip) => `note: ${skip.ruleId} skipped — ${skip.reason}`),
-  ...report.notes.map((note) => `note: ${note.ruleId} — ${note.reason}`),
-]
+const notes = (report: Report): ReadonlyArray<string> => {
+  // A missing key changes what the tool IS, not just what it saw, and it was
+  // only visible as "0 API calls" in a footer and an "(unverified)" suffix. Say
+  // it in a sentence.
+  const noKey =
+    report.decision.unavailable > 0 && report.decision.calls === 0
+      ? [
+          "note: no model key reached the provider, so judged rules were skipped. Set TYPESAFE_API_KEY (or run with --offline to say so on purpose).",
+        ]
+      : []
+  return [
+    ...noKey,
+    ...report.skipped.map((skip) => `note: ${skip.ruleId} skipped — ${skip.reason}`),
+    ...report.notes.map((note) => `note: ${note.ruleId} — ${note.reason}`),
+  ]
+}
 
 /* -------------------------------------------------------------------------- */
 /* text                                                                       */

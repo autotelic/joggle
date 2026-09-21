@@ -1,6 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
+import { resolve, sep } from "node:path"
 import { TsgoError } from "./schema.ts"
 
 /* -------------------------------------------------------------------------- */
@@ -70,7 +71,18 @@ const run = (binary: string, args: ReadonlyArray<string>, cwd: string) =>
     ),
   )
 
-const underRoot = (cwd: string, file: string): boolean => file.startsWith(cwd)
+/**
+ * Whether the compiler's absolute path is inside the analysed root.
+ *
+ * Resolved on both sides: the root can be relative (it was, at the CLI
+ * boundary, before it was normalized), and `startsWith` on raw strings also
+ * accepts a sibling whose name merely begins with the root.
+ */
+const underRoot = (cwd: string, file: string): boolean => {
+  const root = resolve(cwd)
+  const candidate = resolve(file)
+  return candidate === root || candidate.startsWith(root + sep)
+}
 
 const parseDiagnostics = (output: string): ReadonlyArray<TsgoDiagnostic> => {
   const found: Array<TsgoDiagnostic> = []

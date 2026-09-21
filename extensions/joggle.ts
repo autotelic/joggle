@@ -28,17 +28,30 @@ import { Type } from "typebox"
 /** The package this extension ships in: the directory above `extensions/`. */
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 
+/** The first `name` on PATH, if any. */
+const onPath = (name: string): string | undefined => {
+  for (const dir of (process.env.PATH ?? "").split(":")) {
+    if (dir === "") continue
+    const candidate = join(dir, name)
+    if (existsSync(candidate)) return candidate
+  }
+  return undefined
+}
+
 /**
  * How to invoke joggle.
  *
- * The build is preferred because it is what an installed copy runs. A checkout
- * without `dist/` falls back to the source with the `development` export
- * condition, which is what the package's own `joggle` script uses. `JOGGLE_BIN`
- * overrides both, for a wrapper or another checkout.
+ * A `joggle` on PATH is the machine's own command, and here it is the wrapper
+ * that supplies the model key through doppler -- so it is preferred, and pi and
+ * the shell get the same judged results. Otherwise the build in this checkout
+ * is used, falling back to the source with the `development` export condition.
+ * `JOGGLE_BIN` overrides all of it.
  */
 const cli = (): { readonly command: string; readonly args: ReadonlyArray<string> } => {
   const override = process.env.JOGGLE_BIN
   if (override !== undefined && override !== "") return { command: override, args: [] }
+  const global = onPath("joggle")
+  if (global !== undefined) return { command: global, args: [] }
   const built = join(root, "dist", "main.js")
   if (existsSync(built)) return { command: process.execPath, args: [built] }
   return {
@@ -149,12 +162,13 @@ interface JsonReport {
  * it, and the repair the rule proposes -- which is the material an agent needs
  * in order to act -- and drops the rest.
  */
-const render = (report: JsonReport): string => {
+const render = (report: JsonReport, limit: number): string => {
   const { summary } = report
+  const shown = limit > 0 ? report.diagnostics.slice(0, limit) : report.diagnostics
   const lines = [
     `${summary.problems} problem(s) (${summary.errors} error(s), ${summary.warnings} warning(s), ${summary.infos} notice(s)) across ${summary.files} file(s)`,
   ]
-  report.diagnostics.forEach((diagnostic, index) => {
+  shown.forEach((diagnostic, index) => {
     const { file, line, column } = diagnostic.location
     const verified = diagnostic.judged ? "" : " (unverified)"
     lines.push("")
@@ -172,6 +186,15 @@ const render = (report: JsonReport): string => {
       )
     }
   })
+  // A tool result is context a model pays for on every call. A full-repository
+  // run can be thousands of findings; the total is the fact, the first N are
+  // the work.
+  if (shown.length < report.diagnostics.length) {
+    lines.push("")
+    lines.push(
+      `showing ${shown.length} of ${report.diagnostics.length} findings; narrow the scope, pass rule, or raise limit to see the rest`,
+    )
+  }
   // A judged rule that never ran is the difference between "clean" and "not
   // looked at", and a model reading the findings cannot tell the two apart.
   if (summary.skipped.length > 0) {
@@ -262,6 +285,12 @@ const checkParameters = Type.Object({
   maxWarnings: Type.Optional(
     Type.Number({ description: "Treat more than this many warnings as a failing run." }),
   ),
+  limit: Type.Optional(
+    Type.Number({
+      description:
+        "Maximum findings to return; the total is always reported. Default 50, and 0 returns all of them.",
+    }),
+  ),
 })
 
 interface CheckParameters {
@@ -274,6 +303,7 @@ interface CheckParameters {
   readonly rule?: string | undefined
   readonly offline?: boolean | undefined
   readonly maxWarnings?: number | undefined
+  readonly limit?: number | undefined
 }
 
 const checkArgs = (params: CheckParameters, target: string): ReadonlyArray<string> => {
@@ -342,7 +372,7 @@ export default function (pi: ExtensionAPI): void {
             command: args.join(" "),
           })
         }
-        return ok(render(report), {
+        return ok(render(report, params.limit ?? 50), {
           code: result.code,
           problems: report.summary.problems,
           errors: report.summary.errors,

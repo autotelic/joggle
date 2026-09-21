@@ -73,6 +73,30 @@ With no paths, joggle asks `tsgo --listFilesOnly` what the project is, so it
 analyses exactly what the compiler sees rather than whatever is on disk. With
 paths, it walks them itself.
 
+### Installing the command
+
+The simplest way to use joggle from another workspace is to put it on `PATH`
+once:
+
+```sh
+cd path/to/joggle && pnpm install && pnpm build
+ln -sf "$PWD/scripts/joggle.sh" ~/.local/bin/joggle
+```
+
+Then, from any checkout:
+
+```sh
+joggle check --since origin/main
+```
+
+The wrapper resolves its own checkout through the symlink and runs the build
+(falling back to the source). It supplies the TypeSafe key through doppler by
+explicit project and config -- `JOGGLE_DOPPLER_PROJECT` and
+`JOGGLE_DOPPLER_CONFIG` override the defaults `joggle` and `dev` -- so a
+sibling repository's `doppler.yaml` cannot shadow it, and `doppler run --` is
+never needed. Commands that need no key (`rules`, help, `--offline`) skip
+doppler entirely.
+
 ### From another repository
 
 joggle runs its source in development, and its build when installed. Build once,
@@ -482,6 +506,9 @@ src/
   main.ts                   CLI
 extensions/
   joggle.ts                 the pi extension: tools and a command over the CLI
+scripts/
+  joggle.sh                 the global command: resolves the checkout, supplies the key
+  joggle-elsewhere.sh       check another checkout without writing into it
 tests/
   fixtures/corpus/          intentionally duplicated fixture project
 ```

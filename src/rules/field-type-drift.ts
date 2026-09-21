@@ -40,6 +40,13 @@ interface Declaration {
   readonly line: number
 }
 
+/** One field whose two declarations disagree. */
+interface Drift {
+  readonly field: string
+  readonly left: Declaration
+  readonly right: Declaration
+}
+
 export const fieldTypeDrift = defineRule({
   id: RULE_ID,
   severity: "warn",
@@ -65,6 +72,11 @@ export const fieldTypeDrift = defineRule({
 
     const findings: Array<Diagnostic> = []
     let drifted = 0
+    // Group by the declaration the finding is anchored to. A type with five
+    // drifting fields produced five findings on the same line, which read as
+    // duplicates and inflated the count; one finding that lists them is smaller
+    // and truer to what a reader has to decide.
+    const groups = new Map<string, { file: string; line: number; unit: string; drifts: Array<Drift> }>()
     for (const [field, types] of byField) {
       if (types.size < 2) continue
       if (wordsOf(field).length < policy.fieldTypeDrift.minWords) continue
@@ -92,18 +104,59 @@ export const fieldTypeDrift = defineRule({
         continue
       }
       drifted += 1
-      if (findings.length >= policy.fieldTypeDrift.maxFindings) continue
+      const key = left.file + "\u0000" + left.line
+      const group = groups.get(key) ?? { file: left.file, line: left.line, unit: left.unit, drifts: [] }
+      group.drifts.push({ field, left, right })
+      groups.set(key, group)
+    }
+
+    for (const group of groups.values()) {
+      if (findings.length >= policy.fieldTypeDrift.maxFindings) break
+      const first = group.drifts[0]
+      if (first === undefined) continue
+      const message =
+        group.drifts.length === 1
+          ? "`" + first.field + "` is `" + first.left.type + "` in " + first.left.unit + " and `" + first.right.type + "` in " + first.right.unit + "."
+          : group.drifts.length +
+            " field(s) of " +
+            group.unit +
+            " disagree with another declaration: " +
+            group.drifts
+              .slice(0, 3)
+              .map((drift) => "`" + drift.field + "` (`" + drift.left.type + "` vs `" + drift.right.type + "`)")
+              .join(", ") +
+            (group.drifts.length > 3 ? ", and " + (group.drifts.length - 3) + " more" : "") +
+            "."
+      const where = group.drifts
+        .map(
+          (drift) =>
+            drift.field +
+            ": " +
+            drift.left.file +
+            ":" +
+            drift.left.line +
+            " and " +
+            drift.right.file +
+            ":" +
+            drift.right.line,
+        )
+        .join("; ")
       findings.push(
         finding({
           ruleId: RULE_ID,
           severity: "warn",
-          message:
-            "`" + field + "` is `" + left.type + "` in " + left.unit + " and `" + right.type + "` in " + right.unit + ".",
+          message,
           help:
-            "One field name, two incompatible types. If they are one concept, share one declaration of it; if they are two concepts, give them two names. The declarations are " +
-            left.file + ":" + left.line + " and " + right.file + ":" + right.line + ".",
-          location: { file: left.file, line: left.line, column: 1 },
-          identity: [RULE_ID, field].join("\u0000"),
+            "One field name, two incompatible types. If they are one concept, share one declaration of it; if they are two concepts, give them two names. " +
+            where +
+            ".",
+          location: { file: group.file, line: group.line, column: 1 },
+          identity: [
+            RULE_ID,
+            group.file,
+            String(group.line),
+            ...group.drifts.map((drift) => drift.field).sort((left, right) => left.localeCompare(right)),
+          ].join("\u0000"),
           judged: false,
         }),
       )

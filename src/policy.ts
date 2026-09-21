@@ -316,6 +316,13 @@ export const policy = {
     maxCandidates: 200,
     /** Characters of a candidate's body sent as state. */
     maxSourceChars: 800,
+    /**
+     * Input tokens one ask may cost. One request carries a decision per
+     * candidate, so the candidate list is trimmed to this before it is sent --
+     * a whole-repository ask otherwise exceeds the provider's output ceiling.
+     * Smaller than the check's budget on purpose: check chunks, ask does not.
+     */
+    maxInputTokens: 8000,
     /** Matches printed. */
     top: 10,
   },

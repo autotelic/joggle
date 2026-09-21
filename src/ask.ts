@@ -1,6 +1,7 @@
-import { Effect, Schema } from "effect"
+import { Effect, Result, Schema } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { Decision, DecisionModel } from "effect/unstable/ai"
+import { isUnreachable } from "./decision.ts"
 import { policy } from "./policy.ts"
 import type { Unit, Workspace } from "./workspace.ts"
 
@@ -117,46 +118,75 @@ const candidateEvidence = (unit: Unit) => {
 /**
  * Answer a question about the code.
  *
+ * A request carries one decision per candidate, so its output grows with the
+ * candidate list and a whole-repository ask can exceed the provider's token
+ * ceiling. Two bounds keep that from being fatal: the candidate list is trimmed
+ * to the input budget before the request, and a request that still comes back
+ * too large is halved and retried -- the same degradation `check` uses for its
+ * chunks. Narrowing the paths remains the best answer, and is what the error
+ * says when even one candidate does not fit.
+ *
  * @param workspace - The loaded workspace.
  * @param query - The question, in plain language.
+ * @param options - The input-token budget for the request.
  * @returns The existence probability and the ranked matches.
  */
 export const ask = (
   workspace: Workspace,
   query: string,
+  options: { readonly maxInputTokens?: number | undefined } = {},
 ): Effect.Effect<Answer, AiError.AiError, DecisionModel.DecisionModel> =>
   Effect.gen(function* () {
-    const candidates = candidatesIn(workspace, query)
+    const budget = options.maxInputTokens ?? policy.ask.maxInputTokens
+    const candidates = fitToBudget(candidatesIn(workspace, query), query, budget)
     if (candidates.length === 0) return { exists: 0, matches: [], considered: 0 }
 
-    const decisions: Array<readonly [string, Decision.Any]> = [
-      ["exists", existsDecision],
-      ...candidates.map(
-        (_unit, index): readonly [string, Decision.Any] => [
-          `candidate_${index}`,
-          Decision.probability({
-            instructions: relevanceInstructions(index),
-            criteria: {
-              false: "It does not answer the question.",
-              true: "It answers the question.",
-            },
-          }),
-        ],
-      ),
-    ]
-    const definition = Decision.make({ input: AskEvidence, decisions: Object.fromEntries(decisions) })
-    const decided = yield* DecisionModel.decide(definition, {
-      input: {
-        query,
-        candidates: candidates.map((unit) => candidateEvidence(unit)),
-      },
+    const attempt = (list: ReadonlyArray<Unit>) =>
+      Effect.gen(function* () {
+        const decisions: Array<readonly [string, Decision.Any]> = [
+          ["exists", existsDecision],
+          ...list.map(
+            (_unit, index): readonly [string, Decision.Any] => [
+              `candidate_${index}`,
+              Decision.probability({
+                instructions: relevanceInstructions(index),
+                criteria: {
+                  false: "It does not answer the question.",
+                  true: "It answers the question.",
+                },
+              }),
+            ],
+          ),
+        ]
+        const definition = Decision.make({ input: AskEvidence, decisions: Object.fromEntries(decisions) })
+        const decided = yield* DecisionModel.decide(definition, {
+          input: {
+            query,
+            candidates: list.map((unit) => candidateEvidence(unit)),
+          },
+        })
+        return { decided, list }
+      })
+
+    // Cut and retry. A model that was never reached is not a bad answer, so it
+    // is not retried; a request the provider rejected as too large is.
+    const answered = yield* Effect.gen(function* () {
+      let list = candidates
+      for (;;) {
+        const outcome = yield* Effect.result(attempt(list))
+        if (Result.isSuccess(outcome)) return outcome.success
+        if (list.length <= 1 || isUnreachable(outcome.failure)) {
+          return yield* Effect.fail(outcome.failure)
+        }
+        list = list.slice(0, Math.max(1, Math.ceil(list.length / 2)))
+      }
     })
 
-    const exists = decided.answers["exists"]
+    const exists = answered.decided.answers["exists"]
     const probability = exists !== undefined && "probability" in exists ? exists.probability : 0
-    const matches = candidates
+    const matches = answered.list
       .map((unit, index) => {
-        const answer = decided.answers[`candidate_${index}`]
+        const answer = answered.decided.answers[`candidate_${index}`]
         return {
           symbol: unit.name,
           kind: unit.kind,
@@ -167,5 +197,28 @@ export const ask = (
       })
       .sort((left, right) => right.score - left.score)
       .slice(0, policy.ask.top)
-    return { exists: probability, matches, considered: candidates.length }
+    return { exists: probability, matches, considered: answered.list.length }
   })
+
+/**
+ * Keep the candidates whose evidence fits the input budget, in rank order.
+ *
+ * The estimate is the same characters-over-four the check budget uses, and the
+ * first candidate is always kept so a tiny budget still asks something.
+ */
+const fitToBudget = (
+  candidates: ReadonlyArray<Unit>,
+  query: string,
+  budget: number,
+): ReadonlyArray<Unit> => {
+  const kept: Array<Unit> = []
+  let chars = query.length
+  for (const unit of candidates) {
+    const cost =
+      Math.min(unit.text.length, policy.ask.maxSourceChars) + unit.name.length + unit.file.length
+    if (kept.length > 0 && Math.ceil((chars + cost) / 4) > budget) break
+    kept.push(unit)
+    chars += cost
+  }
+  return kept
+}
