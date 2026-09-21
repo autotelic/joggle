@@ -220,6 +220,13 @@ export const StoredRun = Schema.Struct({
   ),
   files: Schema.Number,
   rules: Schema.Number,
+  /**
+   * The shape of the codebase this run measured.
+   *
+   * Optional so a run stored before this existed still replays, and so a replayed
+   * report can say it does not know rather than print a zero that looks measured.
+   */
+  structure: Schema.optionalKey(Structure),
   skipped: Schema.Array(Note),
   notes: Schema.Array(Note),
   /**

@@ -1,4 +1,4 @@
-import type { Diagnostic, Drop, Note, Severity } from "./schema.ts"
+import type { Diagnostic, Drop, Note, Severity, Structure } from "./schema.ts"
 
 /**
  * The funnel, worded for the report.
@@ -58,6 +58,8 @@ export interface Report {
   readonly diagnostics: ReadonlyArray<Diagnostic>
   readonly files: number
   readonly rules: number
+  /** The shape of the codebase, for the backpressure line. */
+  readonly structure: Structure
   readonly skipped: ReadonlyArray<Skipped>
   /**
    * Bounds the rules hit, in their own words. A note is not a failure: it is
@@ -239,16 +241,47 @@ const census = (report: Report): ReadonlyArray<string> => {
   return lines
 }
 
+/**
+ * The operation a finding proposes, when it proposes one.
+ *
+ * It goes on the same line as the problem, because the operation IS the finding:
+ * "merge into a.ts:8, 4 edits" is a work order, and "declared twice" is a
+ * complaint. A host that ignores it still gets a linter.
+ */
+const operationNote = (diagnostic: Diagnostic): string => {
+  const repair = diagnostic.repair
+  if (repair === undefined) return ""
+  const edits = repair.cascade.length
+  return ` -> ${repair.operation}, ${edits} edit${edits === 1 ? "" : "s"}`
+}
+
+/**
+ * The shape of the codebase, and what this run changed.
+ *
+ * The number to watch is the concept count against the declaration count: a
+ * change that adds declarations without adding concepts is the entropy this tool
+ * exists to remove.
+ */
+const shape = (structure: Structure): string => {
+  const { concepts, declarations, duplicated, overloaded } = structure
+  // A replayed report has no measurement of its own, and a zero that looks
+  // measured is worse than silence.
+  if (declarations === 0) return ""
+  return `${concepts} concept${concepts === 1 ? "" : "s"} · ${declarations} declaration${declarations === 1 ? "" : "s"} · ${duplicated} duplicated · ${overloaded} overloaded`
+}
+
 const text = (report: Report): string => {
   const lines = report.diagnostics.map((d) => {
     const { file, line, column } = d.location
     const help = d.help === undefined ? "" : ` help: ${d.help}`
     const score = d.score === undefined ? "" : ` (${d.score.toFixed(2)})`
-    return `${file}:${line}:${column}: ${label(d.severity)} ${d.ruleId}${score}: ${d.message}${help}`
+    return `${file}:${line}:${column}: ${label(d.severity)} ${d.ruleId}${score}: ${d.message}${operationNote(d)}${help}`
   })
   if (lines.length > 0) lines.push("")
   lines.push(...census(report))
   lines.push(problemSummary(report))
+  const shapeLine = shape(report.structure)
+  if (shapeLine !== "") lines.push(shapeLine)
   const provenanceLine = provenance(report)
   if (provenanceLine !== "") lines.push(provenanceLine)
   lines.push(...notes(report))
@@ -323,6 +356,7 @@ const json = (report: Report): string =>
       summary: {
         files: report.files,
         rules: report.rules,
+        structure: report.structure,
         problems: report.diagnostics.length,
         ...counts(report),
         skipped: report.skipped,

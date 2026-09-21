@@ -15,6 +15,7 @@ const report = (diagnostics: ReadonlyArray<Diagnostic>): Report => ({
   diagnostics,
   files: 2,
   rules: 3,
+  structure: { concepts: 12, declarations: 18, duplicated: 6, overloaded: 1 },
   skipped: [{ ruleId: "joggle/naming-drift", reason: "TYPESAFE_API_KEY is not set" }],
   drops: [],
   notes: [{ ruleId: "joggle/duplicate-meaning", reason: "12 of 412 clusters were not judged" }],
@@ -35,6 +36,36 @@ it("sorts by file, then position, then severity", () => {
     "src/a.ts:9",
     "src/b.ts:1",
   ])
+})
+
+it("a finding that proposes an operation says what it costs", () => {
+  const rendered = render(
+    report([
+      diagnostic({
+        repair: {
+          operation: "merge",
+          remove: [],
+          cascade: [
+            { file: "src/b.ts", line: 1, column: 1, instruction: "import it" },
+            { file: "src/c.ts", line: 2, column: 1, instruction: "call it" },
+          ],
+          complete: true,
+          settled: "the table and the model agree",
+        },
+      }),
+    ]),
+    "text",
+  )
+  expect(rendered).toContain("-> merge, 2 edits")
+  // And a finding with no operation is a plain linter line.
+  expect(render(report([diagnostic()]), "text")).not.toContain("->")
+})
+
+it("the shape line reports the concepts against the declarations", () => {
+  const rendered = render(report([]), "text")
+  expect(rendered).toContain("12 concepts")
+  expect(rendered).toContain("18 declarations")
+  expect(rendered).toContain("6 duplicated")
 })
 
 it("default output is one greppable line per problem, like oxlint", () => {

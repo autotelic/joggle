@@ -36,9 +36,10 @@ import {
   type Drop,
   type Diagnostic,
   type DecisionTotals,
+  type Structure,
 } from "./schema.ts"
 import { Service as Tsgo } from "./tsgo.ts"
-import { discoverFiles, loadWorkspace } from "./workspace.ts"
+import { discoverFiles, loadWorkspace, type Unit } from "./workspace.ts"
 import type { ImportGraph } from "./imports.ts"
 
 export interface Options {
@@ -296,6 +297,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
             reason: `replayed the previous run: nothing it depends on changed across ${stored.files} files`,
           },
         ],
+        structure: stored.structure ?? { concepts: 0, declarations: 0, duplicated: 0, overloaded: 0 },
         timings: [{ phase: "replay-check", ms: discoverMs }],
         // This run spent nothing, so it reports nothing spent.
         decision: { requests: 0, replayed: 0, calls: 0, unavailable: 0, inputTokens: 0, outputTokens: 0 },
@@ -812,12 +814,38 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // "workspace 4.4s" and nothing else is a run nobody can make faster.
   timings.push(...workspace.phases)
 
+  // The shape of the codebase, before any rule filtered it. A change that adds
+  // declarations without adding concepts is the entropy this tool exists to
+  // remove, and the two numbers together are the only honest way to say it.
+  const names = new Map<string, Array<Unit>>()
+  for (const unit of workspace.units) {
+    const list = names.get(unit.name)
+    if (list === undefined) names.set(unit.name, [unit])
+    else list.push(unit)
+  }
+  let duplicated = 0
+  let overloaded = 0
+  for (const list of names.values()) {
+    if (list.length > 1) duplicated += list.length
+    const displays = new Set(
+      list.map((unit) => unit.typeFacts?.display).filter((display) => display !== undefined),
+    )
+    if (displays.size > 1) overloaded += 1
+  }
+  const structure: Structure = {
+    concepts: names.size,
+    declarations: workspace.units.length,
+    duplicated,
+    overloaded,
+  }
+
   const decisionTotals: DecisionTotals = yield* decisionStats.read
   const elapsedMs = (yield* Clock.currentTimeMillis) - started
   const report: Report = {
     diagnostics: rankDiagnostics(configured),
     files: workspace.files.length,
     rules: effective.length,
+    structure,
     skipped,
     notes,
     drops,
@@ -843,6 +871,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       diagnostics: report.diagnostics,
       files: report.files,
       rules: report.rules,
+      structure: report.structure,
       skipped: report.skipped,
       notes: report.notes,
       drops: report.drops,
