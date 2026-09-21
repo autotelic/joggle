@@ -227,8 +227,16 @@ export default {
       // it knows every answer came from its own questionnaire. The assertion is
       // the erasure boundary itself, and the SAFETY comment beside it states the
       // invariant.
-      files: ["src/rules/cluster-verdict.ts", "src/plans.ts"],
-      rules: { "plumb/no-reinterpret-cast": "off", "plumb/no-unknown-parameters": "off" },
+      files: ["src/rules/cluster-verdict.ts", "src/plans.ts", "src/operation.ts"],
+      rules: {
+        "plumb/no-reinterpret-cast": "off",
+        "plumb/no-unknown-parameters": "off",
+        // A table with no opinion is an ordinary answer here, and the absence is
+        // already a reported fact: `settle` says so in its reason, and the run
+        // prints it. Wrapping each hop in Option would put ceremony around a
+        // boundary that names its own misses.
+        "plumb-effect/guarded-op-must-return-option": "off",
+      },
     },
     {
       // A canonical JSON serializer accepts any JSON by definition. Its whole job

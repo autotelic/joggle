@@ -13,17 +13,17 @@ const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 test("the table reads the answers, and it is a policy rather than a proof", () => {
   // A name declared twice, and the difference is a constant: merge.
-  expect(derivedOperation({ shape: "duplicated", oneThing: 0.9, difference: "value" })).toBe("merge")
+  expect(derivedOperation({ candidate: "duplicated", oneThing: 0.9, difference: "value" })).toBe("merge")
   // The difference is a meaning: the shared part moves somewhere both can reach.
-  expect(derivedOperation({ shape: "duplicated", oneThing: 0.9, difference: "meaning" })).toBe("move")
+  expect(derivedOperation({ candidate: "duplicated", oneThing: 0.9, difference: "meaning" })).toBe("move")
   // The model said these are two things, which is a verdict.
-  expect(derivedOperation({ shape: "duplicated", oneThing: 0.2, difference: "value" })).toBeUndefined()
+  expect(derivedOperation({ candidate: "duplicated", oneThing: 0.2, difference: "value" })).toBeUndefined()
   // The evidence does not say what the difference is, so the table has no opinion.
-  expect(derivedOperation({ shape: "duplicated", oneThing: 0.9, difference: "unclear" })).toBeUndefined()
+  expect(derivedOperation({ candidate: "duplicated", oneThing: 0.9, difference: "unclear" })).toBeUndefined()
   // One name with two meanings has exactly one repair.
-  expect(derivedOperation({ shape: "overloaded", oneThing: 0.9, difference: "value" })).toBe("split")
+  expect(derivedOperation({ candidate: "overloaded", oneThing: 0.9, difference: "value" })).toBe("split")
   // Logic in the wrong place moves, whatever the other answers say.
-  expect(derivedOperation({ shape: "misplaced", oneThing: 0.9, difference: "value" })).toBe("move")
+  expect(derivedOperation({ candidate: "misplaced", oneThing: 0.9, difference: "value" })).toBe("move")
 })
 
 /* -------------------------------------------------------------------------- */

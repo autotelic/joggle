@@ -3,20 +3,18 @@ import type { Operation } from "./schema.ts"
 import { qualityOf, type Quality } from "./rule.ts"
 import type { Unit, Workspace } from "./workspace.ts"
 
-/**
- * The operations a rule proposes, and how one is settled.
- *
- * Two estimators, and they are diverse by construction. `derivedOperation` is a
- * table a person wrote once; the model's own read sees the whole candidate. Their
- * errors are different, so agreement is evidence and disagreement is a signal --
- * the method the approximation book opens with, applied to the tool rather than
- * to a physics problem.
- *
- * The table is NOT a proof. It reads like one, and the first version of this file
- * presented it as one, which is the exact defect `joggle/rule-judgment` exists to
- * find: a person's opinion wearing the costume of a rule. So it is named for what
- * it is, it is cross-checked, and a disagreement is reported rather than hidden.
- */
+// The operations a rule proposes, and how one is settled.
+//
+// Two estimators, and they are diverse by construction. `derivedOperation` is a
+// table a person wrote once; the model's own read sees the whole candidate. Their
+// errors are different, so agreement is evidence and disagreement is a signal --
+// the method the approximation book opens with, applied to the tool rather than
+// to a physics problem.
+//
+// The table is NOT a proof. It reads like one, and the first version of this file
+// presented it as one, which is the exact defect `joggle/rule-judgment` exists to
+// find: a person's opinion wearing the costume of a rule. So it is named for what
+// it is, it is cross-checked, and a disagreement is reported rather than hidden.
 
 /** The words a Choice offers for one operation. */
 export const describeOperation = (operation: Operation): string => {
@@ -63,20 +61,20 @@ export const permitted = (
 /**
  * The table. ONE estimator, and a policy rather than a proof.
  *
- * @param input.shape - What the candidate is: a name declared twice, a name with
- *   two meanings, or logic in the wrong place. A fact, not an answer.
+ * @param input.candidate - What the candidate is: a name declared twice, a name
+ *   with two meanings, or logic in the wrong place. A fact, not an answer.
  * @param input.oneThing - The probability that the declarations are one concept.
  * @param input.difference - Whether the difference between them is a value or a
  *   meaning.
  * @returns The operation the answers imply, or undefined when they imply none.
  */
 export const derivedOperation = (input: {
-  readonly shape: "duplicated" | "overloaded" | "misplaced"
+  readonly candidate: "duplicated" | "overloaded" | "misplaced"
   readonly oneThing: number
   readonly difference: "value" | "meaning" | "unclear"
 }): Operation | undefined => {
-  if (input.shape === "overloaded") return "split"
-  if (input.shape === "misplaced") return "move"
+  if (input.candidate === "overloaded") return "split"
+  if (input.candidate === "misplaced") return "move"
   if (input.oneThing < policy.decision.gates.probabilityFloor) return undefined
   if (input.difference === "value") return "merge"
   if (input.difference === "meaning") return "move"
