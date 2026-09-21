@@ -5,16 +5,40 @@
   "type": "module",
   "description": "Opinionated cross-file idiom rules for TypeScript — a layer above the linter and the typechecker.",
   "license": "MIT",
-  "exports": {
-    "./plugin": "./src/plugin.ts",
-    "./testing": "./src/testing.ts",
-    "./presets/composition": "./src/presets/composition.ts"
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
   },
+  "exports": {
+    "./plugin": {
+      "development": "./src/plugin.ts",
+      "default": "./dist/plugin.js"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "default": "./dist/testing.js"
+    },
+    "./presets/composition": {
+      "development": "./src/presets/composition.ts",
+      "default": "./dist/presets/composition.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "extensions"
+  ],
   "bin": {
     "joggle": "./bin/joggle.js"
   },
   "scripts": {
-    "joggle": "node src/main.ts",
+    "joggle": "node --conditions=development src/main.ts",
+    "build": "tsgo -p tsconfig.build.json",
+    "prepack": "pnpm build",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run",
     "lint": "node scripts/lint-baseline.mjs",
@@ -33,6 +57,7 @@
     "@types/node": "^24.0.0",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "oxlint": "^1.83.0",
+    "typebox": "^1.3.34",
     "vitest": "^5.0.1"
   }
 }

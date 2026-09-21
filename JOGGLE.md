@@ -64,11 +64,52 @@ pnpm joggle check --format github              # GitHub Actions annotations
 pnpm joggle check --offline                    # replay from cache, no network
 pnpm joggle check --rule joggle/naming-drift   # one rule
 pnpm joggle check --max-warnings 0             # warnings fail the build
+pnpm joggle check --since origin/main          # only what this branch changed
+pnpm joggle check --pr                         # only what this branch's PR changed
+pnpm joggle check --pr-number 123              # only what PR 123 changed
 ```
 
 With no paths, joggle asks `tsgo --listFilesOnly` what the project is, so it
 analyses exactly what the compiler sees rather than whatever is on disk. With
 paths, it walks them itself.
+
+### From another repository
+
+joggle runs its source in development, and its build when installed. Build once,
+then link it into the repository you are working in:
+
+```sh
+cd path/to/joggle && pnpm install && pnpm build
+
+cd path/to/other-repo
+pnpm add -D file:/absolute/path/to/joggle   # or: pnpm link /absolute/path/to/joggle
+
+pnpm exec joggle check --pr                 # after cutting a PR
+```
+
+`file:` installs a copy of `dist/`, so nothing in the other repository has to
+understand TypeScript. `pnpm link` symlinks the source, which works because the
+symlink's real path sits outside `node_modules` -- but a `file:` install needs
+`dist/`, and `pnpm build` is what makes it.
+
+### As a pi extension
+
+The repository is also a [pi](https://pi.dev) package. Install it once and pi
+gains two tools and a command in every repository it works in:
+
+```sh
+pi install /absolute/path/to/joggle    # or: pi -e /absolute/path/to/joggle
+```
+
+| Name | What it does |
+| --- | --- |
+| `joggle_check` | Run a scoped check and return the findings. Defaults to the changed scope, so it answers what the current batch of work introduced; `scope: "pr"` answers what a pull request introduced. |
+| `joggle_rules` | List the rules the current repository enforces. |
+| `/joggle` | Run a check from the prompt line; arguments pass through, e.g. `/joggle --pr`. |
+
+The extension is a shell over the CLI in this checkout (`dist/main.js`, falling
+back to `src/main.ts`), and it always analyses the repository pi is running in.
+`JOGGLE_BIN` points it at a different build or a wrapper.
 
 Output formats follow oxlint, because oxlint already decided what a linter's
 output should be and its decisions are worth copying:
@@ -94,7 +135,11 @@ those two want different things.
 | `--typecheck` | include tsgo diagnostics as `joggle/typecheck` |
 | `--no-tsgo` | never invoke tsgo |
 | `--offline` | answer only from the judgement cache |
-| `--cache-dir <path>` | where `judgements.json` lives (default `.joggle`) |
+| `--changed` | scope to what changed since the stored run |
+| `--since <rev>` | scope to what changed since a git revision, working tree included |
+| `--pr` | scope to the pull request for the current branch (resolved with `gh`) |
+| `--pr-number <n\|url>` | scope to a specific pull request |
+| `--cache-dir <path>` | where `answers.json` lives (default `.joggle`) |
 | `--cwd <path>` | project root |
 
 ## CI and replay
@@ -109,7 +154,7 @@ It is serialised with sorted keys, so the same candidate produces the same key
 on every machine — which means **run from the repository root**. Evidence
 carries root-relative paths; running from a subdirectory changes the key and
 misses every cached verdict. Successful judgements are written to
-`.joggle/judgements.json`; commit that file and CI replays them with
+`.joggle/answers.json`; commit that file and CI replays them with
 `--offline` and **no API key at all**. Bump `policy.decisionVersion` when you
 change a question's wording, and every cached answer for it is invalidated at
 once instead of silently replayed against newer questions.
@@ -345,18 +390,32 @@ report gets replayed. Bump it when the rules move.
 
 ### Answering "what did this change introduce?"
 
+Two scopes answer this. `--changed` compares against the last stored run, which
+is machine-local and only exists once the repository has been analysed before:
+
 ```sh
 joggle check --changed     # scope candidate generation to the changed declarations
 ```
 
-This is sound because a change elsewhere cannot create a duplicate between two
+`--since` and `--pr` answer the same question from git, so a fresh clone is
+scoped on its first run. They include the working tree and untracked files, which
+is what makes a second pass see the edit made after the first:
+
+```sh
+joggle check --since origin/main   # this branch against where it forked
+joggle check --pr                  # the current branch's pull request
+joggle check --pr-number 123       # a specific pull request
+```
+
+Both are sound because a change elsewhere cannot create a duplicate between two
 declarations it did not touch: every *new* finding has at least one changed
 member. Dependents come into scope only when a file's **exports** moved, because
-only then can their type names resolve to something else.
+only then can their type names resolve to something else — a refinement the
+stored-run scope makes and the git scope does not.
 
-What it does not do is report removals, and it is not a full report — so a
-scoped run leaves the stored run alone rather than becoming the next comparison
-base.
+What neither does is report removals, and neither is a full report — so a scoped
+run leaves the stored run alone rather than becoming the next comparison base,
+and a git scope never replays the stored full report.
 
 Measured on 1,870 files:
 
@@ -396,6 +455,8 @@ src/
   check.ts                  the two-phase analysis pass
   report.ts                 text / json / github
   main.ts                   CLI
+extensions/
+  joggle.ts                 the pi extension: tools and a command over the CLI
 tests/
   fixtures/corpus/          intentionally duplicated fixture project
 ```

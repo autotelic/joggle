@@ -93,6 +93,16 @@ export interface Options {
    * and the stored run is left alone because a scoped run is not a full run.
    */
   readonly changed: boolean
+  /**
+   * Files that differ from a git base, as root-relative paths.
+   *
+   * This is the PR-shaped scope: `--since main` or `--pr 123` computes it from
+   * git rather than from the stored run, so the first run in a fresh clone is
+   * already scoped. Candidate generation is restricted to these files; the
+   * soundness argument is the same one `--changed` rests on, because a new
+   * finding always has at least one changed member.
+   */
+  readonly changedPaths?: ReadonlyArray<string> | undefined
   /** Report only findings that are not already accepted in this baseline. */
   readonly baselinePath: string | undefined
   /** Write the current findings as the accepted baseline. */
@@ -283,7 +293,9 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   const runCache = options.runCacheDir ?? options.cacheDir
 
   const stored = yield* readStored(fs, path, runCache)
-  if (options.replayUnchanged) {
+  // A git-scoped run is not the whole repository, so the whole repository's
+  // stored report is not a replay of it.
+  if (options.replayUnchanged && options.changedPaths === undefined) {
     if (stored !== undefined && stored.manifest === manifest) {
       return yield* finish({
         diagnostics: stored.diagnostics,
@@ -377,7 +389,17 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
 
   // Scope after the workspace is loaded: closing over the import graph needs it.
   let scope: Scope = everyFile
-  if (options.changed) {
+  if (options.changedPaths !== undefined) {
+    const changed = new Set(options.changedPaths)
+    scope = { changed }
+    notes.push({
+      ruleId: "joggle",
+      reason:
+        "scoped to " +
+        changed.size +
+        " file(s) that differ from the git base: this answers what the change introduced, not what is wrong with the repository",
+    })
+  } else if (options.changed) {
     const changed = changedSince(stored, hashOf)
     if (changed === undefined) {
       notes.push({
@@ -859,7 +881,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // run and the baseline is applied to it again rather than baked in.
   // A scoped run is not a full run, so it must not become the baseline that the
   // next full run is compared against.
-  if (!options.changed) {
+  if (!options.changed && options.changedPaths === undefined) {
     yield* writeStored(fs, path, runCache, {
       version: policy.version,
       manifest,

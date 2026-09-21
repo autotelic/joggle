@@ -172,6 +172,50 @@ test("a candidate outside the run's scope is never judged and never reported", a
   expect(result.files).toEqual(["src/users.ts"])
 })
 
+test("a git-changed scope judges only the files that moved", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const seen = yield* Ref.make<ReadonlyArray<string>>([])
+      const report = yield* runCheck({
+        cwd: corpus,
+        paths: ["src"],
+        rules: undefined,
+        typecheck: false,
+        types: "off",
+        useTsgo: false,
+        cacheDirExplicit: true,
+        cacheDir: mkdtempSync(join(tmpdir(), "joggle-git-scope-")),
+        // Replay is on, and a git scope must ignore it: the stored report is the
+        // whole repository, not the slice the caller asked about.
+        replayUnchanged: true,
+        changed: false,
+        changedPaths: ["src/users.ts"],
+        baselinePath: undefined,
+        updateBaselinePath: undefined,
+        config: {},
+      }).pipe(
+        Effect.provide(recordingModel(seen)),
+        Effect.provide(planAnswersLayer),
+        Effect.provide(Layer.succeed(DecisionStats, { read: Effect.succeed(totals) })),
+        Effect.provide(tsgoStub),
+        Effect.provide(Layer.succeed(Rules, [probe])),
+      )
+      return {
+        asked: yield* Ref.get(seen),
+        files: report.diagnostics.map((entry) => entry.location.file),
+        replayed: report.replayed,
+      }
+    }).pipe(Effect.provide(nodeLayer)) as Effect.Effect<
+      { asked: ReadonlyArray<string>; files: ReadonlyArray<string>; replayed: boolean },
+      unknown,
+      never
+    >,
+  )
+  expect(result.asked).toEqual(["probe src/users.ts"])
+  expect(result.files).toEqual(["src/users.ts"])
+  expect(result.replayed).toBe(false)
+})
+
 test("a candidate past the run's token budget is reported, not judged", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {

@@ -6,7 +6,8 @@ import { runCheck } from "./check.ts"
 import { layer as decisionLayer } from "./decision.ts"
 import { ask } from "./ask.ts"
 import { runCacheDirFor } from "./state.ts"
-import { loadConfig } from "./config.ts"
+import { loadConfig, isEnabled, severityFor } from "./config.ts"
+import { layer as gitLayer, Service as Git } from "./git.ts"
 import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
@@ -23,27 +24,118 @@ import { layerFromConfig as tsgoLayer } from "./tsgo.ts"
 const write = (text: string): Effect.Effect<void> =>
   Console.log(text.endsWith("\n") ? text.slice(0, -1) : text)
 
+/**
+ * The repository's rule set: its config, its plugins, and the layer the run
+ * reads.
+ *
+ * One function so `check` and `rules` cannot disagree about what is enforced.
+ * They did: `rules` listed the built-ins while `check` ran the configured
+ * preset, which is the one output a reader uses to answer "what is enforced".
+ */
+const ruleSetFor = (cwd: string, configFile: string | undefined) =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path
+    const settings = yield* loadConfig(path.resolve(cwd, configFile ?? "joggle.config.json"))
+    const loaded = yield* loadPlugins(
+      [...(settings.presets ?? []), ...(settings.plugins ?? [])],
+      cwd,
+    )
+    // A preset's severities and scoping sit under the repository's own, per rule:
+    // enabling twenty opinions and then turning one off should not mean
+    // restating the other nineteen.
+    const effective = withDefaults(loaded.config, settings)
+    // The repository's rules join the built-in ones here, once, so the run
+    // itself reads one rule set from the context and never sees a plugin.
+    return {
+      settings,
+      loaded,
+      effective,
+      rules: [...allRules, ...loaded.rules],
+      layer: Layer.succeed(Rules, [...allRules, ...loaded.rules]),
+    }
+  })
+
 const check = Command.make(
   "check",
   {
-    paths: Argument.String("paths").pipe(Argument.variadic()),
-    rule: Flag.String("rule").pipe(Flag.optional),
+    paths: Argument.String("paths").pipe(
+      Argument.withDescription(
+        "Files or directories to analyse. Default: whatever tsgo says the project is.",
+      ),
+      Argument.variadic(),
+    ),
+    rule: Flag.String("rule").pipe(
+      Flag.withDescription("Only run these rule ids, comma-separated."),
+      Flag.optional,
+    ),
     format: Flag.Literals("format", ["text", "stylish", "unix", "json", "github"]).pipe(
+      Flag.withDescription("How to render the report."),
       Flag.withDefault("text"),
     ),
-    maxWarnings: Flag.Int("max-warnings").pipe(Flag.withDefault(-1)),
-    typecheck: Flag.Boolean("typecheck").pipe(Flag.withDefault(false)),
-    types: Flag.Boolean("types").pipe(Flag.withDefault(false)),
-    maxTokens: Flag.Int("max-tokens").pipe(Flag.withDefault(policy.decision.maxInputTokens)),
-    offline: Flag.Boolean("offline").pipe(Flag.withDefault(false)),
-    noTsgo: Flag.Boolean("no-tsgo").pipe(Flag.withDefault(false)),
-    noReplay: Flag.Boolean("no-replay").pipe(Flag.withDefault(false)),
-    changed: Flag.Boolean("changed").pipe(Flag.withDefault(false)),
-    baseline: Flag.String("baseline").pipe(Flag.optional),
-    updateBaseline: Flag.String("update-baseline").pipe(Flag.optional),
-    cacheDir: Flag.String("cache-dir").pipe(Flag.optional),
-    cwd: Flag.String("cwd").pipe(Flag.optional),
-    config: Flag.String("config").pipe(Flag.optional),
+    maxWarnings: Flag.Int("max-warnings").pipe(
+      Flag.withDescription("Exit non-zero when warnings exceed this count (-1 disables)."),
+      Flag.withDefault(-1),
+    ),
+    typecheck: Flag.Boolean("typecheck").pipe(
+      Flag.withDescription("Include tsgo's own diagnostics as joggle/typecheck."),
+      Flag.withDefault(false),
+    ),
+    types: Flag.Boolean("types").pipe(
+      Flag.withDescription("Resolve declaration types through tsgo's trace (enables type-aware rules)."),
+      Flag.withDefault(false),
+    ),
+    maxTokens: Flag.Int("max-tokens").pipe(
+      Flag.withDescription("Input-token budget for judgement in this run."),
+      Flag.withDefault(policy.decision.maxInputTokens),
+    ),
+    offline: Flag.Boolean("offline").pipe(
+      Flag.withDescription("Answer only from the committed judgement cache; never call the model."),
+      Flag.withDefault(false),
+    ),
+    noTsgo: Flag.Boolean("no-tsgo").pipe(
+      Flag.withDescription("Never invoke tsgo; walk the paths on disk instead."),
+      Flag.withDefault(false),
+    ),
+    noReplay: Flag.Boolean("no-replay").pipe(
+      Flag.withDescription("Do not reuse the stored run when nothing changed."),
+      Flag.withDefault(false),
+    ),
+    changed: Flag.Boolean("changed").pipe(
+      Flag.withDescription("Scope to files changed since the stored run (machine-local)."),
+      Flag.withDefault(false),
+    ),
+    since: Flag.String("since").pipe(
+      Flag.withDescription("Scope to files changed since a git revision (for example origin/main)."),
+      Flag.optional,
+    ),
+    pr: Flag.Boolean("pr").pipe(
+      Flag.withDescription("Scope to the pull request for the current branch."),
+      Flag.withDefault(false),
+    ),
+    prNumber: Flag.String("pr-number").pipe(
+      Flag.withDescription("Scope to a specific pull request, by number or URL."),
+      Flag.optional,
+    ),
+    baseline: Flag.String("baseline").pipe(
+      Flag.withDescription("Report only findings not already accepted in this baseline file."),
+      Flag.optional,
+    ),
+    updateBaseline: Flag.String("update-baseline").pipe(
+      Flag.withDescription("Write the current findings to this file as the accepted baseline."),
+      Flag.optional,
+    ),
+    cacheDir: Flag.String("cache-dir").pipe(
+      Flag.withDescription("Where the committed answer cache lives (default <cwd>/.joggle)."),
+      Flag.optional,
+    ),
+    cwd: Flag.String("cwd").pipe(
+      Flag.withDescription("Project root to analyse (default: the current directory)."),
+      Flag.optional,
+    ),
+    config: Flag.String("config").pipe(
+      Flag.withDescription("Config file, relative to the project root (default joggle.config.json)."),
+      Flag.optional,
+    ),
   },
   (config) =>
     Effect.gen(function* () {
@@ -62,24 +154,26 @@ const check = Command.make(
 
       // Relative to the analysed root, so a config travels with the repository it
       // describes rather than with the shell that invoked the tool.
-      const settings = yield* loadConfig(
-        path.resolve(
-          cwd,
-          Option.getOrUndefined(config.config) ?? "joggle.config.json",
-        ),
-      )
+      const ruleSet = yield* ruleSetFor(cwd, Option.getOrUndefined(config.config))
+      const { loaded, effective } = ruleSet
+      const rulesLayer = ruleSet.layer
 
-      const loaded = yield* loadPlugins(
-        [...(settings.presets ?? []), ...(settings.plugins ?? [])],
-        cwd,
-      )
-      // The repository's rules join the built-in ones here, once, so the run
-      // itself reads one rule set from the context and never sees a plugin.
-      const rulesLayer = Layer.succeed(Rules, [...allRules, ...loaded.rules])
-      // A preset's severities and scoping sit under the repository's own, per rule:
-      // enabling twenty opinions and then turning one off should not mean
-      // restating the other nineteen.
-      const effective = withDefaults(loaded.config, settings)
+      // The git base, resolved before the run so the engine never has to know
+      // about git. `--pr` wins when both are given: it is the more specific
+      // question, and its answer already implies a base. An empty string is the
+      // adapter's spelling of "the pull request for this branch".
+      const since = Option.getOrUndefined(config.since)
+      const prNumber = Option.getOrUndefined(config.prNumber)
+      const git = yield* Git
+      const gitScope =
+        config.pr || prNumber !== undefined
+          ? { pr: prNumber ?? "" }
+          : since === undefined
+            ? undefined
+            : { since }
+      const changedPaths =
+        gitScope === undefined ? undefined : yield* git.changedFiles(cwd, gitScope)
+
       // The machine cache holds the run cache and the wire cache. The
       // per-decision answer cache in `cacheDir` is the one CI replays.
       const machineCache = yield* runCacheDirFor(cwd)
@@ -100,8 +194,11 @@ const check = Command.make(
         // artifact, and a run should not write a report into a repository it is
         // only visiting.
         runCacheDir: machineCache,
-        replayUnchanged: !config.noReplay,
+        // A git-scoped run is never a replay: the stored report is the whole
+        // repository, and the caller asked about a slice of it.
+        replayUnchanged: !config.noReplay && changedPaths === undefined,
         changed: config.changed,
+        changedPaths,
         baselinePath: Option.getOrUndefined(config.baseline),
         updateBaselinePath: Option.getOrUndefined(config.updateBaseline),
       }).pipe(
@@ -114,16 +211,52 @@ const check = Command.make(
       yield* Effect.sync(() => {
         process.exitCode = exitCodeFor(report, config.maxWarnings)
       })
-    }),
-).pipe(Command.withDescription("Report cross-file duplication and naming drift."))
+    }).pipe(Effect.provide(gitLayer)),
+).pipe(
+  Command.withDescription(
+    "Report cross-file duplication and naming drift. With no paths, analyse the project tsgo sees. --since, --pr and --pr-number answer what a change introduced; --changed does the same against the last stored run.",
+  ),
+  Command.withShortDescription("Report cross-file duplication and naming drift."),
+  Command.withExamples([
+    { command: "joggle check", description: "Analyse the project tsgo sees." },
+    {
+      command: "joggle check src --format stylish",
+      description: "Read findings for a directory, grouped by file.",
+    },
+    {
+      command: "joggle check --pr",
+      description: "Report only what this branch's pull request introduced.",
+    },
+    {
+      command: "joggle check --since origin/main",
+      description: "Report only what this branch introduced, from git.",
+    },
+    {
+      command: "joggle check --offline",
+      description: "Replay committed judgements; never call the model.",
+    },
+    { command: "joggle check --format github", description: "Emit GitHub Actions annotations." },
+  ]),
+)
 
 const askCommand = Command.make(
   "ask",
   {
-    query: Argument.String("query"),
-    paths: Argument.String("paths").pipe(Argument.variadic()),
-    cacheDir: Flag.String("cache-dir").pipe(Flag.optional),
-    cwd: Flag.String("cwd").pipe(Flag.optional),
+    query: Argument.String("query").pipe(
+      Argument.withDescription('A question in prose, for example "where is the retry policy defined?".'),
+    ),
+    paths: Argument.String("paths").pipe(
+      Argument.withDescription("Files or directories to rank against. Default: the whole project."),
+      Argument.variadic(),
+    ),
+    cacheDir: Flag.String("cache-dir").pipe(
+      Flag.withDescription("Where the committed answer cache lives (default <cwd>/.joggle)."),
+      Flag.optional,
+    ),
+    cwd: Flag.String("cwd").pipe(
+      Flag.withDescription("Project root to analyse (default: the current directory)."),
+      Flag.optional,
+    ),
   },
   (config) =>
     Effect.gen(function* () {
@@ -164,27 +297,72 @@ const askCommand = Command.make(
         ].join("\n"),
       )
     }),
-).pipe(Command.withDescription("Ask a question about the code; rank the declarations that answer it."))
+).pipe(
+  Command.withDescription("Ask a question about the code; rank the declarations that answer it."),
+  Command.withShortDescription("Rank declarations that answer a question."),
+  Command.withExamples([
+    {
+      command: 'joggle ask "where is the retry policy defined?"',
+      description: "Rank the declarations that answer a question.",
+    },
+  ]),
+)
 
 const rules = Command.make(
   "rules",
-  {},
-  () =>
+  {
+    cwd: Flag.String("cwd").pipe(
+      Flag.withDescription("Project root whose config to read (default: the current directory)."),
+      Flag.optional,
+    ),
+    config: Flag.String("config").pipe(
+      Flag.withDescription("Config file, relative to the project root (default joggle.config.json)."),
+      Flag.optional,
+    ),
+  },
+  (config) =>
     Effect.gen(function* () {
-      const all = yield* Rules
+      const cwd = Option.getOrUndefined(config.cwd) ?? process.cwd()
+      // The same rule set the check runs, so this answers "what is enforced"
+      // rather than "what ships".
+      const ruleSet = yield* ruleSetFor(cwd, Option.getOrUndefined(config.config))
+      const all = ruleSet.rules.filter((rule) => isEnabled(ruleSet.effective, rule.id, rule.severity))
       const width = all.reduce((max, rule) => Math.max(max, rule.id.length), 0)
       const lines = all.map(
         (rule) =>
-          `${rule.id.padEnd(width)}  ${rule.severity.padEnd(5)}  ${rule.judged ? "judged" : "static"}  ${rule.description}`,
+          `${rule.id.padEnd(width)}  ${severityFor(ruleSet.effective, rule.id, rule.severity).padEnd(5)}  ${rule.judged ? "judged" : "static"}  ${rule.description}`,
       )
+      // A plugin that failed to load is the difference between "not enforced"
+      // and "silently absent", and this is the command that should say so.
+      for (const failure of ruleSet.loaded.failures) {
+        lines.push(`note: ${failure.specifier} was not loaded: ${failure.reason}`)
+      }
       yield* write(lines.join("\n"))
     }),
-).pipe(Command.withDescription("List the rules and what each one enforces."))
+).pipe(
+  Command.withDescription("List the rules this repository enforces, with their severities."),
+  Command.withShortDescription("List the enforced rules."),
+  Command.withExamples([
+    { command: "joggle rules", description: "What the current repository enforces." },
+    {
+      command: "joggle rules --cwd ../other-repo",
+      description: "What another repository enforces.",
+    },
+  ]),
+)
 
 const cli = Command.make("joggle").pipe(
   Command.withDescription(
     "Cross-file patterns and idioms for TypeScript, enforced like a linter: deterministic where it can prove, System One where it has to judge.",
   ),
+  Command.withExamples([
+    {
+      command: "joggle check --pr",
+      description: "Check only what this branch's pull request changed.",
+    },
+    { command: "joggle check --since origin/main", description: "Check only what this branch changed." },
+    { command: "joggle rules", description: "See what is enforced here." },
+  ]),
   Command.withSubcommands([check, askCommand, rules]),
 )
 
@@ -212,6 +390,11 @@ const describeFailure = (failure: unknown): string | undefined => {
     const cause = record["cause"]
     const detail = cause instanceof Error ? cause.message : String(cause ?? "")
     return String(record["operation"]) + ": " + detail
+  }
+  // Git and tsgo already carry the one sentence that matters: the command and
+  // what it said. A stack trace here buries it.
+  if (tag === "joggle/GitError" || tag === "joggle/TsgoError") {
+    return String(record["operation"]) + ": " + String(record["detail"] ?? "")
   }
   return undefined
 }

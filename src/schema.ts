@@ -273,3 +273,8 @@ export class TsgoError extends Schema.TaggedError<TsgoError>()("joggle/TsgoError
   detail: Schema.String,
 }) {}
 
+export class GitError extends Schema.TaggedError<GitError>()("joggle/GitError", {
+  operation: Schema.String,
+  detail: Schema.String,
+}) {}
+
