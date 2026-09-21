@@ -7,7 +7,7 @@ import type { Unit, Workspace } from "./workspace.ts"
  * A cascade asks this once per site, and a file with a thousand call sites would
  * otherwise be scanned a thousand times.
  */
-const lineStarts = (text: string): ReadonlyArray<number> => {
+export const lineStarts = (text: string): ReadonlyArray<number> => {
   const found: Array<number> = [0]
   for (let index = 0; index < text.length; index += 1) {
     if (text[index] === "\n") found.push(index + 1)
@@ -15,7 +15,7 @@ const lineStarts = (text: string): ReadonlyArray<number> => {
   return found
 }
 
-const lineAt = (starts: ReadonlyArray<number>, offset: number): number => {
+export const lineAt = (starts: ReadonlyArray<number>, offset: number): number => {
   let low = 0
   let high = starts.length - 1
   while (low < high) {

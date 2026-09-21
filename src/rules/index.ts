@@ -17,6 +17,7 @@ import { shallowModule } from "./shallow-module.ts"
 import { temporalCoupling } from "./temporal-coupling.ts"
 import { hoistToDomain } from "./hoist-to-domain.ts"
 import { namingDrift } from "./naming-drift.ts"
+import { reimplementedPrimitive } from "./reimplemented-primitive.ts"
 import { oneConceptOneType } from "./one-concept-one-type.ts"
 import { Context, Layer } from "effect"
 import type { PlannedRule, Rule } from "../rule.ts"
@@ -54,6 +55,7 @@ export const allRules: ReadonlyArray<Rule | PlannedRule> = [
   duplicateImplementation,
   duplicateMeaning,
   namingDrift,
+  reimplementedPrimitive,
   oneConceptOneType,
 ]
 

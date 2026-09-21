@@ -333,6 +333,18 @@ export const policy = {
   },
 
   /**
+   * A function that inlines what an existing declaration already does.
+   *
+   * Lower than the call-run floor, because the claim is stronger: the whole body
+   * of an existing declaration appears inside another one, so there is a name to
+   * call rather than a run to extract.
+   */
+  reimplementedPrimitive: {
+    minCalls: 3,
+    maxFindings: 200,
+  },
+
+  /**
    * A file with a wide surface and little behind it.
    *
    * Ousterhout's ratio: implementation lines over exports. `minExports` keeps a
