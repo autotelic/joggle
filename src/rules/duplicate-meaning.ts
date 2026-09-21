@@ -179,7 +179,7 @@ export const duplicateMeaning: PlannedRule = {
   plan: Effect.fn("joggle/duplicate-meaning")(function* (workspace, scope, context) {
     const { clusters, oversized, chained } = find(workspace, scope)
     const budget = policy.duplicateMeaning.maxClusters
-    const phase = yield* planClusters(spec, clusters.slice(0, budget), scope)
+    const phase = yield* planClusters(spec, clusters.slice(0, budget), scope, workspace)
     const layers = layersFrom(context.config)
     const largest = clusters
       .slice(budget)
@@ -224,7 +224,7 @@ export const duplicateMeaning: PlannedRule = {
     return {
       plans: phase.planned.map((entry) => entry.plan),
       read: (answers) => {
-        const judged = readClusters(spec, workspace.imports, phase, layers, answers)
+        const judged = readClusters(spec, workspace, phase, layers, answers)
         return outcome(judged.diagnostics, notes, [...tooManyToShow, ...judged.drops])
       },
     }

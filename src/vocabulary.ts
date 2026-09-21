@@ -79,6 +79,19 @@ export const duplicateVocabulary = {
     "meaningfully_better",
     "removes_a_hazard",
   ],
+  /**
+   * What the DIFFERENCE between two near-identical declarations is.
+   *
+   * This is the question that separates a merge from a move, and nothing asked it
+   * before: `role` says what a declaration is, and `relationship` says where the
+   * files sit, and neither says whether the thing that differs between the copies
+   * is a value or a meaning.
+   */
+  difference: {
+    value: "The same thing with a different constant, option or parameter, so one could take the other's.",
+    meaning: "A different concept that happens to read alike.",
+    unclear: "The evidence does not say.",
+  },
   verdict: {
     collapse: "They are one thing. Keep one of them and delete the rest.",
     keep_variants:

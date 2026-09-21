@@ -3,6 +3,8 @@ import * as AiError from "effect/unstable/ai/AiError"
 import { Decision, DecisionModel } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { isUnreachable } from "../decision.ts"
+import { cascadeOf } from "../cascade.ts"
+import { derivedOperation, describeOperation, permitted, settle } from "../operation.ts"
 import { answerPlans, PlanAnswers, type Plan } from "../plans.ts"
 import { policy } from "../policy.ts"
 import { canImport, sharedLayerFor, type Layer } from "../architecture.ts"
@@ -13,13 +15,14 @@ import {
   marginOfAnswer,
   qualityOf,
   type DecisionAnswers,
+  type Quality,
   type Scope,
 } from "../rule.ts"
 import { duplicateVocabulary } from "../vocabulary.ts"
-import type { Diagnostic, Drop, DropStage, Severity } from "../schema.ts"
+import type { Diagnostic, Drop, DropStage, Operation, Severity } from "../schema.ts"
 import { namesOf, type Cluster } from "../cluster.ts"
 import type { ImportGraph } from "../imports.ts"
-import type { Unit } from "../workspace.ts"
+import type { Unit, Workspace } from "../workspace.ts"
 
 /** What a rule decided about one cluster. */
 export interface ClusterVerdict {
@@ -46,6 +49,23 @@ export interface ClusterVerdict {
   readonly redundancy: number
   /** Winner minus runner-up in the verdict's own distribution. */
   readonly margin: number
+  /**
+   * The operation the two estimators settled on.
+   *
+   * Undefined means there is nothing to do: the model declined, or the table read
+   * the answers as two things. A finding with no operation is an observation.
+   */
+  readonly operation: Operation | undefined
+  /**
+   * Whether the table and the model agreed.
+   *
+   * `review` means they disagreed, which is the case a person should look at: the
+   * two methods fail differently, so a disagreement is information rather than an
+   * error to resolve.
+   */
+  readonly agreement: Quality
+  /** Why it settled where it did, in one sentence. */
+  readonly settled: string
 }
 
 /**
@@ -99,6 +119,7 @@ export interface ClusterRule {
   readonly questionnaire: (
     cluster: Cluster,
     described: ReadonlyArray<Unit>,
+    workspace: Workspace,
   ) => Effect.Effect<Questionnaire, never, Atoms>
 }
 
@@ -186,9 +207,12 @@ const resolvedNote = (described: ReadonlyArray<Unit>): string =>
  * Both rules ask it because for them it is the same question -- the declarations
  * are the same shape or near enough that the only thing left is intent.
  */
-export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) =>
+export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, described, workspace) =>
   Effect.gen(function* () {
     const atoms = yield* Atoms
+    // What the repository permits here. A fact, so the model cannot propose a
+    // merge across a package boundary.
+    const operations = permitted(workspace, cluster.members)
     const ids = yield* atoms.addAll(described.map((member) => declarationEvidence(member)))
     const facts = yield* atoms.add({
       identical: cluster.identical,
@@ -268,6 +292,28 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
           instructions: `If one of them should be kept, which one? The declarations are \`${refs}\`. Choose the declaration that best fits this codebase's conventions, its location, and its name.`,
           criteria,
         }),
+        difference: Decision.classify({
+          instructions: [
+            `The declarations named by \`${refs}\` are not identical. What IS the difference between them?`,
+            "Inspect their \`source\`.",
+            "Choose `value` when they are one thing with a different constant, option or parameter, so one of them could take the other's value.",
+            "Choose `meaning` when they are two concepts that happen to read alike.",
+          ].join("\n"),
+          criteria: duplicateVocabulary.difference,
+        }),
+        // The model's own read of the operation, and its OPTIONS are the ones the
+        // graph permits. The model never sees a merge that cannot happen.
+        operation: Decision.classify({
+          instructions: [
+            `What should happen to the declarations named by \`${refs}\`?`,
+            "Answer with the one that fits what they ARE and where they live.",
+            "Choose `no_issue` when nothing should change.",
+          ].join("\n"),
+          criteria: {
+            ...Object.fromEntries(operations.map((operation) => [operation, describeOperation(operation)])),
+            no_issue: "Leave them as they are.",
+          },
+        }),
       },
       read: (answers) => {
       const verdict = answers["verdict"]
@@ -299,11 +345,49 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
           : redundancy
       const margin = marginOfAnswer(verdict)
       const confidence = verdict.confidence ?? 1
+
+      // The difference between the copies, and the model's own read of the
+      // operation. The two together settle it, and their disagreement is
+      // reported rather than resolved.
+      const differenceAnswer = answers["difference"]
+      const difference =
+        differenceAnswer !== undefined &&
+        "label" in differenceAnswer &&
+        (differenceAnswer.label === "value" || differenceAnswer.label === "meaning")
+          ? differenceAnswer.label
+          : "unclear"
+      const operationAnswer = answers["operation"]
+      const proposed =
+        operationAnswer !== undefined &&
+        "label" in operationAnswer &&
+        (operationAnswer.label === "merge" || operationAnswer.label === "move")
+          ? operationAnswer.label
+          : undefined
+      const settled = settle({
+        derived: derivedOperation({ candidate: "duplicated", oneThing: redundancy, difference }),
+        proposed,
+        margin: operationAnswer !== undefined && "label" in operationAnswer ? marginOfAnswer(operationAnswer) : 1,
+        confidence:
+          operationAnswer !== undefined && "confidence" in operationAnswer
+            ? operationAnswer.confidence
+            : undefined,
+      })
+
       // `keep_variants` is a decision about the declarations; a decline is a
       // decision about the question. Both suppress the finding, and only the
       // second says the rule should not have asked.
       if (verdict.label === "keep_variants" || declined(verdict.label)) {
-        return { keep: undefined, confidence, score, redundancy, margin, prescription }
+        return {
+          keep: undefined,
+          confidence,
+          score,
+          redundancy,
+          margin,
+          prescription,
+          operation: undefined,
+          agreement: "drop" as const,
+          settled: "the model said " + verdict.label,
+        }
       }
       const canonical = answers["canonical"]
       const index =
@@ -317,6 +401,9 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         redundancy,
         margin,
         prescription,
+        operation: settled.operation,
+        agreement: settled.quality,
+        settled: settled.reason,
       }
       },
     }
@@ -484,11 +571,12 @@ export const planCluster = (
   rule: ClusterRule,
   cluster: Cluster,
   scope: Scope,
+  workspace: Workspace,
 ): Effect.Effect<Plan<ClusterVerdict> | undefined, never, Atoms> =>
   Effect.gen(function* () {
     const described = describedMembers(cluster, scope)
     if (described.length === 0) return undefined
-    const questionnaire = yield* rule.questionnaire(cluster, described)
+    const questionnaire = yield* rule.questionnaire(cluster, described, workspace)
     return {
       ruleId: rule.ruleId,
       subject: rule.subject(cluster),
@@ -522,11 +610,12 @@ export interface Result {
 
 export const findingFor = (
   rule: ClusterRule,
-  imports: ImportGraph,
+  workspace: Workspace,
   cluster: Cluster,
   verdict: ClusterVerdict | undefined,
   layers: ReadonlyArray<Layer>,
 ): Result => {
+  const imports = workspace.imports
   if (verdict === undefined) {
     const fallback = rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster) : undefined
     return fallback === undefined
@@ -555,7 +644,9 @@ export const findingFor = (
       : { diagnostic: fallback }
   }
 
-  const review = quality.quality === "review"
+  // Two ways to land in review: the redundancy gate was not decisive, or the
+  // table and the model disagreed about the operation.
+  const review = quality.quality === "review" || verdict.agreement === "review"
 
   const keep = cluster.members[verdict.keep] ?? cluster.members[0]
   if (keep === undefined) {
@@ -570,6 +661,19 @@ export const findingFor = (
   const names = namesOf(cluster)
   const extra =
     names.length > 1 ? ` (also named ${names.filter((name) => name !== keep.name).join(", ")})` : ""
+  // The smaller form, and what it costs. The cascade is a graph walk, so it is
+  // exact, and an operation with no cascade is an operation that costs nothing.
+  const repair =
+    verdict.operation === undefined
+      ? undefined
+      : {
+          operation: verdict.operation,
+          keep: keep.location,
+          remove: drops.map((member) => member.location),
+          cascade: cascadeOf(workspace, keep, drops),
+          complete: true,
+          settled: verdict.settled,
+        }
   return {
     diagnostic: finding({
       ruleId: rule.ruleId,
@@ -583,6 +687,7 @@ export const findingFor = (
       confidence: verdict.confidence,
       score: verdict.score,
       judged: true,
+      repair,
     }),
   }
 }
@@ -628,11 +733,12 @@ export const planClusters = (
   rule: ClusterRule,
   clusters: ReadonlyArray<Cluster>,
   scope: Scope,
+  workspace: Workspace,
 ): Effect.Effect<ClusterPhase, never, Atoms> =>
   Effect.gen(function* () {
     const unreadable: Array<Drop> = []
     const planned: Array<{ readonly cluster: Cluster; readonly plan: Plan<ClusterVerdict> }> = []
-    const built = yield* Effect.forEach(clusters, (cluster) => planCluster(rule, cluster, scope), {
+    const built = yield* Effect.forEach(clusters, (cluster) => planCluster(rule, cluster, scope, workspace), {
       concurrency: "unbounded",
     })
     clusters.forEach((cluster, index) => {
@@ -651,7 +757,7 @@ export const planClusters = (
 /** Turn a phase's answers into findings, in the phase's own order. */
 export const readClusters = (
   rule: ClusterRule,
-  imports: ImportGraph,
+  workspace: Workspace,
   phase: ClusterPhase,
   layers: ReadonlyArray<Layer>,
   answers: ReadonlyArray<unknown>,
@@ -663,7 +769,7 @@ export const readClusters = (
   const diagnostics: Array<Diagnostic> = []
   const drops: Array<Drop> = [...phase.unreadable]
   phase.planned.forEach((entry, index) => {
-    const outcome = findingFor(rule, imports, entry.cluster, verdicts[index], layers)
+    const outcome = findingFor(rule, workspace, entry.cluster, verdicts[index], layers)
     if (outcome.diagnostic !== undefined) diagnostics.push(outcome.diagnostic)
     if (outcome.drop !== undefined) drops.push(outcome.drop)
   })
@@ -679,7 +785,7 @@ export const readClusters = (
  */
 export const assessClusters = (
   rule: ClusterRule,
-  imports: ImportGraph,
+  workspace: Workspace,
   clusters: ReadonlyArray<Cluster>,
   layers: ReadonlyArray<Layer> = [],
   scope: Scope = everyFile,
@@ -689,7 +795,7 @@ export const assessClusters = (
   Atoms | PlanAnswers | DecisionModel.DecisionModel
 > =>
   Effect.gen(function* () {
-    const phase = yield* planClusters(rule, clusters, scope)
+    const phase = yield* planClusters(rule, clusters, scope, workspace)
     if (phase.planned.length === 0) return { diagnostics: [], drops: phase.unreadable }
     // A fact-based rule still reports its facts when the model was never reached;
     // a guess-based rule steps aside and the engine reports it as skipped.
@@ -700,5 +806,5 @@ export const assessClusters = (
           : Effect.fail(error),
       ),
     )
-    return readClusters(rule, imports, phase, layers, verdicts)
+    return readClusters(rule, workspace, phase, layers, verdicts)
   })

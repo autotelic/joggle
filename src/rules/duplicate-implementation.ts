@@ -75,7 +75,7 @@ export const duplicateImplementation: PlannedRule = {
     }
     const budget = policy.duplicateImplementation.maxClusters
     const shapeOnly = clusters.filter((cluster) => !cluster.typed).length
-    const phase = yield* planClusters(spec, clusters.slice(0, budget), scope)
+    const phase = yield* planClusters(spec, clusters.slice(0, budget), scope, workspace)
     const layers = layersFrom(context.config)
     // Over budget: the fact is still reported, unjudged and labelled as such.
     const overflow = clusters
@@ -96,7 +96,7 @@ export const duplicateImplementation: PlannedRule = {
     return {
       plans: phase.planned.map((entry) => entry.plan),
       read: (answers) => {
-        const judged = readClusters(spec, workspace.imports, phase, layers, answers)
+        const judged = readClusters(spec, workspace, phase, layers, answers)
         return outcome([...judged.diagnostics, ...overflow], notes, judged.drops)
       },
     }

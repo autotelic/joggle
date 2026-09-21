@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
+import { describeOperation, permitted, settle } from "../operation.ts"
 import { policy } from "../policy.ts"
 import { makeCluster, nameList, type Cluster } from "../cluster.ts"
 import {
@@ -27,9 +28,10 @@ import type { Unit, Workspace } from "../workspace.ts"
  * the model compares meanings rather than strings, and `same_words` reports the
  * case where only the spelling differs.
  */
-const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) =>
+const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described, workspace) =>
   Effect.gen(function* () {
     const atoms = yield* Atoms
+    const operations = permitted(workspace, cluster.members)
     const left = described[0]
     const right = described[1]
     const wordsOf = (unit: Unit | undefined) => (unit === undefined ? [] : expanded(unit.name))
@@ -68,6 +70,19 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) =>
             no_issue: "Two different concepts. Both names are correct. Change nothing.",
           },
         }),
+        // The model's own read, over the operations the graph permits. A merge
+        // across a package boundary is not among them.
+        operation: Decision.classify({
+          instructions: [
+            "What should happen to these two names?",
+            "Answer with the one that fits what they are and where they live.",
+            "Choose `no_issue` when nothing should change.",
+          ].join("\n"),
+          criteria: {
+            ...Object.fromEntries(operations.map((operation) => [operation, describeOperation(operation)])),
+            no_issue: "Leave both names as they are.",
+          },
+        }),
       },
       read: (answers) => {
       const verdict = answers["verdict"]
@@ -79,8 +94,38 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) =>
           : (verdict.confidence ?? 1)
       const margin = marginOfAnswer(verdict)
       const confidence = verdict.confidence ?? 1
+
+      // The table here is one line, because a name pair has one repair: two
+      // spellings of one concept standardize on one of them. The model's own read
+      // is the second estimator, and the graph decides what it may propose.
+      const operationAnswer = answers["operation"]
+      const proposed =
+        operationAnswer !== undefined &&
+        "label" in operationAnswer &&
+        (operationAnswer.label === "merge" || operationAnswer.label === "move")
+          ? operationAnswer.label
+          : undefined
+      const settled = settle({
+        derived: score >= policy.decision.gates.probabilityFloor ? "merge" : undefined,
+        proposed,
+        margin: operationAnswer !== undefined && "label" in operationAnswer ? marginOfAnswer(operationAnswer) : 1,
+        confidence:
+          operationAnswer !== undefined && "confidence" in operationAnswer
+            ? operationAnswer.confidence
+            : undefined,
+      })
+
       if (declined(verdict.label)) {
-        return { keep: undefined, confidence, score, redundancy: score, margin }
+        return {
+          keep: undefined,
+          confidence,
+          score,
+          redundancy: score,
+          margin,
+          operation: undefined,
+          agreement: "drop" as const,
+          settled: "the model said " + verdict.label,
+        }
       }
       return {
         keep: verdict.label === "same_use_right" ? 1 : 0,
@@ -90,6 +135,9 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) =>
         // `one_concept` already asks.
         redundancy: score,
         margin,
+        operation: settled.operation,
+        agreement: settled.quality,
+        settled: settled.reason,
       }
       },
     }
@@ -304,7 +352,7 @@ export const namingDrift: PlannedRule = {
       }
     }
     const budget = policy.namingDrift.maxClusters
-    const phase = yield* planClusters(spec, clusters.slice(0, budget), scope)
+    const phase = yield* planClusters(spec, clusters.slice(0, budget), scope, workspace)
     const layers = layersFrom(context.config)
     const unjudged = clusters.slice(budget)
     const notes = budgetNote(
@@ -316,7 +364,7 @@ export const namingDrift: PlannedRule = {
     return {
       plans: phase.planned.map((entry) => entry.plan),
       read: (answers) => {
-        const judged = readClusters(spec, workspace.imports, phase, layers, answers)
+        const judged = readClusters(spec, workspace, phase, layers, answers)
         return outcome(judged.diagnostics, notes, judged.drops)
       },
     }
