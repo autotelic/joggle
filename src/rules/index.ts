@@ -17,8 +17,9 @@ import { shallowModule } from "./shallow-module.ts"
 import { temporalCoupling } from "./temporal-coupling.ts"
 import { hoistToDomain } from "./hoist-to-domain.ts"
 import { namingDrift } from "./naming-drift.ts"
+import { oneConceptOneType } from "./one-concept-one-type.ts"
 import { Context, Layer } from "effect"
-import type { Rule } from "../rule.ts"
+import type { PlannedRule, Rule } from "../rule.ts"
 
 /**
  * The registry. Add a rule by writing one file and one line here.
@@ -33,7 +34,7 @@ import type { Rule } from "../rule.ts"
  * cycles, field-set composition) or a question with no architecture in it
  * (duplication, naming drift, undeclared dependencies).
  */
-export const allRules: ReadonlyArray<Rule> = [
+export const allRules: ReadonlyArray<Rule | PlannedRule> = [
   ...importArchitectureRules,
   composeTypes,
   callPattern,
@@ -53,6 +54,7 @@ export const allRules: ReadonlyArray<Rule> = [
   duplicateImplementation,
   duplicateMeaning,
   namingDrift,
+  oneConceptOneType,
 ]
 
 /**
@@ -62,7 +64,7 @@ export const allRules: ReadonlyArray<Rule> = [
  * That is what lets a preset be a layer, a test provide three rules, and a
  * repository add its own without editing this file.
  */
-export class Rules extends Context.Service<Rules, ReadonlyArray<Rule>>()("@joggle/Rules") {}
+export class Rules extends Context.Service<Rules, ReadonlyArray<Rule | PlannedRule>>()("@joggle/Rules") {}
 
 /** The built-in rules, as the default `Rules` layer. */
 export const builtIn: Layer.Layer<Rules> = Layer.succeed(Rules, allRules)

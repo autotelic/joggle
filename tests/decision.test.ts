@@ -117,7 +117,10 @@ it.effect("replays a cached judgement with no call and no key", () =>
     )
 
     expect(second.result.answers.answer.label).toBe("yes")
-    expect(second.stats.replayed).toBe(1)
+    // The per-decision cache answered before the wire was reached, so there is no
+    // request to count at all. The mock client dies if it is called, which is the
+    // proof that the cache answered.
+    expect(second.stats.requests).toBe(0)
     expect(second.stats.calls).toBe(0)
   }).pipe(Effect.provide(nodeLayer)),
 )

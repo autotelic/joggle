@@ -16,11 +16,12 @@ import {
   Semaphore,
 } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
-import { DecisionModel } from "effect/unstable/ai"
+import { Decision, DecisionModel } from "effect/unstable/ai"
 import type * as HttpClient from "effect/unstable/http/HttpClient"
 import { TypeSafeClient, TypeSafeDecisionModel, TypeSafeSchema } from "@effect/ai-typesafe"
 import { canonical } from "./canonical.ts"
 import { policy } from "./policy.ts"
+import { answerOf, memoize, PlanAnswers, StoredAnswer, storedOf, type PlanAnswerStore } from "./plans.ts"
 import type { DecisionTotals } from "./schema.ts"
 
 // The judged half of joggle, as Effect's own DecisionModel.
@@ -51,8 +52,17 @@ export class DecisionStats extends Context.Service<DecisionStats, { readonly rea
 ) {}
 
 export interface Options {
-  /** Directory the replayed judgement cache lives in. */
+  /** Directory the committed per-decision answer cache lives in. */
   readonly cacheDir: string
+  /**
+   * Directory the wire cache lives in: the whole-response cache.
+   *
+   * Machine-local on purpose. It is keyed on a whole request, so it changes when
+   * any question in the request changes, and on one repository it reached 11.5
+   * megabytes -- far too large to commit, and no longer the replay path. The
+   * per-decision cache in `cacheDir` is what CI replays.
+   */
+  readonly wireCacheDir?: string | undefined
   /** Never call the API; answer only from the persisted cache. */
   readonly offline: boolean
   /** Absent means judged rules fail with a clear reason and deterministic rules still run. */
@@ -68,7 +78,7 @@ const emptyStats: DecisionTotals = {
   outputTokens: 0,
 }
 
-const storePath = (path: Path.Path, cacheDir: string): string => path.join(cacheDir, "judgements.json")
+const storePath = (path: Path.Path, cacheDir: string): string => path.join(cacheDir, "wire.json")
 
 const CacheFile = Schema.Struct({
   version: Schema.String,
@@ -145,7 +155,7 @@ const offlineMiss = (): AiError.AiError =>
 export const layer = (
   options: Options,
 ): Layer.Layer<
-  DecisionModel.DecisionModel | DecisionStats,
+  DecisionModel.DecisionModel | DecisionStats | PlanAnswers,
   never,
   FileSystem.FileSystem | Path.Path | HttpClient.HttpClient
 > =>
@@ -163,7 +173,7 @@ export const layer = (
         apiKey: apiKey === undefined ? undefined : Redacted.make(apiKey),
         apiUrl: `${baseUrl}/v1`,
       })
-      const file = storePath(path, options.cacheDir)
+      const file = storePath(path, options.wireCacheDir ?? options.cacheDir)
 
       const load = Effect.gen(function* () {
         const empty: Record<string, typeof TypeSafeSchema.SystemOneResponse.Type> = {}
@@ -241,12 +251,63 @@ export const layer = (
           }),
       })
 
-      const decisionModel = yield* TypeSafeDecisionModel.make({ model: policy.model }).pipe(
+      const providerModel = yield* TypeSafeDecisionModel.make({ model: policy.model }).pipe(
         Effect.provideService(TypeSafeClient.TypeSafeClient, client),
       )
 
+      // The per-question cache, above the wire.
+      //
+      // The wire cache is keyed on a whole request, so a batched request would
+      // lose every question's answer when one of them changed. This one is keyed
+      // on the question and the atoms it read, which is what makes a batched
+      // request keep the independence a per-candidate request had.
+      const answersFile = path.join(options.cacheDir, "answers.json")
+      const AnswerFile = Schema.Struct({
+        version: Schema.String,
+        entries: Schema.Record(Schema.String, StoredAnswer),
+      })
+      const loadAnswers = Effect.gen(function* () {
+        const empty: Record<string, Decision.Answer<Decision.Any>> = {}
+        const exists = yield* Effect.orElseSucceed(fs.exists(answersFile), () => false)
+        if (!exists) return empty
+        const text = yield* Effect.orElseSucceed(fs.readFileString(answersFile), () => "")
+        if (text.trim() === "") return empty
+        const decoded = Result.getOrUndefined(
+          SchemaParser.decodeUnknownResult(Schema.fromJsonString(AnswerFile))(text),
+        )
+        if (decoded === undefined) return empty
+        const out: Record<string, Decision.Answer<Decision.Any>> = {}
+        for (const [key, value] of Object.entries(decoded.entries)) out[key] = answerOf(value)
+        return out
+      })
+      const answerEntries = yield* Ref.make(yield* loadAnswers)
+      const flushAnswers = writer.withPermits(1)(
+        Effect.gen(function* () {
+          const current = yield* Ref.get(answerEntries)
+          const entries = Object.fromEntries(
+            Object.entries(current).map(([key, answer]) => [key, storedOf(answer)]),
+          )
+          const body = JSON.stringify({ version: policy.version, entries }, null, 2)
+          yield* Effect.orElseSucceed(fs.makeDirectory(options.cacheDir, { recursive: true }), () => undefined)
+          yield* Effect.orElseSucceed(fs.writeFileString(answersFile, body), () => undefined)
+        }),
+      )
+      const planAnswers: PlanAnswerStore = {
+        get: (key) => Effect.map(Ref.get(answerEntries), (current) => Option.fromUndefinedOr(current[key])),
+        put: (key, answer) =>
+          Effect.gen(function* () {
+            yield* Ref.update(answerEntries, (current) => ({ ...current, [key]: answer }))
+            yield* flushAnswers
+          }),
+      }
+
+      // Every answer is remembered per decision, so the committed cache is the
+      // replay path and the wire cache is only a performance artifact.
+      const decisionModel = memoize(providerModel, planAnswers)
+
       return Context.make(DecisionModel.DecisionModel, decisionModel).pipe(
         Context.add(DecisionStats, { read: Ref.get(stats) }),
+        Context.add(PlanAnswers, planAnswers),
       )
     }),
   )

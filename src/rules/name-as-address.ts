@@ -1,16 +1,17 @@
-import { Effect, Option, Schema } from "effect"
-import { Decision, DecisionModel } from "effect/unstable/ai"
-import { isUnreachable } from "../decision.ts"
+import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
 import {
   budgetNote,
   declined,
-  defineRule,
   finding,
   marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
+  type PlannedRule,
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
@@ -42,49 +43,39 @@ const RULE_ID = "joggle/name-as-address"
  */
 const isSingleWord = (name: string): boolean => /^[a-z][a-z0-9]*$/.test(name)
 
-const Evidence = Schema.Struct({
-  name: Schema.Struct({
-    identifier: Schema.String,
-    declared: Schema.String,
-    files: Schema.Number,
-    callers: Schema.Array(Schema.String),
+/** The two questions about one name, pointing at its atom by id. */
+const nameReview = (id: string) => ({
+  fails_as_address: Decision.probability({
+    instructions: [
+      `Is \`atoms[${id}].name.identifier\`, declared at \`atoms[${id}].name.declared\`, a bad retrieval address?`,
+      `It is a single-word export, and \`atoms[${id}].name.files\` files call it. \`atoms[${id}].name.callers\` is a sample of them.`,
+      "An agent finds code by searching for a name, so a name that matches everything finds nothing.",
+      "Answer true when the word is generic enough that a search cannot narrow to this declaration: `range`, `create`, `handle`, `parse`, `data`.",
+      "Answer false when the single word is a term specific to this codebase, or when the declaration is easy to reach from the callers anyway.",
+    ].join("\n"),
+    criteria: {
+      false: "The name still finds this declaration.",
+      true: "The name finds everything and nothing.",
+    },
+  }),
+  address: Decision.classify({
+    instructions: `If \`atoms[${id}].name.identifier\` is a bad address, what kind of word is it? Choose \`no_issue\` when the name still finds the declaration.`,
+    criteria: {
+      generic_verb: "A generic verb: create, get, handle, parse, build.",
+      generic_noun: "A generic noun: data, config, value, state, item.",
+      overloaded_domain: "A domain word used for more than one thing.",
+      no_issue: "The name still finds the declaration.",
+    },
   }),
 })
 
-const NameReview = Decision.make({
-  input: Evidence,
-  decisions: {
-    fails_as_address: Decision.probability({
-      instructions: [
-        "Is `name.identifier`, declared at `name.declared`, a bad retrieval address?",
-        "It is a single-word export, and `name.files` files call it. `name.callers` is a sample of them.",
-        "An agent finds code by searching for a name, so a name that matches everything finds nothing.",
-        "Answer true when the word is generic enough that a search cannot narrow to this declaration: `range`, `create`, `handle`, `parse`, `data`.",
-        "Answer false when the single word is a term specific to this codebase, or when the declaration is easy to reach from the callers anyway.",
-      ].join("\n"),
-      criteria: {
-        false: "The name still finds this declaration.",
-        true: "The name finds everything and nothing.",
-      },
-    }),
-    address: Decision.classify({
-      instructions: "If the name is a bad address, what kind of word is it? Choose `no_issue` when the name still finds the declaration.",
-      criteria: {
-        generic_verb: "A generic verb: create, get, handle, parse, build.",
-        generic_noun: "A generic noun: data, config, value, state, item.",
-        overloaded_domain: "A domain word used for more than one thing.",
-        no_issue: "The name still finds the declaration.",
-      },
-    }),
-  },
-})
-
-export const nameAsAddress = defineRule({
+export const nameAsAddress: PlannedRule = {
   id: RULE_ID,
   severity: "info",
   description: "A generic single-word export called from too many files to be searchable.",
   judged: true,
-  run: Effect.fn("joggle/name-as-address")(function* (workspace: Workspace, scope: Scope) {
+  onUnavailable: "propagate",
+  plan: Effect.fn("joggle/name-as-address")(function* (workspace: Workspace, scope: Scope) {
     const { minFiles, maxFiles, maxCallers } = policy.nameAsAddress
     const exported = workspace.units.filter((unit) => unit.exported)
 
@@ -109,47 +100,63 @@ export const nameAsAddress = defineRule({
       .sort((left, right) => right.callers.length - left.callers.length)
 
     if (candidates.length === 0) {
-      return outcome([], [
-        exported.length +
-          " exported declaration(s), none of them a single-word name called from " +
-          minFiles +
-          " or more files",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            exported.length +
+              " exported declaration(s), none of them a single-word name called from " +
+              minFiles +
+              " or more files",
+          ]),
+      }
     }
 
     const judged = candidates.slice(0, maxFiles)
-    const results = yield* Effect.forEach(
-      judged,
-      (candidate) =>
-        DecisionModel.decide(NameReview, {
-          input: {
-            name: {
-              identifier: candidate.unit.name,
-              declared: candidate.unit.file,
-              files: candidate.callers.length,
-              callers: candidate.callers.slice(0, maxCallers),
-            },
-          },
-        }).pipe(
-          Effect.map((result) => Option.some(result.answers)),
-          Effect.catch((error) =>
-            isUnreachable(error) ? Effect.fail(error) : Effect.succeed(Option.none<DecisionAnswers>()),
-          ),
-        ),
-      { concurrency: policy.decision.requestConcurrency },
-    )
+    const atoms = yield* Atoms
+    const planned: Array<{
+      readonly candidate: (typeof judged)[number]
+      readonly plan: Plan<DecisionAnswers>
+    }> = []
+    for (const candidate of judged) {
+      const id = yield* atoms.add({
+        name: {
+          identifier: candidate.unit.name,
+          declared: candidate.unit.file,
+          files: candidate.callers.length,
+          callers: candidate.callers.slice(0, maxCallers),
+        },
+      })
+      planned.push({
+        candidate,
+        plan: {
+          ruleId: RULE_ID,
+          subject: candidate.unit.file + "#" + candidate.unit.name,
+          concerns: [candidate.unit.file],
+          atoms: [id],
+          decisions: nameReview(id),
+          read: (answers) => answers,
+        },
+      })
+    }
 
-    const diagnostics: Array<Diagnostic> = []
-    const drops: Array<Drop> = candidates.slice(maxFiles).map((candidate) => ({
+    const overflow: ReadonlyArray<Drop> = candidates.slice(maxFiles).map((candidate) => ({
       ruleId: RULE_ID,
       subject: candidate.unit.file + "#" + candidate.unit.name,
       stage: "budget" as const,
       reason: "past the budget of " + maxFiles + " common names",
     }))
 
-    judged.forEach((candidate, index) => {
-      const answer = results[index]
-      if (answer === undefined || Option.isNone(answer)) {
+    return {
+      plans: planned.map((entry) => entry.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...overflow]
+        planned.forEach((entry, index) => {
+          const candidate = entry.candidate
+          const answer = verdicts[index]
+          if (answer === undefined) {
         drops.push({
           ruleId: RULE_ID,
           subject: candidate.unit.file + "#" + candidate.unit.name,
@@ -158,8 +165,8 @@ export const nameAsAddress = defineRule({
         })
         return
       }
-      const fails = answer.value["fails_as_address"]
-      const address = answer.value["address"]
+      const fails = answer["fails_as_address"]
+      const address = answer["address"]
       if (fails === undefined || !("probability" in fails) || address === undefined || !("label" in address)) {
         drops.push({
           ruleId: RULE_ID,
@@ -217,12 +224,19 @@ export const nameAsAddress = defineRule({
           judged: true,
         }),
       )
-    })
+        })
 
-    return outcome(
-      diagnostics,
-      budgetNote("common names", maxFiles, candidates.length, candidates.slice(maxFiles).map((c) => c.unit.name)),
-      drops,
-    )
-  }),
-})
+        return outcome(
+          diagnostics,
+          budgetNote(
+            "common names",
+            maxFiles,
+            candidates.length,
+            candidates.slice(maxFiles).map((c) => c.unit.name),
+          ),
+          drops,
+        )
+      },
+    }
+  })
+}

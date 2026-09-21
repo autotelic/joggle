@@ -1,8 +1,8 @@
 import { Effect } from "effect"
 import { policy } from "../policy.ts"
 import { makeCluster, type Cluster } from "../cluster.ts"
-import { budgetNote, defineRule, inScope, outcome, type Scope } from "../rule.ts"
-import { assessClusters, collapseQuestionnaire, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
+import { budgetNote, inScope, outcome, type PlannedRule, type Scope } from "../rule.ts"
+import { collapseQuestionnaire, planClusters, readClusters, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
 import { layersFrom } from "../architecture.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -58,43 +58,47 @@ const largestOf = (clusters: ReadonlyArray<Cluster>): ReadonlyArray<string> =>
     .slice(0, 3)
     .map((cluster) => `${cluster.members.length}× ${spec.subject(cluster)}`)
 
-export const duplicateImplementation = defineRule({
+export const duplicateImplementation: PlannedRule = {
   id: spec.ruleId,
   severity: spec.severity,
   description: "One declaration written more than once across files.",
   judged: true,
-  run: Effect.fn("joggle/duplicate-implementation")(function* (workspace, scope, context) {
+  onUnavailable: spec.onUnavailable,
+  plan: Effect.fn("joggle/duplicate-implementation")(function* (workspace, scope, context) {
     const clusters = find(workspace, scope)
     if (clusters.length === 0) {
-      return outcome([], ["no two declarations share a shape, so there was nothing to compare"])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], ["no two declarations share a shape, so there was nothing to compare"]),
+      }
     }
     const budget = policy.duplicateImplementation.maxClusters
     const shapeOnly = clusters.filter((cluster) => !cluster.typed).length
-    const reported = yield* assessClusters(
-      spec,
-      workspace.imports,
-      clusters.slice(0, budget),
-      layersFrom(context.config),
-    )
+    const phase = yield* planClusters(spec, clusters.slice(0, budget), scope)
+    const layers = layersFrom(context.config)
     // Over budget: the fact is still reported, unjudged and labelled as such.
     const overflow = clusters
       .slice(budget)
       .map((cluster) => unverifiedFinding(spec, cluster))
       .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
-    return outcome(
-      [...reported.diagnostics, ...overflow],
-      [
-        ...budgetNote("clusters", budget, clusters.length, largestOf(clusters.slice(budget))),
-        // Visibility for the missing type signal. In a `.js` codebase every
-        // cluster is shape-only, and a reader who cannot see that will read the
-        // findings as typed evidence.
-        ...(shapeOnly === 0
-          ? []
-          : [
-              `${shapeOnly} of ${clusters.length} cluster(s) were compared by shape alone: no member carries a type annotation`,
-            ]),
-      ],
-      reported.drops,
-    )
+    const notes = [
+      ...budgetNote("clusters", budget, clusters.length, largestOf(clusters.slice(budget))),
+      // Visibility for the missing type signal. In a `.js` codebase every
+      // cluster is shape-only, and a reader who cannot see that will read the
+      // findings as typed evidence.
+      ...(shapeOnly === 0
+        ? []
+        : [
+            `${shapeOnly} of ${clusters.length} cluster(s) were compared by shape alone: no member carries a type annotation`,
+          ]),
+    ]
+    return {
+      plans: phase.planned.map((entry) => entry.plan),
+      read: (answers) => {
+        const judged = readClusters(spec, workspace.imports, phase, layers, answers)
+        return outcome([...judged.diagnostics, ...overflow], notes, judged.drops)
+      },
+    }
   }),
-})
+}

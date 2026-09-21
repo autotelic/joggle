@@ -33,6 +33,8 @@ const check = Command.make(
     ),
     maxWarnings: Flag.Int("max-warnings").pipe(Flag.withDefault(-1)),
     typecheck: Flag.Boolean("typecheck").pipe(Flag.withDefault(false)),
+    types: Flag.Boolean("types").pipe(Flag.withDefault(false)),
+    maxTokens: Flag.Int("max-tokens").pipe(Flag.withDefault(policy.decision.maxInputTokens)),
     offline: Flag.Boolean("offline").pipe(Flag.withDefault(false)),
     noTsgo: Flag.Boolean("no-tsgo").pipe(Flag.withDefault(false)),
     noReplay: Flag.Boolean("no-replay").pipe(Flag.withDefault(false)),
@@ -78,6 +80,9 @@ const check = Command.make(
       // enabling twenty opinions and then turning one off should not mean
       // restating the other nineteen.
       const effective = withDefaults(loaded.config, settings)
+      // The machine cache holds the run cache and the wire cache. The
+      // per-decision answer cache in `cacheDir` is the one CI replays.
+      const machineCache = yield* runCacheDirFor(cwd)
 
       const report = yield* runCheck({
         config: effective,
@@ -86,20 +91,22 @@ const check = Command.make(
         paths: config.paths,
         rules,
         typecheck: config.typecheck,
+        types: config.types ? "trace" : "off",
+        maxInputTokens: config.maxTokens,
         useTsgo: !config.noTsgo,
         cacheDirExplicit: Option.isSome(config.cacheDir),
         cacheDir,
         // The run cache is machine-local on purpose: it is a performance
         // artifact, and a run should not write a report into a repository it is
         // only visiting.
-        runCacheDir: yield* runCacheDirFor(cwd),
+        runCacheDir: machineCache,
         replayUnchanged: !config.noReplay,
         changed: config.changed,
         baselinePath: Option.getOrUndefined(config.baseline),
         updateBaselinePath: Option.getOrUndefined(config.updateBaseline),
       }).pipe(
         Effect.provide(rulesLayer),
-        Effect.provide(decisionLayer({ cacheDir, offline: config.offline, apiKey })),
+        Effect.provide(decisionLayer({ cacheDir, wireCacheDir: machineCache, offline: config.offline, apiKey })),
         Effect.provide(tsgoLayer(cwd)),
       )
 
@@ -126,7 +133,14 @@ const askCommand = Command.make(
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
       const workspace = yield* loadWorkspace(cwd, config.paths.length > 0 ? config.paths : ["."])
       const answer = yield* ask(workspace, config.query).pipe(
-        Effect.provide(decisionLayer({ cacheDir, offline: false, apiKey })),
+        Effect.provide(
+          decisionLayer({
+            cacheDir,
+            wireCacheDir: yield* runCacheDirFor(cwd),
+            offline: false,
+            apiKey,
+          }),
+        ),
       )
       yield* write(
         [

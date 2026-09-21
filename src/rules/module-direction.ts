@@ -37,7 +37,7 @@ export const moduleDirection = defineRule({
   judged: true,
   run: Effect.fn("joggle/module-direction")(function* (
     workspace: Workspace,
-    _scope: Scope,
+    scope: Scope,
     context,
   ) {
     const declared = layersFrom(context.config)
@@ -60,6 +60,11 @@ export const moduleDirection = defineRule({
     const diagnostics: Array<Diagnostic> = []
     for (const edge of workspace.imports.edges) {
       if (!edge.resolved || edge.from === edge.to) continue
+      // A scoped run asks about the change: an upward dependency is a candidate
+      // when one of its two ends moved.
+      if (scope.changed !== undefined && !scope.changed.has(edge.from) && !scope.changed.has(edge.to)) {
+        continue
+      }
       const from = classified.roles.get(moduleKey(edge.from, workspace))
       const to = classified.roles.get(moduleKey(edge.to, workspace))
       if (from === undefined || to === undefined) continue

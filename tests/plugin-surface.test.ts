@@ -39,6 +39,8 @@ const SURFACE = [
   "sharedLayerFor",
   "assessClusters",
   "collapseQuestionnaire",
+  "answerPlans",
+  "Atoms",
   // asking, which a judged rule cannot do without
   "Decision",
   "DecisionModel",

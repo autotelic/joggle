@@ -282,21 +282,21 @@ Deliberately *not* next: widening AST coverage to class and object-literal
 methods. That is more surface on a weaker signal. It comes after types.
 
 
-## Three artifacts, three lifecycles
+## Two committed artifacts, two machine artifacts
 
-joggle's state is three files, because there are three things with three
-different lifetimes. Putting them in one place was a design mistake: two of them
-belong to the repository and one belongs to the machine.
+joggle's state is four files with four lifetimes. Two belong to the repository
+and two belong to the machine.
 
 | artifact | lives in | committed | what it is |
 | --- | --- | --- | --- |
-| `judgements.json` | `<root>/.joggle/` | **yes** | every verdict, keyed by candidate. CI replays it with no API key. |
+| `answers.json` | `<root>/.joggle/` | **yes** | one answer per decision, keyed by the decision and the state it read. **This is the replay path**: CI replays it with no API key and no tokens. |
 | `baseline.json` | `<root>/.joggle/` | **yes** | the findings already accepted: the ratchet. |
+| `wire.json` | `<machine cache>/joggle/<root>/` | no | every wire request's response, keyed by the request. A performance artifact, and far too large to commit: 11.5 megabytes on a 2,493-file repository. |
 | `last-run.json` | `<machine cache>/joggle/<root>/` | no | a manifest and the last report. A performance artifact. |
 
 The first two are decisions a person should be able to read in a diff, and they
 are per-repository because the evidence is keyed on root-relative paths. The
-third is the largest, churns on every edit, and is worthless to anyone else — so
+others are the largest, churn on every edit, and are worthless to anyone else — so
 it lives in `$XDG_CACHE_HOME` (or `~/Library/Caches` on macOS), keyed by the
 analysed root. One machine cache serves every repository, and pointing joggle at
 somebody else's checkout writes nothing into it.
@@ -375,7 +375,7 @@ content hash would remove it. The candidate generation is already scoped.
 ## Not here yet
 
 The honest list: **no type awareness** (see above -- it is the next layer), no
-LSP, no `--fix`, no emission as an oxlint rule, no `Score` questions, and no
+LSP, no `--fix`, no emission as an oxlint rule, and no
 calibration harness. The calibration harness is the piece that has to exist
 before any judged rule can move from `warn` to `error`.
 
@@ -386,11 +386,14 @@ src/
   policy.ts                 every threshold and question version, one file
   schema.ts                 diagnostics, the System One contract, typed errors
   workspace.ts              oxc facts, normalisation, similarity
+  typetrace.ts              tsgo --generateTrace reader, and the type facts cache
   tsgo.ts                   tsgo subprocess adapter
-  judge.ts                  System One client with a replayable cache
-  rule.ts                   the Rule vocabulary
+  decision.ts               System One client, with the wire and answer caches
+  atoms.ts                  the run's shared facts, content-addressed
+  plans.ts                  the plan engine: one request per run, cache per question
+  rule.ts                   the Rule and PlannedRule vocabulary
   rules/                    one file per rule
-  check.ts                  the single analysis pass
+  check.ts                  the two-phase analysis pass
   report.ts                 text / json / github
   main.ts                   CLI
 tests/

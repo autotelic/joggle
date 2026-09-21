@@ -201,6 +201,36 @@ export default {
       },
     },
     {
+      // The trace bridge: raw `types_N.json` payloads in, typed facts out. This is
+      // the same crossing the exception above describes, for the compiler's own
+      // output rather than the AST. The payload is external JSON produced by a
+      // program this run spawned, so representation checks and broad parameters
+      // are this module's purpose, and a full Schema decode of 65,000 descriptors
+      // per checker costs far more than the lookup it enables.
+      //
+      // `guarded-op-must-return-option` is here for the same reason: every lookup
+      // asks "did the checker have anything to say", absence is the ordinary case,
+      // and it is already a counted, reported fact -- a declaration that did not
+      // join is visible in the run's notes. Wrapping each hop in Option would put
+      // ceremony around a boundary that already records its own misses.
+      files: ["src/typetrace.ts"],
+      rules: {
+        "plumb/no-runtime-typeof": "off",
+        "plumb/no-unsafe-dictionary-type": "off",
+        "plumb/no-unknown-parameters": "off",
+        "plumb-effect/guarded-op-must-return-option": "off",
+      },
+    },
+    {
+      // The engine erases a plan's verdict type so plans from different rules can
+      // travel in one request; a rule's phase puts it back at the boundary, where
+      // it knows every answer came from its own questionnaire. The assertion is
+      // the erasure boundary itself, and the SAFETY comment beside it states the
+      // invariant.
+      files: ["src/rules/cluster-verdict.ts", "src/plans.ts"],
+      rules: { "plumb/no-reinterpret-cast": "off", "plumb/no-unknown-parameters": "off" },
+    },
+    {
       // A canonical JSON serializer accepts any JSON by definition. Its whole job
       // is that the same value produces the same string whatever its shape, so a
       // domain type on it would be a lie about what it does. The rules it trips

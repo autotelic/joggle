@@ -14,6 +14,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       paths: ["../../outside"],
       rules: undefined,
       typecheck: false,
+      types: "off",
       useTsgo: false,
       cacheDirExplicit: false,
       cacheDir: "/tmp/joggle-check-test",
@@ -35,7 +36,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
 
     // A breach withholds every JUDGED rule, because their evidence would cross
     // repositories. The structural rules persist nothing, so they still run.
-    expect(report.rules).toBe(9)
+    expect(report.rules).toBe(10)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/dependency-fit",
@@ -62,6 +63,7 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
       paths: ["src"],
       rules: undefined,
       typecheck: false,
+      types: "off",
       useTsgo: false,
       cacheDirExplicit: true,
       cacheDir: "/tmp/joggle-check-test",
@@ -78,10 +80,10 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     )
 
     expect(report.files).toBe(2)
-    // Ten structural rules plus eleven judged ones. The composition rules are a
+    // Eleven structural rules plus eleven judged ones. The composition rules are a
     // preset and are not in this run at all, which is what makes them an opinion
     // rather than an inheritance.
-    expect(report.rules).toBe(21)
+    expect(report.rules).toBe(22)
     expect(report.diagnostics.length).toBe(1)
     // The fixture has no bundles, pages or modals, so the structural rules find
     // nothing and the page rule produces no candidates. A rule with nothing to
@@ -110,6 +112,7 @@ it.effect("a rule filter runs exactly one rule and skips nothing", () =>
       paths: ["src"],
       rules: ["joggle/duplicate-implementation"],
       typecheck: false,
+      types: "off",
       useTsgo: false,
       cacheDirExplicit: true,
       cacheDir: "/tmp/joggle-check-test",

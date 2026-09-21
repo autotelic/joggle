@@ -1,8 +1,10 @@
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Option } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { DecisionModel } from "effect/unstable/ai"
-import { decisionError } from "./decision.ts"
-import { everyFile, type Rule, type RunContext } from "./rule.ts"
+import { Atoms, layer as atomsLayer } from "./atoms.ts"
+import { decisionError, isUnreachable } from "./decision.ts"
+import { answerPlans, PlanAnswers, type PlanAnswerStore } from "./plans.ts"
+import { everyFile, type PlannedRule, type Rule, type RuleOutcome, type RunContext } from "./rule.ts"
 import type { Diagnostic } from "./schema.ts"
 import type { Workspace } from "./workspace.ts"
 
@@ -14,6 +16,12 @@ export type StubAnswer =
       readonly choice: string
       readonly probabilities: Readonly<Record<string, number>>
       readonly confidence: number
+    }
+  | {
+      readonly type: "rate"
+      readonly rating: number
+      readonly probabilities?: Readonly<Record<string, number>>
+      readonly confidence?: number
     }
 
 /**
@@ -39,8 +47,27 @@ export interface RuleTestOptions {
    * refusal rather than to silence means a rule that DOES ask fails loudly
    * instead of quietly reporting nothing.
    */
-  readonly model?: Layer.Layer<DecisionModel.DecisionModel> | undefined
+  readonly model?: Layer.Layer<DecisionModel.DecisionModel | Atoms | PlanAnswers> | undefined
 }
+
+/** The shared atom store, fresh per provide. */
+export { atomsLayer }
+
+/**
+ * An answer cache that never remembers.
+ *
+ * A test that is not about caching should not have one, and a test that is can
+ * provide a real store. What matters is that the engine always has a store to
+ * ask, so a rule under test never has to know which kind it got.
+ */
+export const planAnswersLayer: Layer.Layer<PlanAnswers> = Layer.succeed(PlanAnswers, {
+  get: () => Effect.succeed(Option.none()),
+  put: () => Effect.void,
+} satisfies PlanAnswerStore)
+
+/** A model layer, with the shared services every judged rule now needs. */
+const withShared = <R>(layer: Layer.Layer<R>): Layer.Layer<R | Atoms | PlanAnswers> =>
+  Layer.mergeAll(layer, atomsLayer, planAnswersLayer)
 
 export const diagnosticsOf = (
   rule: Rule,
@@ -54,22 +81,64 @@ export const diagnosticsOf = (
     ),
   )
 
+/**
+ * Run a planned rule the way the engine does, for one rule.
+ *
+ * The engine answers every planned rule's questions in one request; a test of one
+ * rule wants the same three moves -- plan, answer, read -- without the rest of the
+ * registry. The degrade behaviour matches the engine's, so a test can see what a
+ * rule does when the model is unreachable.
+ */
+export const plannedDiagnosticsOf = (
+  rule: PlannedRule,
+  workspace: Workspace,
+  context: RunContext = { config: {} },
+): Effect.Effect<
+  RuleOutcome,
+  AiError.AiError,
+  Atoms | PlanAnswers | DecisionModel.DecisionModel
+> =>
+  Effect.gen(function* () {
+    const planned = yield* rule.plan(workspace, everyFile, context)
+    const answers = yield* answerPlans(planned.plans).pipe(
+      Effect.catch((error) =>
+        rule.onUnavailable === "report" || !isUnreachable(error)
+          ? Effect.succeed(planned.plans.map(() => undefined))
+          : Effect.fail(error),
+      ),
+    )
+    return planned.read(answers)
+  })
+
 /** A model that answers every decision from one table. */
 export const answeringModel = (
   answers: Readonly<Record<string, StubAnswer>>,
-): Layer.Layer<DecisionModel.DecisionModel> => decisionStub(answers)
+): Layer.Layer<DecisionModel.DecisionModel | Atoms | PlanAnswers> => decisionStub(answers)
 
 /** A model that cannot answer, for testing what a rule does without one. */
-export const refusingModel = (reason: string): Layer.Layer<DecisionModel.DecisionModel> =>
-  Layer.effect(
-    DecisionModel.DecisionModel,
-    DecisionModel.make({
-      decide: () =>
-        Effect.fail(
-          decisionError(["joggle/testing", "decide"], new AiError.UnknownError({ description: reason })),
-        ),
-    }),
+export const refusingModel = (
+  reason: string,
+): Layer.Layer<DecisionModel.DecisionModel | Atoms | PlanAnswers> =>
+  withShared(
+    Layer.effect(
+      DecisionModel.DecisionModel,
+      DecisionModel.make({
+        decide: () =>
+          Effect.fail(
+            decisionError(["joggle/testing", "decide"], new AiError.UnknownError({ description: reason })),
+          ),
+      }),
+    ),
   )
+
+/**
+ * The name a test wrote, from the name the engine sent.
+ *
+ * The engine disambiguates a decision with the plan that asked it
+ * (`verdict@3`), because two plans ask the same names. A test names the
+ * decision, so the suffix is stripped before the lookup.
+ */
+const localName = (key: string): string => key.replace(/@\d+$/, "")
 
 /**
  * A DecisionModel that answers from a table of answers.
@@ -80,15 +149,16 @@ export const refusingModel = (reason: string): Layer.Layer<DecisionModel.Decisio
  */
 export const decisionStub = (
   supplied: Readonly<Record<string, StubAnswer>> = {},
-): Layer.Layer<DecisionModel.DecisionModel> =>
-  Layer.effect(
-    DecisionModel.DecisionModel,
-    DecisionModel.make({
+): Layer.Layer<DecisionModel.DecisionModel | Atoms | PlanAnswers> =>
+  withShared(
+    Layer.effect(
+      DecisionModel.DecisionModel,
+      DecisionModel.make({
       decide: ({ decisions }) =>
         Effect.succeed({
           answers: Object.fromEntries(
             Object.entries(decisions).map(([key, decision]) => {
-              const answer = supplied[key]
+              const answer = supplied[localName(key)]
               if (decision._tag === "Classify") {
                 const labels = Object.keys(decision.criteria)
                 const label =
@@ -113,15 +183,32 @@ export const decisionStub = (
               }
               if (decision._tag === "Rate") {
                 const levels = decision.criteria
+                if (answer === undefined || answer.type !== "rate") {
+                  return [
+                    key,
+                    {
+                      _tag: "Rate" as const,
+                      rating: 0,
+                      probabilities: Object.fromEntries(
+                        levels.map((level, index) => [level, index === 0 ? 1 : 0]),
+                      ),
+                      confidence: 0.9,
+                    },
+                  ]
+                }
+                const provided = answer.probabilities ?? {}
+                const missing = levels.filter((level) => provided[level] === undefined)
+                const total = Object.values(provided).reduce((sum, value) => sum + value, 0)
+                const remainder = missing.length === 0 ? 0 : Math.max(0, (1 - total) / missing.length)
                 return [
                   key,
                   {
                     _tag: "Rate" as const,
-                    rating: 0,
+                    rating: answer.rating,
                     probabilities: Object.fromEntries(
-                      levels.map((level, index) => [level, index === 0 ? 1 : 0]),
+                      levels.map((level) => [level, provided[level] ?? remainder]),
                     ),
-                    confidence: 0.9,
+                    confidence: answer.confidence ?? 0.9,
                   },
                 ]
               }
@@ -136,5 +223,6 @@ export const decisionStub = (
           ),
           usage: { inputTokens: 0, outputTokens: 0 },
         }),
-    }),
+      }),
+    ),
   )

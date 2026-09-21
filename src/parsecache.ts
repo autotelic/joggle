@@ -181,6 +181,9 @@ const unitFrom = (
     // declaration makes depend on the whole file set, exactly as its resolved
     // types do.
     typeSignature: "",
+    // Filled by the resolution pass once the whole file set is known, exactly as
+    // the calls and the resolved type names are, so it is not stored.
+    typeFacts: undefined,
     calls: [],
     callSignature: "",
     doc: entry.doc,

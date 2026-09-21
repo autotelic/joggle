@@ -44,6 +44,16 @@ export * from "./similarity.ts"
  */
 export { Decision, DecisionModel } from "effect/unstable/ai"
 
+/*
+ * The shared facts, and the engine that answers questions about them.
+ *
+ * A judged rule builds a `Plan` from the run's atoms and the engine answers every
+ * plan in one request, from cache where it can. A rule that batches its own
+ * candidates by hand is a rule that has taken over a job the engine now does.
+ */
+export * from "./atoms.ts"
+export * from "./plans.ts"
+
 /* Deciding, and the vocabulary decisions are made in. */
 export * from "./policy.ts"
 export * from "./vocabulary.ts"

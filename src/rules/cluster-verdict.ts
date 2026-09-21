@@ -1,10 +1,20 @@
-import { Effect, Option, Schema } from "effect"
+import { Effect, Schema } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { Decision, DecisionModel } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { isUnreachable } from "../decision.ts"
+import { answerPlans, PlanAnswers, type Plan } from "../plans.ts"
 import { policy } from "../policy.ts"
 import { canImport, sharedLayerFor, type Layer } from "../architecture.ts"
-import { declined, finding, marginOfAnswer, qualityOf, type DecisionAnswers } from "../rule.ts"
+import {
+  declined,
+  everyFile,
+  finding,
+  marginOfAnswer,
+  qualityOf,
+  type DecisionAnswers,
+  type Scope,
+} from "../rule.ts"
 import { duplicateVocabulary } from "../vocabulary.ts"
 import type { Diagnostic, Drop, DropStage, Severity } from "../schema.ts"
 import { namesOf, type Cluster } from "../cluster.ts"
@@ -53,8 +63,14 @@ export interface ClusterVerdict {
  * cluster's own evidence and there is no marker to rewrite.
  */
 export interface Questionnaire {
-  /** Merged into the input alongside `declarations`. */
-  readonly state: Record<string, Schema.Json>
+  /**
+   * The atoms this questionnaire's decisions reference, by id.
+   *
+   * A list rather than a state object, because the engine merges every plan's
+   * atoms into one state and the decisions point into it by id. A plan-local
+   * state could not be merged without rewriting every instruction.
+   */
+  readonly atoms: ReadonlyArray<string>
   readonly decisions: Record<string, Decision.Any>
   /**
    * Read the answer, or return undefined when the response did not contain one
@@ -80,17 +96,44 @@ export interface ClusterRule {
   readonly onUnavailable: "report" | "propagate"
   /** How to say what the cluster is, for the finding's first line. */
   readonly subject: (cluster: Cluster) => string
-  readonly questionnaire: (cluster: Cluster, described: ReadonlyArray<Unit>) => Questionnaire
+  readonly questionnaire: (
+    cluster: Cluster,
+    described: ReadonlyArray<Unit>,
+  ) => Effect.Effect<Questionnaire, never, Atoms>
 }
 
-/** The members actually described to the model: a prefix, so ids stay aligned. */
-export const describedMembers = (cluster: Cluster): ReadonlyArray<Unit> =>
-  cluster.members.slice(0, policy.evidence.maxMembers)
+/**
+ * The members actually described to the model.
+ *
+ * A capped prefix of the cluster, so the member ids stay aligned -- but ORDERED so
+ * the members this run is about come first. A cluster is sorted by path, and a
+ * scoped run is asking about the declarations that MOVED: in a cluster of forty
+ * where the changed one sorts thirtieth, a plain prefix shows the model the
+ * cluster without the change, and the change is the whole question. The kept
+ * member could not even be the one that moved.
+ */
+export const describedMembers = (cluster: Cluster, scope: Scope): ReadonlyArray<Unit> => {
+  const changed = scope.changed
+  const ordered =
+    changed === undefined
+      ? cluster.members
+      : [...cluster.members].sort(
+          (left, right) => Number(changed.has(right.file)) - Number(changed.has(left.file)),
+        )
+  return ordered.slice(0, policy.evidence.maxMembers)
+}
 
-/** The evidence every rule sends: the declarations themselves, bounded. */
-export const baseEvidence = (cluster: Cluster, described: ReadonlyArray<Unit>) => ({
-  declarations: described.map((member, index) => ({
-    id: `member_${index}`,
+/**
+ * One declaration as the model sees it.
+ *
+ * The resolved type is added only when the run asked for a trace, and that is
+ * deliberate: the state is the judgement cache key, so an unconditional field
+ * would invalidate every verdict made before the type layer existed. A run
+ * without `--types` sends exactly the panel it always did; a run with it sends a
+ * richer one and earns its own verdicts.
+ */
+const declarationEvidence = (member: Unit): Schema.Json => {
+  const evidence = {
     symbol: member.name,
     kind: member.kind,
     path: member.file,
@@ -99,14 +142,42 @@ export const baseEvidence = (cluster: Cluster, described: ReadonlyArray<Unit>) =
     documented: member.doc !== undefined,
     doc: member.doc?.slice(0, policy.evidence.maxDocChars) ?? null,
     types: member.typeRefs,
-  })),
-  count: cluster.members.length,
-  described: described.length,
-})
+  }
+  const facts = member.typeFacts
+  if (facts === undefined) return evidence
+  return {
+    ...evidence,
+    resolved: {
+      display: facts.display,
+      symbol: facts.symbol,
+      flags: facts.flags,
+      arguments: facts.arguments,
+      members: facts.members,
+      origin: facts.origin,
+    },
+  }
+}
 
 const describedNote = (cluster: Cluster, described: ReadonlyArray<Unit>): string =>
   described.length < cluster.members.length
     ? ` The cluster has ${cluster.members.length} members in total; only ${described.length} are shown, and only those can be chosen.`
+    : ""
+
+/**
+ * The line that points the model at the compiler's answer, when the run has one.
+ *
+ * The TypeSafe docs are explicit that a question should name the part of the
+ * state it is about, with a backticked path. The resolved type is the one part of
+ * this panel that is a compiler fact rather than source text, so the question
+ * names it and says what it means -- otherwise the model reads `source` and never
+ * looks at `resolved`.
+ *
+ * Empty when the run had no trace, so a run without `--types` sends the questions
+ * it always did and keeps its cached verdicts.
+ */
+const resolvedNote = (described: ReadonlyArray<Unit>): string =>
+  described.some((member) => member.typeFacts !== undefined)
+    ? "The compiler resolved each declaration's type; each entry of `atoms` carries it on `resolved.display`. Two identical resolved types are one type written twice; two different ones are two types that only read alike."
     : ""
 
 /**
@@ -115,15 +186,11 @@ const describedNote = (cluster: Cluster, described: ReadonlyArray<Unit>): string
  * Both rules ask it because for them it is the same question -- the declarations
  * are the same shape or near enough that the only thing left is intent.
  */
-export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => {
-  const criteria: Record<string, string> = {}
-  described.forEach((member, index) => {
-    criteria[`member_${index}`] =
-      `Keep member_${index}: ${member.name}, ${member.kind}, in ${member.file}.`
-  })
-  const note = describedNote(cluster, described)
-  return {
-    state: {
+export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) =>
+  Effect.gen(function* () {
+    const atoms = yield* Atoms
+    const ids = yield* atoms.addAll(described.map((member) => declarationEvidence(member)))
+    const facts = yield* atoms.add({
       identical: cluster.identical,
       overlap: Number(cluster.overlap.toFixed(3)),
       // The material a panel would need before judging where a thing belongs.
@@ -131,52 +198,78 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
       // in the paths.
       files: [...new Set(cluster.members.map((member) => member.file))],
       common_directory: commonDirectory(cluster.members.map((member) => member.file)),
-    },
-    decisions: {
-      redundant: Decision.probability({
-        instructions: `Are these ${cluster.members.length} declarations one thing written repeatedly? Answer yes only if a reader is worse off for there being more than one.`,
-        criteria: duplicateVocabulary.redundant,
-      }),
-      role: Decision.classify({
-        instructions: [
-          "What IS this declaration, apart from the fact that it is duplicated?",
-          "Inspect `declarations` and `files`.",
-          "Answer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.",
-          "Choose `implementation_detail` when it is a helper with no meaning of its own.",
-        ].join("\n"),
-        criteria: duplicateVocabulary.role,
-      }),
-      relationship: Decision.classify({
-        instructions: [
-          "How do `common_directory` and the files inside it relate?",
-          "Inspect `files`.",
-          "Decide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.",
-          "Choose `different_deployables` when nothing suggests they can share code.",
-        ].join("\n"),
-        criteria: duplicateVocabulary.relationship,
-      }),
-      verdict: Decision.classify({
-        instructions: [
-          "What should happen to these declarations?",
-          cluster.identical
-            ? `They are syntactically identical, including property names and types.${note}`
-            : `They are up to ${Math.round(cluster.overlap * 100)}% structurally similar but not identical.${note}`,
-          "Choose `no_issue` when the similarity is coincidence rather than repetition.",
-        ].join("\n"),
-        criteria: duplicateVocabulary.verdict,
-      }),
-      consequence: Decision.probability({
-        instructions:
-          "Would a reader be better off if these declarations were one? Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.",
-        criteria: duplicateVocabulary.consequence,
-      }),
-      canonical: Decision.classify({
-        instructions:
-          "If one of them should be kept, which one? Choose the declaration that best fits this codebase's conventions, its location, and its name.",
-        criteria,
-      }),
-    },
-    read: (answers) => {
+      count: cluster.members.length,
+      described: described.length,
+    })
+    const refs = ids.map((id) => `atoms[${id}]`).join(", ")
+    const criteria: Record<string, string> = {}
+    described.forEach((member, index) => {
+      criteria[`member_${index}`] =
+        `Keep member_${index}: ` + "`atoms[" + (ids[index] ?? "") + "]` — " + member.name + ", " + member.kind + ", in " + member.file + "."
+    })
+    const note = describedNote(cluster, described)
+    const resolved = resolvedNote(described)
+    return {
+      atoms: [...ids, facts],
+      decisions: {
+        redundant: Decision.probability({
+          instructions: [
+            `Are the ${cluster.members.length} declarations named by \`${refs}\` one thing written repeatedly? Each has a \`source\`.`,
+            "Answer yes only if a reader is worse off for there being more than one.",
+            resolved,
+          ]
+            .filter((line) => line !== "")
+            .join(" "),
+          criteria: duplicateVocabulary.redundant,
+        }),
+        role: Decision.classify({
+          instructions: [
+            "What IS this declaration, apart from the fact that it is duplicated?",
+            `Inspect \`${refs}\`.`,
+            "Answer about what the declaration IS, not about what should happen to it. Two copies of a wire contract are correct; two copies of a domain concept are the defect. This answer decides which of those this is.",
+            "Choose `implementation_detail` when it is a helper with no meaning of its own.",
+          ].join("\n"),
+          criteria: duplicateVocabulary.role,
+        }),
+        relationship: Decision.classify({
+          instructions: [
+            `How do \`atoms[${facts}].common_directory\` and the files in \`atoms[${facts}].files\` relate?`,
+            "Decide from the paths whether any of these files could import another. Same directory, same deployable, sibling packages, or separate services.",
+            "Choose `different_deployables` when nothing suggests they can share code.",
+          ].join("\n"),
+          criteria: duplicateVocabulary.relationship,
+        }),
+        verdict: Decision.classify({
+          instructions: [
+            `What should happen to the declarations named by \`${refs}\`?`,
+            cluster.identical
+              ? `They are syntactically identical, including property names and types.${note}`
+              : `They are up to ${Math.round(cluster.overlap * 100)}% structurally similar but not identical.${note}`,
+            "Choose `no_issue` when the similarity is coincidence rather than repetition.",
+            resolved,
+          ]
+            .filter((line) => line !== "")
+            .join("\n"),
+          criteria: duplicateVocabulary.verdict,
+        }),
+        consequence: Decision.rate({
+          instructions: [
+            `Would a reader be better off if the declarations named by \`${refs}\` were one?`,
+            "Answer about the EFFECT of the duplication, not about whether it exists. Two identical helpers that nobody will ever change are still one thing.",
+            "Choose the level that fits, lowest to highest:",
+            "`no_difference`: nobody would notice either way; the copies are stable and independent.",
+            "`slightly_clearer`: one copy would read a little better, but nothing is at stake.",
+            "`meaningfully_better`: sharing one would remove work or stop the copies diverging.",
+            "`removes_a_hazard`: the copies will diverge and cause a bug, or already have.",
+          ].join("\n"),
+          criteria: duplicateVocabulary.consequenceLevels,
+        }),
+        canonical: Decision.classify({
+          instructions: `If one of them should be kept, which one? The declarations are \`${refs}\`. Choose the declaration that best fits this codebase's conventions, its location, and its name.`,
+          criteria,
+        }),
+      },
+      read: (answers) => {
       const verdict = answers["verdict"]
       if (verdict === undefined || !("label" in verdict)) return undefined
       const redundant = answers["redundant"]
@@ -192,9 +285,18 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
           : prescriptionFor(role.label, relationship.label)
       // Ranked by consequence, gated by redundancy. A finding that does not
       // matter is still a finding and still reported; it sorts last.
+      //
+      // The Score answers with a probability-weighted position on its levels, so
+      // the position is normalised onto [0, 1] -- the same range a Noul would
+      // have given, with the degrees kept.
       const consequence = answers["consequence"]
+      const span = duplicateVocabulary.consequenceLevels.length - 1
       const score =
-        consequence !== undefined && "probability" in consequence ? consequence.probability : redundancy
+        consequence !== undefined && "rating" in consequence
+          ? span <= 0
+            ? 0
+            : consequence.rating / span
+          : redundancy
       const margin = marginOfAnswer(verdict)
       const confidence = verdict.confidence ?? 1
       // `keep_variants` is a decision about the declarations; a decline is a
@@ -216,9 +318,9 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         margin,
         prescription,
       }
-    },
-  }
-}
+      },
+    }
+  })
 
 /** The deepest directory every one of these files sits inside. */
 const commonDirectory = (paths: ReadonlyArray<string>): string => {
@@ -377,25 +479,25 @@ const dependents = (imports: ImportGraph, unit: Unit): string => {
   return `${files.length} file${files.length === 1 ? "" : "s"} import \`${unit.name}\`: ${shown}${more}`
 }
 
-/** One cluster's Decision definition, plus how to read its share of the answer. */
-export interface ClusterPlan {
-  readonly cluster: Cluster
-  readonly input: Schema.Json
-  readonly decisions: Record<string, Decision.Any>
-  readonly read: (answers: DecisionAnswers) => ClusterVerdict | undefined
-}
-
-export const planCluster = (rule: ClusterRule, cluster: Cluster): ClusterPlan | undefined => {
-  const described = describedMembers(cluster)
-  if (described.length === 0) return undefined
-  const questionnaire = rule.questionnaire(cluster, described)
-  return {
-    cluster,
-    input: { ...baseEvidence(cluster, described), ...questionnaire.state },
-    decisions: questionnaire.decisions,
-    read: questionnaire.read,
-  }
-}
+/** One cluster's plan, ready for the engine. */
+export const planCluster = (
+  rule: ClusterRule,
+  cluster: Cluster,
+  scope: Scope,
+): Effect.Effect<Plan<ClusterVerdict> | undefined, never, Atoms> =>
+  Effect.gen(function* () {
+    const described = describedMembers(cluster, scope)
+    if (described.length === 0) return undefined
+    const questionnaire = yield* rule.questionnaire(cluster, described)
+    return {
+      ruleId: rule.ruleId,
+      subject: rule.subject(cluster),
+      concerns: cluster.members.map((member) => member.file),
+      atoms: questionnaire.atoms,
+      decisions: questionnaire.decisions,
+      read: questionnaire.read,
+    }
+  })
 
 /** Turn a verdict into a finding, or into silence. Pure, so it is testable alone. */
 /**
@@ -488,11 +590,20 @@ export const findingFor = (
 /**
  * Ask about many clusters and turn the answers into findings.
  *
- * One wire call covers as many clusters as the token budget allows, which is the
- * pattern the parallel-questions cookbook measures at 12.2x cheaper and 10x
- * faster: the state dominates every request, so N single-candidate calls pay for
- * it N times while a batched call pays once. The cache stays per cluster, so
- * adding or removing a question still invalidates only what it must.
+ * One call per cluster, and the cache is the reason: the key is the state and the
+ * questions, so a call that carried several clusters would lose every cluster's
+ * verdict when one of them changed. Per-candidate calls keep a verdict keyed to
+ * its own evidence.
+ *
+ * This is deliberately NOT the speculative fan-out the TypeSafe docs measure at
+ * 11.5x cheaper, and the difference is worth stating rather than copying the
+ * pattern by name: fan-out amortises ONE state across many questions, while each
+ * candidate here has its OWN state, so a batched call would send the same total
+ * bytes and save only round trips. `ask.ts` is where fan-out belongs, and it is
+ * used there -- one state, one decision per candidate.
+ *
+ * `requestConcurrency` overlaps the calls, and the decision layer serializes its
+ * own cache writes.
  */
 /** What a rule's assistant pass produced: the findings, and the funnel. */
 export interface Assessment {
@@ -500,54 +611,94 @@ export interface Assessment {
   readonly drops: ReadonlyArray<Drop>
 }
 
+/** A cluster's plans, and the clusters that could not be described. */
+export interface ClusterPhase {
+  readonly unreadable: ReadonlyArray<Drop>
+  readonly planned: ReadonlyArray<{ readonly cluster: Cluster; readonly plan: Plan<ClusterVerdict> }>
+}
+
+/**
+ * Build every cluster's plan, without answering anything.
+ *
+ * The phase is separate from the answer so the engine can collect plans from
+ * every planned rule and answer them in one request. A rule that answered its own
+ * plans could not share a request with another, which is the whole point.
+ */
+export const planClusters = (
+  rule: ClusterRule,
+  clusters: ReadonlyArray<Cluster>,
+  scope: Scope,
+): Effect.Effect<ClusterPhase, never, Atoms> =>
+  Effect.gen(function* () {
+    const unreadable: Array<Drop> = []
+    const planned: Array<{ readonly cluster: Cluster; readonly plan: Plan<ClusterVerdict> }> = []
+    const built = yield* Effect.forEach(clusters, (cluster) => planCluster(rule, cluster, scope), {
+      concurrency: "unbounded",
+    })
+    clusters.forEach((cluster, index) => {
+      const plan = built[index]
+      if (plan === undefined) {
+        unreadable.push(
+          dropOf(rule, cluster, "no_evidence", "no member could be described to the model"),
+        )
+        return
+      }
+      planned.push({ cluster, plan })
+    })
+    return { unreadable, planned }
+  })
+
+/** Turn a phase's answers into findings, in the phase's own order. */
+export const readClusters = (
+  rule: ClusterRule,
+  imports: ImportGraph,
+  phase: ClusterPhase,
+  layers: ReadonlyArray<Layer>,
+  answers: ReadonlyArray<unknown>,
+): Assessment => {
+  // SAFETY: the phase built these plans, so every answer is a ClusterVerdict its
+  // own questionnaire produced. The engine erased the type only to batch rules
+  // together, and the order is the phase's own order.
+  const verdicts = answers as ReadonlyArray<ClusterVerdict | undefined>
+  const diagnostics: Array<Diagnostic> = []
+  const drops: Array<Drop> = [...phase.unreadable]
+  phase.planned.forEach((entry, index) => {
+    const outcome = findingFor(rule, imports, entry.cluster, verdicts[index], layers)
+    if (outcome.diagnostic !== undefined) diagnostics.push(outcome.diagnostic)
+    if (outcome.drop !== undefined) drops.push(outcome.drop)
+  })
+  return { diagnostics, drops }
+}
+
+/**
+ * Plan and answer one rule's clusters, when the rule does not want batching.
+ *
+ * A planned rule does not use this; it hands its plans to the engine. This is for
+ * a rule that is the only judge in a run, or a test that wants one call's worth of
+ * behaviour.
+ */
 export const assessClusters = (
   rule: ClusterRule,
   imports: ImportGraph,
   clusters: ReadonlyArray<Cluster>,
   layers: ReadonlyArray<Layer> = [],
-): Effect.Effect<Assessment, AiError.AiError, DecisionModel.DecisionModel> =>
+  scope: Scope = everyFile,
+): Effect.Effect<
+  Assessment,
+  AiError.AiError,
+  Atoms | PlanAnswers | DecisionModel.DecisionModel
+> =>
   Effect.gen(function* () {
-    const unreadable: Array<Drop> = []
-    const plans = clusters
-      .map((cluster) => {
-        const plan = planCluster(rule, cluster)
-        if (plan === undefined) {
-          unreadable.push(
-            dropOf(rule, cluster, "no_evidence", "no member could be described to the model"),
-          )
-        }
-        return plan
-      })
-      .filter((plan): plan is ClusterPlan => plan !== undefined)
-    if (plans.length === 0) return { diagnostics: [], drops: unreadable }
-
-    // One DecisionModel.decide per cluster. A fact-based rule still reports its
-    // facts when the model was never reached; a guess-based rule steps aside and
-    // the engine reports it as skipped.
-    const answers = yield* Effect.forEach(
-      plans,
-      (plan) => {
-        const definition = Decision.make({ input: Schema.Json, decisions: plan.decisions })
-        return DecisionModel.decide(definition, { input: plan.input }).pipe(
-          Effect.map((result) => Option.some(result.answers)),
-          Effect.catch((error) =>
-            rule.onUnavailable === "report" || !isUnreachable(error)
-              ? Effect.succeed(Option.none<DecisionAnswers>())
-              : Effect.fail(error),
-          ),
-        )
-      },
-      { concurrency: policy.decision.requestConcurrency },
+    const phase = yield* planClusters(rule, clusters, scope)
+    if (phase.planned.length === 0) return { diagnostics: [], drops: phase.unreadable }
+    // A fact-based rule still reports its facts when the model was never reached;
+    // a guess-based rule steps aside and the engine reports it as skipped.
+    const verdicts = yield* answerPlans(phase.planned.map((entry) => entry.plan)).pipe(
+      Effect.catch((error) =>
+        rule.onUnavailable === "report" || !isUnreachable(error)
+          ? Effect.succeed(phase.planned.map(() => undefined))
+          : Effect.fail(error),
+      ),
     )
-
-    const diagnostics: Array<Diagnostic> = []
-    const drops: Array<Drop> = [...unreadable]
-    plans.forEach((plan, index) => {
-      const answer = answers[index]
-      const verdict = answer === undefined || Option.isNone(answer) ? undefined : plan.read(answer.value)
-      const outcome = findingFor(rule, imports, plan.cluster, verdict, layers)
-      if (outcome.diagnostic !== undefined) diagnostics.push(outcome.diagnostic)
-      if (outcome.drop !== undefined) drops.push(outcome.drop)
-    })
-    return { diagnostics, drops }
+    return readClusters(rule, imports, phase, layers, verdicts)
   })

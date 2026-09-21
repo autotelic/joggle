@@ -25,6 +25,18 @@ export interface Interface {
   readonly typecheck: (
     cwd: string,
   ) => Effect.Effect<ReadonlyArray<TsgoDiagnostic>, TsgoError, ChildProcessSpawner>
+  /**
+   * The whole program as a type trace, written to `outDir`.
+   *
+   * This is the only way to see what a type RESOLVES to without a fork: the
+   * compiler writes its own type graph while it checks, and joggle reads it back.
+   * It is the program's view, so it is the program's cost -- the caller decides
+   * when a run is worth it.
+   */
+  readonly generateTrace: (
+    cwd: string,
+    outDir: string,
+  ) => Effect.Effect<void, TsgoError, ChildProcessSpawner>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@joggle/Tsgo") {}
@@ -112,7 +124,11 @@ const make = (binary: string, path: Path.Path): Interface => {
     return parseDiagnostics(`${result.stdout}\n${result.stderr}`)
   })
 
-  return Service.of({ listFiles, typecheck })
+  const generateTrace = Effect.fn("Tsgo.generateTrace")(function* (cwd: string, outDir: string) {
+    yield* run(binary, ["--generateTrace", outDir, "--noEmit"], cwd)
+  })
+
+  return Service.of({ listFiles, typecheck, generateTrace })
 }
 
 /**

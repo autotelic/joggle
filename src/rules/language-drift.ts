@@ -1,16 +1,17 @@
-import { Effect, Option, Schema } from "effect"
-import { Decision, DecisionModel } from "effect/unstable/ai"
-import { isUnreachable } from "../decision.ts"
+import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
 import {
   budgetNote,
   declined,
-  defineRule,
   finding,
   marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
+  type PlannedRule,
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
@@ -68,13 +69,24 @@ interface Candidate {
   readonly docs: ReadonlyArray<string>
 }
 
-const Evidence = Schema.Struct({
-  file: Schema.Struct({
-    path: Schema.String,
-    words: Schema.Array(Schema.String),
-    docs: Schema.String,
-  }),
-})
+/** The one question about a file, pointing at its atom by id. */
+const languageReview = (id: string, words: ReadonlyArray<string>) => {
+  const criteria: Record<string, string> = {
+    none: "None of these is a concept the code names differently.",
+  }
+  for (const word of words) criteria[word] = "The prose says \"" + word + "\" and no name uses it."
+  return {
+    concept: Decision.classify({
+      instructions: [
+        `The doc blocks of \`atoms[${id}].file.path\` repeat the words in \`atoms[${id}].file.words\`, and no declaration, path or import uses any of them.`,
+        "Which one, if any, names a concept this code calls something else?",
+        "Choose a word when the prose is naming a thing -- an entity, a process, a rule -- and the code names that thing differently.",
+        "Choose `none` when the words are ordinary English, the technology stack, or something the code does not model at all.",
+      ].join("\n"),
+      criteria,
+    }),
+  }
+}
 
 const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Candidate> => {
   const identifiers = new Set<string>()
@@ -110,65 +122,66 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Candida
   return found
 }
 
-export const languageDrift = defineRule({
+export const languageDrift: PlannedRule = {
   id: RULE_ID,
   severity: "info",
   description: "A domain word the prose uses and the code never names.",
   judged: true,
-  run: Effect.fn("joggle/language-drift")(function* (workspace: Workspace, scope: Scope) {
+  onUnavailable: "propagate",
+  plan: Effect.fn("joggle/language-drift")(function* (workspace: Workspace, scope: Scope) {
     const candidates = candidatesIn(workspace, scope)
     if (candidates.length === 0) {
-      return outcome([], ["every domain word in the prose is also a word in a name"])
+      return {
+        plans: [],
+        read: () => outcome([], ["every domain word in the prose is also a word in a name"]),
+      }
     }
     const budget = policy.languageDrift.maxFiles
     const judged = candidates.slice(0, budget)
+    const atoms = yield* Atoms
+    const planned: Array<{ readonly candidate: Candidate; readonly plan: Plan<DecisionAnswers> }> = []
+    for (const candidate of judged) {
+      const id = yield* atoms.add({
+        file: {
+          path: candidate.file.path,
+          words: candidate.words,
+          docs: candidate.docs.join("\n\n"),
+        },
+      })
+      planned.push({
+        candidate,
+        plan: {
+          ruleId: RULE_ID,
+          subject: candidate.file.path,
+          concerns: [candidate.file.path],
+          atoms: [id],
+          decisions: languageReview(id, candidate.words),
+          read: (answers) => answers,
+        },
+      })
+    }
 
-    const results = yield* Effect.forEach(
-      judged,
-      (candidate) => {
-        const criteria: Record<string, string> = { none: "None of these is a concept the code names differently." }
-        for (const word of candidate.words) criteria[word] = "The prose says \"" + word + "\" and no name uses it."
-        const definition = Decision.make({
-          input: Evidence,
-          decisions: {
-            concept: Decision.classify({
-              instructions: [
-                "The doc blocks of `file.path` repeat the words in `file.words`, and no declaration, path or import uses any of them.",
-                "Which one, if any, names a concept this code calls something else?",
-                "Choose a word when the prose is naming a thing -- an entity, a process, a rule -- and the code names that thing differently.",
-                "Choose `none` when the words are ordinary English, the technology stack, or something the code does not model at all.",
-              ].join("\n"),
-              criteria,
-            }),
-          },
-        })
-        return DecisionModel.decide(definition, {
-          input: { file: { path: candidate.file.path, words: candidate.words, docs: candidate.docs.join("\n\n") } },
-        }).pipe(
-          Effect.map((result) => Option.some(result.answers)),
-          Effect.catch((error) =>
-            isUnreachable(error) ? Effect.fail(error) : Effect.succeed(Option.none<DecisionAnswers>()),
-          ),
-        )
-      },
-      { concurrency: policy.decision.requestConcurrency },
-    )
-
-    const diagnostics: Array<Diagnostic> = []
-    const drops: Array<Drop> = candidates.slice(budget).map((candidate) => ({
+    const overflow: ReadonlyArray<Drop> = candidates.slice(budget).map((candidate) => ({
       ruleId: RULE_ID,
       subject: candidate.file.path,
       stage: "budget" as const,
       reason: "past the budget of " + budget + " files with prose words",
     }))
 
-    judged.forEach((candidate, index) => {
-      const answer = results[index]
-      if (answer === undefined || Option.isNone(answer)) {
+    return {
+      plans: planned.map((entry) => entry.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...overflow]
+        planned.forEach((entry, index) => {
+          const candidate = entry.candidate
+          const answer = verdicts[index]
+          if (answer === undefined) {
         drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "unreadable", reason: "the response did not judge this file" })
         return
       }
-      const concept = answer.value["concept"]
+      const concept = answer["concept"]
       if (concept === undefined || !("label" in concept)) {
         drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "unreadable", reason: "the response did not contain a verdict" })
         return
@@ -202,12 +215,19 @@ export const languageDrift = defineRule({
           judged: true,
         }),
       )
-    })
+        })
 
-    return outcome(
-      diagnostics,
-      budgetNote("files with prose words", budget, candidates.length, candidates.slice(budget).map((candidate) => candidate.file.path)),
-      drops,
-    )
-  }),
-})
+        return outcome(
+          diagnostics,
+          budgetNote(
+            "files with prose words",
+            budget,
+            candidates.length,
+            candidates.slice(budget).map((candidate) => candidate.file.path),
+          ),
+          drops,
+        )
+      },
+    }
+  })
+}

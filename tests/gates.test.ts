@@ -2,9 +2,9 @@ import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { duplicateImplementation } from "../src/rules/duplicate-implementation.ts"
 import { duplicateMeaning } from "../src/rules/duplicate-meaning.ts"
-import { everyFile, marginOfAnswer, qualityOf } from "../src/rule.ts"
-import type { StubAnswer } from "../src/testing.ts"
-import { modelStub, noul, withWorkspace, noConfig } from "./support.ts"
+import { marginOfAnswer, qualityOf } from "../src/rule.ts"
+import { plannedDiagnosticsOf, type StubAnswer } from "../src/testing.ts"
+import { modelStub, noul, withWorkspace } from "./support.ts"
 
 /** A Choice answer with a real distribution, which the shared stub does not carry. */
 const spread = (probabilities: Record<string, number>): StubAnswer => ({
@@ -53,7 +53,7 @@ it.effect("a provable finding degrades to unverified when the model says no", ()
       // Exact duplicates are a FACT, so this rule reports them either way -- but
       // the reason is now on the finding instead of being overruled by a Choice
       // that said `collapse`.
-      const findings = (yield* duplicateImplementation.run(workspace, everyFile, noConfig)).diagnostics
+      const findings = (yield* plannedDiagnosticsOf(duplicateImplementation, workspace)).diagnostics
       expect(findings.length).toBe(1)
       expect(findings[0]?.judged).toBe(false)
       expect(findings[0]?.help).toContain("the yes/no question answered no")
@@ -68,7 +68,7 @@ it.effect("a provable finding degrades to unverified when the model says no", ()
 it.effect("a guessed finding disappears when the model says no", () =>
   withWorkspace((workspace) =>
     Effect.gen(function* () {
-      const findings = (yield* duplicateMeaning.run(workspace, everyFile, noConfig)).diagnostics
+      const findings = (yield* plannedDiagnosticsOf(duplicateMeaning, workspace)).diagnostics
       expect(findings).toEqual([])
     }).pipe(
       Effect.provide(
@@ -84,7 +84,7 @@ it.effect("a shrug across two options is reported for review, not acted on", () 
       // The docs route on confidence in three ranges: act, review, drop. A shrug
       // is the middle one -- the model did not say no, it said it was not sure --
       // so the finding is reported at info for a reader to weigh.
-      const findings = (yield* duplicateMeaning.run(workspace, everyFile, noConfig)).diagnostics
+      const findings = (yield* plannedDiagnosticsOf(duplicateMeaning, workspace)).diagnostics
       expect(findings.length).toBe(1)
       expect(findings[0]?.severity).toBe("info")
       expect(findings[0]?.help).toContain("For review")

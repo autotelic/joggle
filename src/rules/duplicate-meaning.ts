@@ -1,9 +1,9 @@
 import { Effect } from "effect"
 import { policy } from "../policy.ts"
 import { components, makeCluster, type Cluster } from "../cluster.ts"
-import { budgetNote, defineRule, inScope, outcome, type Scope } from "../rule.ts"
+import { budgetNote, inScope, outcome, type PlannedRule, type Scope } from "../rule.ts"
 import { allPairs, type ScoredPair } from "../similarity.ts"
-import { assessClusters, collapseQuestionnaire, type ClusterRule } from "./cluster-verdict.ts"
+import { collapseQuestionnaire, planClusters, readClusters, type ClusterRule } from "./cluster-verdict.ts"
 import { layersFrom } from "../architecture.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 import { nameList } from "../cluster.ts"
@@ -170,20 +170,17 @@ const find = (workspace: Workspace, scope: Scope): Candidates => {
   }
 }
 
-export const duplicateMeaning = defineRule({
+export const duplicateMeaning: PlannedRule = {
   id: spec.ruleId,
   severity: spec.severity,
   description: "Near-duplicates where a judgement says one declaration replaces the other.",
   judged: true,
-  run: Effect.fn("joggle/duplicate-meaning")(function* (workspace, scope, context) {
+  onUnavailable: spec.onUnavailable,
+  plan: Effect.fn("joggle/duplicate-meaning")(function* (workspace, scope, context) {
     const { clusters, oversized, chained } = find(workspace, scope)
     const budget = policy.duplicateMeaning.maxClusters
-    const { diagnostics: findings, drops } = yield* assessClusters(
-      spec,
-      workspace.imports,
-      clusters.slice(0, budget),
-      layersFrom(context.config),
-    )
+    const phase = yield* planClusters(spec, clusters.slice(0, budget), scope)
+    const layers = layersFrom(context.config)
     const largest = clusters
       .slice(budget)
       .sort((a, b) => b.members.length - a.members.length)
@@ -204,29 +201,32 @@ export const duplicateMeaning = defineRule({
         " the evidence panel can show at once",
     }))
 
-    return outcome(
-      findings,
-      [
-        ...budgetNote("clusters", budget, clusters.length, largest),
-        ...(oversized.length === 0
-          ? []
-          : [
-              oversized.length +
-                " cluster(s) were too large to be one decision (" +
-                oversized.reduce((sum, cluster) => sum + cluster.members.length, 0) +
-                " declarations): generated from one template rather than duplicated",
-            ]),
-        // What the clique requirement left out, because a silent narrowing is the
-        // thing this program keeps having to design against. These are members
-        // that resembled their neighbours without resembling each other.
-        ...(chained === 0
-          ? []
-          : [
-              chained +
-                " declaration(s) were left out of a cluster: they resembled a neighbour without resembling every member, so grouping them would have made a chain rather than a family",
-            ]),
-      ],
-      [...tooManyToShow, ...drops],
-    )
+    const notes = [
+      ...budgetNote("clusters", budget, clusters.length, largest),
+      ...(oversized.length === 0
+        ? []
+        : [
+            oversized.length +
+              " cluster(s) were too large to be one decision (" +
+              oversized.reduce((sum, cluster) => sum + cluster.members.length, 0) +
+              " declarations): generated from one template rather than duplicated",
+          ]),
+      // What the clique requirement left out, because a silent narrowing is the
+      // thing this program keeps having to design against. These are members
+      // that resembled their neighbours without resembling each other.
+      ...(chained === 0
+        ? []
+        : [
+            chained +
+              " declaration(s) were left out of a cluster: they resembled a neighbour without resembling every member, so grouping them would have made a chain rather than a family",
+          ]),
+    ]
+    return {
+      plans: phase.planned.map((entry) => entry.plan),
+      read: (answers) => {
+        const judged = readClusters(spec, workspace.imports, phase, layers, answers)
+        return outcome(judged.diagnostics, notes, [...tooManyToShow, ...judged.drops])
+      },
+    }
   }),
-})
+}

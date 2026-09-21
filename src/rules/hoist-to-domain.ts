@@ -1,14 +1,16 @@
-import { Effect, Option, Schema } from "effect"
-import { Decision, DecisionModel } from "effect/unstable/ai"
+import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
 import {
   budgetNote,
   declined,
-  defineRule,
   finding,
   marginOfAnswer,
   outcome,
   type DecisionAnswers,
+  type PlannedRule,
   type Scope,
 } from "../rule.ts"
 import { classifyModules, moduleOf } from "../roles.ts"
@@ -122,49 +124,34 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Unit> =
     // drop reason reports it. It is not trusted to order anything.
     .sort((left, right) => left.file.localeCompare(right.file) || left.start - right.start)
 
-const DeclarationEvidence = Schema.Struct({
-  repository: Schema.NullOr(Schema.String),
-  module: Schema.Struct({ path: Schema.String, role: Schema.NullOr(Schema.String) }),
-  declaration: Schema.Struct({
-    name: Schema.String,
-    path: Schema.String,
-    line: Schema.Number,
-    source: Schema.String,
-    documented: Schema.Boolean,
-    doc: Schema.NullOr(Schema.String),
-    types: Schema.Array(Schema.String),
+/** The two questions about one declaration, pointing at its atom by id. */
+const hoistReview = (id: string) => ({
+  duty: Decision.classify({
+    instructions: [
+      `What is \`atoms[${id}].declaration.name\` doing?`,
+      `Inspect \`atoms[${id}].declaration\` and \`atoms[${id}].repository\`.`,
+      `\`atoms[${id}].repository\` describes what this codebase is trying to be. Judge what this declaration IS, not the directory it sits in: the same calculation is a domain rule in any file. A rule, an invariant or a decision about the business is \`domain_logic\` no matter which file holds it.`,
+      "Choose `orchestration` when it mostly calls other things and decides little itself.",
+    ].join("\n"),
+    criteria: dutyVocabulary,
+  }),
+  home: Decision.classify({
+    instructions: [
+      `Is \`atoms[${id}].declaration.path\` already the right home for logic like this?`,
+      `Inspect \`atoms[${id}].declaration.path\` and \`atoms[${id}].repository\`.`,
+      `Decide by the path and what \`atoms[${id}].repository\` says the architecture is. A route, a component directory or a transport handler is not a home for business rules; a domain or model package is.`,
+    ].join("\n"),
+    criteria: homeVocabulary,
   }),
 })
 
-const HoistDecision = Decision.make({
-  input: DeclarationEvidence,
-  decisions: {
-    duty: Decision.classify({
-      instructions: [
-        "What is `declaration.name` doing?",
-        "Inspect `declaration` and `repository`.",
-        "`repository` describes what this codebase is trying to be. Judge what this declaration IS, not where it sits: the same calculation is a domain rule in any file. A rule, an invariant or a decision about the business is `domain_logic` wherever it is written.",
-        "Choose `orchestration` when it mostly calls other things and decides little itself.",
-      ].join("\n"),
-      criteria: dutyVocabulary,
-    }),
-    home: Decision.classify({
-      instructions: [
-        "Is `declaration.path` already where logic like this belongs?",
-        "Inspect `declaration.path` and `repository`.",
-        "Decide from the path and what `repository` says the architecture is. A route, a component directory or a transport handler is not where business rules live; a domain or model package is.",
-      ].join("\n"),
-      criteria: homeVocabulary,
-    }),
-  },
-})
-
-export const hoistToDomain = defineRule({
+export const hoistToDomain: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
   description: "Business logic at the edge that belongs in a domain package.",
   judged: true,
-  run: Effect.fn("joggle/hoist-to-domain")(function* (
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/hoist-to-domain")(function* (
     workspace: Workspace,
     scope: Scope,
     context,
@@ -175,9 +162,13 @@ export const hoistToDomain = defineRule({
     // "Cannot access 'label' before initialization" at runtime.
     const label = (unit: Unit): string => unit.name + " (" + unit.file + ")"
     if (all.length === 0) {
-      return outcome([], [
-        "no exported declaration was long enough to hold a business rule, so nothing was a hoist candidate",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            "no exported declaration was long enough to hold a business rule, so nothing was a hoist candidate",
+          ]),
+      }
     }
 
     // ROUND ONE: what is each module for?
@@ -214,9 +205,7 @@ export const hoistToDomain = defineRule({
     const budget = policy.hoistToDomain.maxDeclarations
     const judged = candidates.slice(0, budget)
 
-    const diagnostics: Array<Diagnostic> = []
-    const drops: Array<Drop> = [...notAnEdge]
-    for (const unit of candidates.slice(budget)) drops.push({
+    const overBudget: ReadonlyArray<Drop> = candidates.slice(budget).map((unit) => ({
       ruleId: RULE_ID,
       subject: label(unit),
       stage: "budget" as const,
@@ -226,56 +215,60 @@ export const hoistToDomain = defineRule({
         "; rule-likeness " +
         ruleLikeness(unit, workspace) +
         " (the budget takes the highest scores first)",
-    })
+    }))
 
-    // A verdict here is an opinion about where code should live, so without one
-    // the rule stays silent rather than claiming a finding -- but silence is not
-    // the same as saying nothing. The funnel is reported either way, because the
-    // candidate count is exactly what you need in order to decide whether a run
-    // with a key is worth making.
-    // One DecisionModel.decide per declaration; a declaration whose answer cannot
-    // be read becomes an unreadable drop rather than a failed rule.
-    const results = yield* Effect.forEach(
-      judged,
-      (unit) =>
-        DecisionModel.decide(HoistDecision, {
-          input: {
-            repository: context.config.evidence?.repository ?? null,
-            // What the module IS, from round one. Every question about a declaration
-            // is easier to answer knowing whether it sits in a route handler or a
-            // domain package, and round one already paid for the answer.
-            module: { path: moduleOf(unit), role: edge.get(moduleOf(unit)) ?? null },
-            declaration: {
-              name: unit.name,
-              path: unit.file,
-              line: unit.location.line,
-              source: unit.text.slice(0, policy.evidence.maxSourceChars),
-              documented: unit.doc !== undefined,
-              doc: unit.doc?.slice(0, policy.evidence.maxDocChars) ?? null,
-              types: unit.typeRefs,
-            },
-          },
-        }).pipe(
-          Effect.map((result) => Option.some(result.answers)),
-          Effect.catch(() => Effect.succeed(Option.none<DecisionAnswers>())),
-        ),
-      { concurrency: policy.decision.requestConcurrency },
-    )
-
-
-    judged.forEach((unit, index) => {
-      const answer = results[index]
-      if (answer === undefined || Option.isNone(answer)) {
-        drops.push({
+    const atoms = yield* Atoms
+    const planned: Array<{ readonly unit: Unit; readonly plan: Plan<DecisionAnswers> }> = []
+    for (const unit of judged) {
+      const id = yield* atoms.add({
+        repository: context.config.evidence?.repository ?? null,
+        // What the module IS, from round one. Every question about a declaration
+        // is easier to answer knowing whether it sits in a route handler or a
+        // domain package, and round one already paid for the answer.
+        module: { path: moduleOf(unit), role: edge.get(moduleOf(unit)) ?? null },
+        declaration: {
+          name: unit.name,
+          path: unit.file,
+          line: unit.location.line,
+          source: unit.text.slice(0, policy.evidence.maxSourceChars),
+          documented: unit.doc !== undefined,
+          doc: unit.doc?.slice(0, policy.evidence.maxDocChars) ?? null,
+          types: unit.typeRefs,
+        },
+      })
+      planned.push({
+        unit,
+        plan: {
           ruleId: RULE_ID,
           subject: label(unit),
-          stage: "unreadable",
-          reason: "the response did not classify this declaration",
-        })
-        return
-      }
-      const duty = answer.value["duty"]
-      const home = answer.value["home"]
+          concerns: [unit.file],
+          atoms: [id],
+          decisions: hoistReview(id),
+          read: (answers) => answers,
+        },
+      })
+    }
+
+    return {
+      plans: planned.map((entry) => entry.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...notAnEdge, ...overBudget]
+        planned.forEach((entry, index) => {
+          const unit = entry.unit
+          const answer = verdicts[index]
+          if (answer === undefined) {
+            drops.push({
+              ruleId: RULE_ID,
+              subject: label(unit),
+              stage: "unreadable",
+              reason: "the response did not classify this declaration",
+            })
+            return
+          }
+          const duty = answer["duty"]
+          const home = answer["home"]
       if (duty === undefined || !("label" in duty) || home === undefined || !("label" in home)) {
         drops.push({
           ruleId: RULE_ID,
@@ -330,17 +323,19 @@ export const hoistToDomain = defineRule({
           judged: true,
         }),
       )
-    })
+        })
 
-    return outcome(
-      diagnostics,
-      budgetNote(
-        "declarations",
-        budget,
-        candidates.length,
-        candidates.slice(budget).map(label),
-      ),
-      drops,
-    )
-  }),
-})
+        return outcome(
+          diagnostics,
+          budgetNote(
+            "declarations",
+            budget,
+            candidates.length,
+            candidates.slice(budget).map(label),
+          ),
+          drops,
+        )
+      },
+    }
+  })
+}

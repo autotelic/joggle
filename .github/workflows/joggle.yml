@@ -24,7 +24,8 @@ jobs:
 
       - run: pnpm test
 
-      # Judgements are replayed from the committed cache, so this job needs no
-      # API key. Deterministic rules still run; judged rules report as skipped
-      # when a candidate has never been judged.
+      # Answers are replayed from the committed per-decision cache
+      # (.joggle/answers.json), so this job needs no API key and spends no tokens.
+      # Deterministic rules still run; judged rules report as skipped when a
+      # candidate has never been judged.
       - run: pnpm joggle check --offline --format github

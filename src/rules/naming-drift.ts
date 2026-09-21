@@ -1,17 +1,18 @@
 import { Effect } from "effect"
 import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { makeCluster, nameList, type Cluster } from "../cluster.ts"
 import {
   budgetNote,
   declined,
-  defineRule,
   inScope,
   marginOfAnswer,
   outcome,
+  type PlannedRule,
   type Scope,
 } from "../rule.ts"
-import { assessClusters, type ClusterRule } from "./cluster-verdict.ts"
+import { planClusters, readClusters, type ClusterRule } from "./cluster-verdict.ts"
 import { layersFrom } from "../architecture.ts"
 import { nameVocabulary } from "../vocabulary.ts"
 import type { Unit, Workspace } from "../workspace.ts"
@@ -26,37 +27,49 @@ import type { Unit, Workspace } from "../workspace.ts"
  * the model compares meanings rather than strings, and `same_words` reports the
  * case where only the spelling differs.
  */
-const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => {
-  const left = described[0]
-  const right = described[1]
-  const wordsOf = (unit: Unit | undefined) => (unit === undefined ? [] : expanded(unit.name))
-  const leftWords = wordsOf(left)
-  const rightWords = wordsOf(right)
-  const sameWords = leftWords.join(" ") === rightWords.join(" ")
+const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) =>
+  Effect.gen(function* () {
+    const atoms = yield* Atoms
+    const left = described[0]
+    const right = described[1]
+    const wordsOf = (unit: Unit | undefined) => (unit === undefined ? [] : expanded(unit.name))
+    const leftWords = wordsOf(left)
+    const rightWords = wordsOf(right)
+    const sameWords = leftWords.join(" ") === rightWords.join(" ")
 
-  return {
-    state: {
-      left: { symbol: left?.name ?? null, words: leftWords, kind: left?.kind ?? null, path: left?.file ?? null },
-      right: { symbol: right?.name ?? null, words: rightWords, kind: right?.kind ?? null, path: right?.file ?? null },
-      same_words: sameWords,
-    },
-    decisions: {
-      one_concept: Decision.probability({
-        instructions:
-          "Do `left.symbol` and `right.symbol` denote the same concept? Compare `left.words` and `right.words` word by word. Two names for one concept are a spelling problem; two names for two different things are not, however similar they read.",
-        criteria: nameVocabulary.oneConcept,
-      }),
-      verdict: Decision.classify({
-        instructions:
-          "What should happen to these two names? Compare `left.symbol` and `right.symbol`. `left.words` and `right.words` are what each name means; `same_words` is true when only the spelling differs. Choose `no_issue` when the names denote two different concepts.",
-        criteria: {
-          same_use_left: nameVocabulary.standardize(left?.name ?? "left"),
-          same_use_right: `One concept, two spellings. Standardize on \`${right?.name ?? "right"}\`.`,
-          no_issue: "Two different concepts. Both names are correct. Change nothing.",
-        },
-      }),
-    },
-    read: (answers) => {
+    const leftId = yield* atoms.add({
+      symbol: left?.name ?? null,
+      words: leftWords,
+      kind: left?.kind ?? null,
+      path: left?.file ?? null,
+    })
+    const rightId = yield* atoms.add({
+      symbol: right?.name ?? null,
+      words: rightWords,
+      kind: right?.kind ?? null,
+      path: right?.file ?? null,
+    })
+    const factsId = yield* atoms.add({ same_words: sameWords })
+
+    return {
+      atoms: [leftId, rightId, factsId],
+      decisions: {
+        one_concept: Decision.probability({
+          instructions:
+            "Do `atoms[" + leftId + "].symbol` and `atoms[" + rightId + "].symbol` denote the same concept? Compare `atoms[" + leftId + "].words` and `atoms[" + rightId + "].words` word by word. Two names for one concept are a spelling problem; two names for two different things are not, however similar they read.",
+          criteria: nameVocabulary.oneConcept,
+        }),
+        verdict: Decision.classify({
+          instructions:
+            "What should happen to these two names? Compare `atoms[" + leftId + "].symbol` and `atoms[" + rightId + "].symbol`. `atoms[" + leftId + "].words` and `atoms[" + rightId + "].words` are what each name means; `atoms[" + factsId + "].same_words` is true when only the spelling differs. Choose `no_issue` when the names denote two different concepts.",
+          criteria: {
+            same_use_left: nameVocabulary.standardize(left?.name ?? "left"),
+            same_use_right: `One concept, two spellings. Standardize on \`${right?.name ?? "right"}\`.`,
+            no_issue: "Two different concepts. Both names are correct. Change nothing.",
+          },
+        }),
+      },
+      read: (answers) => {
       const verdict = answers["verdict"]
       if (verdict === undefined || !("label" in verdict)) return undefined
       const oneConcept = answers["one_concept"]
@@ -78,9 +91,9 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described) => 
         redundancy: score,
         margin,
       }
-    },
-  }
-}
+      },
+    }
+  })
 
 const spec: ClusterRule = {
   ruleId: "joggle/naming-drift",
@@ -276,30 +289,36 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
     })
 }
 
-export const namingDrift = defineRule({
+export const namingDrift: PlannedRule = {
   id: spec.ruleId,
   severity: spec.severity,
   description: "Two spellings of one concept across files.",
   judged: true,
-  run: Effect.fn("joggle/naming-drift")(function* (workspace, scope, context) {
+  onUnavailable: spec.onUnavailable,
+  plan: Effect.fn("joggle/naming-drift")(function* (workspace, scope, context) {
     const clusters = find(workspace, scope)
     if (clusters.length === 0) {
-      return outcome([], [
-        "no two exported names were near enough to be worth judging",
-      ])
+      return {
+        plans: [],
+        read: () => outcome([], ["no two exported names were near enough to be worth judging"]),
+      }
     }
     const budget = policy.namingDrift.maxClusters
-    const { diagnostics: findings, drops } = yield* assessClusters(
-      spec,
-      workspace.imports,
-      clusters.slice(0, budget),
-      layersFrom(context.config),
-    )
+    const phase = yield* planClusters(spec, clusters.slice(0, budget), scope)
+    const layers = layersFrom(context.config)
     const unjudged = clusters.slice(budget)
-    return outcome(
-      findings,
-      budgetNote("pairs", budget, clusters.length, unjudged.slice(0, 3).map((cluster) => nameList(cluster))),
-      drops,
+    const notes = budgetNote(
+      "pairs",
+      budget,
+      clusters.length,
+      unjudged.slice(0, 3).map((cluster) => nameList(cluster)),
     )
+    return {
+      plans: phase.planned.map((entry) => entry.plan),
+      read: (answers) => {
+        const judged = readClusters(spec, workspace.imports, phase, layers, answers)
+        return outcome(judged.diagnostics, notes, judged.drops)
+      },
+    }
   }),
-})
+}

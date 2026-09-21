@@ -1,9 +1,13 @@
-import { Clock, Effect, FileSystem, Path } from "effect"
+import { Clock, Effect, FileSystem, Path, Result } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
+import type { DecisionModel } from "effect/unstable/ai"
+import { layer as atomsLayer, type Atoms } from "./atoms.ts"
+import { isUnreachable, DecisionStats } from "./decision.ts"
+import { answerPlans, chunkPlans, type Plan, type PlanAnswers, type PlanChunk } from "./plans.ts"
+import { emptyTypeIndex, loadTypeFacts, type TypeIndex } from "./typetrace.ts"
 import { shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 import { loadParses } from "./parsecache.ts"
-import { DecisionStats } from "./decision.ts"
 import {
   baselinePath,
   manifestOf,
@@ -13,12 +17,18 @@ import {
   writeStored,
 } from "./run-cache.ts"
 import { policy } from "./policy.ts"
-import { finding } from "./rule.ts"
 import { Rules } from "./rules/index.ts"
-import type { Rule } from "./rule.ts"
 import type { Loaded } from "./plugins.ts"
 import { funnelNotes, rankDiagnostics, type Report, type Skipped } from "./report.ts"
-import { everyFile, type Scope } from "./rule.ts"
+import {
+  everyFile,
+  finding,
+  outcome,
+  type PlannedRule,
+  type Rule,
+  type RuleOutcome,
+  type Scope,
+} from "./rule.ts"
 import { appliesAt, isEnabled, isIgnored, severityFor, type JoggleConfig } from "./config.ts"
 import {
   StoredRun,
@@ -39,6 +49,20 @@ export interface Options {
   readonly rules: ReadonlyArray<string> | undefined
   /** Carry tsgo's own diagnostics in the same report. */
   readonly typecheck: boolean
+  /**
+   * Resolve every declaration's type through the compiler's trace.
+   *
+   * Opt-in because it typechecks the whole program, and cached by the run
+   * manifest so an unchanged repository pays for it once. With it, the evidence a
+   * judged rule sends carries the resolved type, and the type-aware rules run.
+   */
+  readonly types: "off" | "trace"
+  /**
+   * Input tokens this run may spend on judgement. Absent means the policy's
+   * default. CI sets it low, because a push pays only for evidence never judged
+   * before and a runaway should stop rather than spend.
+   */
+  readonly maxInputTokens?: number | undefined
   /** Use tsgo for project discovery instead of walking directories. */
   readonly useTsgo: boolean
   /**
@@ -164,7 +188,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   // been merged with the built-in ones. A run does not know or care where a rule
   // came from: a plugin rule is selectable, configurable, severable and ignorable
   // like any other, which is the whole point of a registry rather than an array.
-  const universe: ReadonlyArray<Rule> = yield* Rules
+  const universe: ReadonlyArray<Rule | PlannedRule> = yield* Rules
   const selected = (
     options.rules === undefined
       ? universe
@@ -281,14 +305,35 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     }
   }
 
+  // The compiler's view, when the caller asked for it. This typechecks the whole
+  // program, so it is opt-in and cached by the run manifest: an unchanged
+  // repository reuses the trace it already paid for.
+  const typeIssues: Array<string> = []
+  let types: TypeIndex = emptyTypeIndex
+  let typesFrom: "cache" | "trace" | "none" = "none"
+  if (options.types === "trace") {
+    const loaded = yield* loadTypeFacts({
+      root: options.cwd,
+      cacheDir: runCache,
+      tool: toolFingerprint,
+      manifest,
+    })
+    types = loaded.index
+    typesFrom = loaded.from
+    typeIssues.push(...loaded.issues)
+  }
+
   const workspaceStarted = yield* Clock.currentTimeMillis
-  const parseCache = yield* loadParses(options.cacheDir, toolFingerprint)
+  // The parse cache is a performance artifact, like the run cache and the wire
+  // cache, so it lives in the machine cache and never in the repository.
+  const parseCache = yield* loadParses(runCache, toolFingerprint)
   const workspace = yield* loadWorkspace(
     options.cwd,
     options.paths,
     files,
     contents,
     parseCache.parses,
+    types,
   )
   // Written after the load, and only when something was actually parsed.
   yield* parseCache.save
@@ -299,6 +344,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   const diagnostics: Array<Diagnostic> = []
   const skipped: Array<Skipped> = []
   const notes: Array<Skipped> = []
+  for (const issue of typeIssues) notes.push({ ruleId: "joggle", reason: issue })
 
   // A file outside the root produces a "../" relative path. Its evidence has no
   // business in a cache whose location nobody chose.
@@ -356,33 +402,239 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
 
   const drops: Array<Drop> = []
 
-  // The rules are independent, and the judged ones wait on the network. Running
-  // them concurrently overlaps those waits; the results are collected in order, so
-  // the report is unchanged. The DecisionModel layer serializes its own cache
-  // writes, so two rules finishing at once cannot interleave a full write.
-  const ruleResults = yield* Effect.forEach(
-    effective,
-    (rule) =>
-      Effect.gen(function* () {
-        const ruleStarted = yield* Clock.currentTimeMillis
-        // The config goes in, because a rule that enforces a layering is entitled
-        // to know what the layering is. Rules that need nothing take two
-        // parameters.
-        const result = yield* rule.run(workspace, scope, { config: options.config }).pipe(
-          Effect.map((value) => ({ _tag: "ok" as const, value })),
-          Effect.catch((error) => Effect.succeed({ _tag: "skipped" as const, error })),
+  // The engine, in two phases.
+  //
+  // Phase one: every planned rule does its deterministic work and hands over its
+  // questions. Phase two: the engine answers every rule's questions, batched, and
+  // each rule reads its own answers. A rule that answered its own questions could
+  // not share a request with any other, which is the reason for the split.
+  //
+  // A plain rule -- deterministic, or judged but not batched -- runs as it always
+  // did. One atom store serves the whole run.
+  const isPlanned = (rule: Rule | PlannedRule): rule is PlannedRule => "plan" in rule
+  const plannedRules = effective.filter(isPlanned)
+  const plainRules = effective.filter((rule): rule is Rule => !isPlanned(rule))
+
+  type RuleResult = Result.Result<RuleOutcome, AiError.AiError>
+
+  const engine = Effect.gen(function* () {
+    const ruleTimings = new Map<string, number>()
+    const phases = yield* Effect.forEach(
+      plannedRules,
+      (rule) =>
+        Effect.gen(function* () {
+          const ruleStarted = yield* Clock.currentTimeMillis
+          const result = yield* rule.plan(workspace, scope, { config: options.config }).pipe(
+            Effect.map((value) => Result.succeed(value)),
+            Effect.catch((error) => Effect.succeed(Result.fail(error))),
+          )
+          ruleTimings.set(rule.id, (yield* Clock.currentTimeMillis) - ruleStarted)
+          return result
+        }),
+      { concurrency: "unbounded" },
+    )
+
+    // A plan is judged only when one of its files is in the run's scope. This is
+    // the enforcement, not a convention: a rule that forgets to filter still
+    // cannot spend a token on a candidate the run is not about, because the
+    // engine never sends it and its answer is never read.
+    const inScopePlan = (plan: Plan<unknown>): boolean =>
+      scope.changed === undefined || plan.concerns.some((file) => scope.changed?.has(file) === true)
+    const askedPerRule = phases.map((phase) =>
+      Result.isSuccess(phase) ? phase.success.plans.filter(inScopePlan) : [],
+    )
+    const allPlans = askedPerRule.flat()
+
+    // ONE request is the goal, and the provider's token ceiling is the reason it
+    // cannot always be one: a whole run's evidence can exceed it, and an oversized
+    // request comes back as max_tokens_exceeded, which every judged rule then
+    // reads as unreadable. So the plans are cut into requests that fit, and each is
+    // answered from the per-decision cache first, so a chunk boundary does not
+    // cost a re-judgement.
+    const chunks = yield* chunkPlans(allPlans, policy.decision.maxStateChars)
+
+    // The run's token budget. A chunk is estimated from the state it carries --
+    // the provider charges for the state, and it dominates -- so the run stops
+    // before a pathological change spends without bound. What it did not judge is
+    // reported as a budget drop, never dropped in silence.
+    const allowed: Array<PlanChunk<unknown>> = []
+    const overBudget: Array<Plan<unknown>> = []
+    let estimated = 0
+    for (const chunk of chunks) {
+      const cost = Math.ceil(chunk.chars / 4)
+      if (estimated + cost > (options.maxInputTokens ?? policy.decision.maxInputTokens)) {
+        overBudget.push(...chunk.plans)
+        continue
+      }
+      estimated += cost
+      allowed.push(chunk)
+    }
+
+    // A chunk that fails is CUT AND RETRIED, not abandoned.
+    //
+    // The provider occasionally returns a distribution that does not sum to 1, and
+    // Effect's validation fails the whole request for it. With one candidate per
+    // request that cost one candidate; with a batch it costs the batch, and every
+    // rule reading it sees unreadable. Halving the request changes what the model
+    // is asked, so a bad answer usually does not repeat.
+    const answerChunk: (
+      plans: ReadonlyArray<Plan<unknown>>,
+    ) => Effect.Effect<
+      ReadonlyArray<unknown>,
+      AiError.AiError,
+      Atoms | PlanAnswers | DecisionModel.DecisionModel
+    > = (plans) =>
+      answerPlans(plans).pipe(
+        Effect.catch((error) =>
+          // A model that was never reached is not a bad answer: retrying it would
+          // ask the same unreachable model again, and the engine needs the error
+          // to know the rule was skipped rather than judged.
+          plans.length <= 1 || isUnreachable(error)
+            ? Effect.fail(error)
+            : Effect.gen(function* () {
+                const half = Math.ceil(plans.length / 2)
+                const left = yield* answerChunk(plans.slice(0, half)).pipe(
+                  Effect.orElseSucceed(() => plans.slice(0, half).map(() => undefined)),
+                )
+                const right = yield* answerChunk(plans.slice(half)).pipe(
+                  Effect.orElseSucceed(() => plans.slice(half).map(() => undefined)),
+                )
+                return [...left, ...right]
+              }),
+        ),
+      )
+    const chunkResults = yield* Effect.forEach(
+      allowed,
+      (chunk) =>
+        answerChunk(chunk.plans).pipe(
+          Effect.map((values) => Result.succeed(values)),
+          Effect.catch((error) => Effect.succeed(Result.fail(error))),
+        ),
+      { concurrency: policy.decision.requestConcurrency },
+    )
+    const values: Array<unknown> = []
+    let failure: AiError.AiError | undefined
+    const allowedSet = new Set(allowed)
+    let resultIndex = 0
+    for (const chunk of chunks) {
+      if (allowedSet.has(chunk)) {
+        const result = chunkResults[resultIndex]
+        resultIndex += 1
+        if (result !== undefined && Result.isSuccess(result)) {
+          values.push(...result.success)
+          continue
+        }
+        if (result !== undefined && Result.isFailure(result)) failure ??= result.failure
+      }
+      for (let i = 0; i < chunk.plans.length; i += 1) values.push(undefined)
+    }
+    const overBudgetSubjects = new Set(overBudget.map((plan) => plan.subject))
+    if (overBudget.length > 0) {
+      notes.push({
+        ruleId: "joggle",
+        reason:
+          overBudget.length +
+          " candidate(s) were not judged: the run's token budget of " +
+          (options.maxInputTokens ?? policy.decision.maxInputTokens) +
+          " was reached",
+      })
+    }
+
+    const plannedOutcomes: Array<{
+      readonly rule: PlannedRule
+      readonly result: RuleResult
+      readonly ms: number
+    }> = []
+    let offset = 0
+    plannedRules.forEach((rule, index) => {
+      const phase = phases[index]
+      const ms = ruleTimings.get(rule.id) ?? 0
+      if (phase === undefined) {
+        plannedOutcomes.push({ rule, result: Result.succeed(outcome([])), ms })
+        return
+      }
+      if (Result.isFailure(phase)) {
+        plannedOutcomes.push({ rule, result: Result.fail(phase.failure), ms })
+        return
+      }
+      const planned = phase.success
+      const asked = askedPerRule[index] ?? []
+      const start = offset
+      offset += asked.length
+      // No judgement and a rule that cannot stand without one: the engine reports
+      // it as skipped. A rule with no questions is IDLE, not skipped.
+      if (asked.length > 0 && failure !== undefined && isUnreachable(failure) && rule.onUnavailable === "propagate") {
+        plannedOutcomes.push({ rule, result: Result.fail(failure), ms })
+        return
+      }
+      // The rule's reader indexes its own full plan list, so the answers go back
+      // in that shape: the asked ones in order, undefined for the rest.
+      const askedValues = values.slice(start, start + asked.length)
+      let cursor = 0
+      const aligned = planned.plans.map((plan) => (inScopePlan(plan) ? askedValues[cursor++] : undefined))
+      const result = planned.read(aligned)
+      // An out-of-scope plan reads as no answer to a rule that never had to know
+      // the scope. That is the engine's bookkeeping, not a finding, so the drops
+      // it produced are removed. A plan the budget skipped is a budget drop, not
+      // an unreadable one.
+      const outside = new Set(planned.plans.filter((plan) => !inScopePlan(plan)).map((plan) => plan.subject))
+      const drops = result.drops
+        .filter((drop) => !(drop.stage === "unreadable" && outside.has(drop.subject)))
+        .map((drop) =>
+          drop.stage === "unreadable" && overBudgetSubjects.has(drop.subject)
+            ? {
+                ...drop,
+                stage: "budget" as const,
+                reason: "the run's token budget was reached before this candidate",
+              }
+            : drop,
         )
-        return { rule, result, ms: (yield* Clock.currentTimeMillis) - ruleStarted }
-      }),
-    { concurrency: policy.decision.requestConcurrency },
-  )
-  for (const { rule, result, ms } of ruleResults) {
-    if (result._tag === "ok") {
-      diagnostics.push(...result.value.diagnostics)
-      for (const note of result.value.notes) notes.push({ ruleId: rule.id, reason: note })
-      drops.push(...result.value.drops)
+      // The last guard, and the one that makes the invariant hold whatever a rule
+      // does: a finding about a file the run is not about is not reported. A
+      // fact-based rule reports an unverified finding when its answer is missing,
+      // so without this an out-of-scope cluster would leak into a scoped report.
+      const kept = result.diagnostics.filter(
+        (entry) => scope.changed === undefined || scope.changed.has(entry.location.file),
+      )
+      plannedOutcomes.push({ rule, result: Result.succeed({ ...result, diagnostics: kept, drops }), ms })
+    })
+
+    // The plain rules are independent, and the judged ones wait on the network.
+    // Running them concurrently overlaps those waits; the DecisionModel layer
+    // serializes its own cache writes, so two rules finishing at once cannot
+    // interleave a full write.
+    const plainResults = yield* Effect.forEach(
+      plainRules,
+      (rule) =>
+        Effect.gen(function* () {
+          const ruleStarted = yield* Clock.currentTimeMillis
+          // The config goes in, because a rule that enforces a layering is
+          // entitled to know what the layering is.
+          const result = yield* rule.run(workspace, scope, { config: options.config }).pipe(
+            Effect.map((value) => Result.succeed(value)),
+            Effect.catch((error) => Effect.succeed(Result.fail(error))),
+          )
+          return { rule, result, ms: (yield* Clock.currentTimeMillis) - ruleStarted }
+        }),
+      { concurrency: policy.decision.requestConcurrency },
+    )
+    return { plannedOutcomes, plainResults }
+  })
+
+  const { plannedOutcomes, plainResults } = yield* engine.pipe(Effect.provide(atomsLayer))
+
+  const results: ReadonlyArray<{
+    readonly rule: { readonly id: string }
+    readonly result: RuleResult
+    readonly ms: number
+  }> = [...plannedOutcomes, ...plainResults]
+  for (const { rule, result, ms } of results) {
+    if (Result.isSuccess(result)) {
+      diagnostics.push(...result.success.diagnostics)
+      for (const note of result.success.notes) notes.push({ ruleId: rule.id, reason: note })
+      drops.push(...result.success.drops)
     } else {
-      skipped.push({ ruleId: rule.id, reason: reasonOf(result.error) })
+      skipped.push({ ruleId: rule.id, reason: reasonOf(result.failure) })
     }
     timings.push({ phase: rule.id.replace("joggle/", ""), ms })
   }
@@ -443,6 +695,23 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     notes.push({
       ruleId: "joggle",
       reason: "the parse cache did not decode and was ignored: " + parseCache.issues[0],
+    })
+  }
+  // How many declarations the compiler could speak about. A trace that resolved
+  // nothing is a run whose type-aware rules must stay silent, and the two look
+  // identical in a report unless this says which happened.
+  if (options.types === "trace") {
+    const joined = workspace.units.filter((unit) => unit.typeFacts !== undefined).length
+    notes.push({
+      ruleId: "joggle",
+      reason:
+        "resolved " +
+        joined +
+        " of " +
+        workspace.units.length +
+        " declaration(s) to a type (" +
+        typesFrom +
+        ")",
     })
   }
   const parsedFromCache = workspace.parses.hits()

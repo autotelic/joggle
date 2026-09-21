@@ -1,4 +1,6 @@
 import type { Effect } from "effect"
+import type { Atoms } from "./atoms.ts"
+import type { Plan, PlanAnswers } from "./plans.ts"
 import { policy } from "./policy.ts"
 import type { JoggleConfig } from "./config.ts"
 import type * as AiError from "effect/unstable/ai/AiError"
@@ -95,10 +97,56 @@ export interface Rule {
     workspace: Workspace,
     scope: Scope,
     context: RunContext,
-  ) => Effect.Effect<RuleOutcome, AiError.AiError, DecisionModel.DecisionModel>
+  ) => Effect.Effect<
+    RuleOutcome,
+    AiError.AiError,
+    DecisionModel.DecisionModel | Atoms | PlanAnswers
+  >
 }
 
 export const defineRule = (rule: Rule): Rule => rule
+
+/**
+ * A judged rule in two phases, so the engine can answer every rule's questions in
+ * one request.
+ *
+ * `plan` does the deterministic work and returns the questions plus a reader; the
+ * engine answers every planned rule's questions together, then calls each reader.
+ * A rule that answered its own questions could not be batched with any other,
+ * which is the whole reason for the split.
+ *
+ * A rule that does not need batching stays a plain `Rule` and answers its own
+ * questions. The engine runs both kinds in one pass.
+ */
+export interface PlannedRule {
+  readonly id: string
+  readonly severity: Severity
+  readonly description: string
+  readonly judged: true
+  /**
+   * What to do when no judgement is available. `report` still reports its facts;
+   * `propagate` steps aside and the engine reports the rule as skipped.
+   */
+  readonly onUnavailable: "report" | "propagate"
+  readonly plan: (
+    workspace: Workspace,
+    scope: Scope,
+    context: RunContext,
+  ) => Effect.Effect<Planned, AiError.AiError, Atoms | DecisionModel.DecisionModel>
+}
+
+/**
+ * What a planned rule produced before judgement: the questions, and how to read
+ * their answers.
+ *
+ * The reader is a closure rather than a second method because it needs the
+ * phase's own facts -- the clusters, the imports, the layers -- and those are the
+ * rule's, not the engine's.
+ */
+export interface Planned {
+  readonly plans: ReadonlyArray<Plan<unknown>>
+  readonly read: (answers: ReadonlyArray<unknown>) => RuleOutcome
+}
 
 /**
  * Standard wording for a bound a rule hit, so that no rule invents its own and

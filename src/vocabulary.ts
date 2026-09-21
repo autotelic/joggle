@@ -59,18 +59,26 @@ export const duplicateVocabulary = {
       "Separately deployed services. Neither may import the other, whatever their paths suggest.",
   },
   /**
-   * Whether it MATTERS, which is a different question from whether it is true.
+   * How much it MATTERS, which is a different question from whether it is true.
    *
    * The report used to sort by redundancy -- "are these one thing?" -- and on one
    * repository that put the lowest score in the whole report on a spec that
    * re-implements the function it tests, while three placeholder aliases that
    * were all `any` sat above it at 0.68. Both answers were correct. Sorting by
    * the answer to the wrong question is how a real finding ends up last.
+   *
+   * A Score, not a Noul, because "would a reader be better off" is a degree and a
+   * Noul throws the degree away: 0.55 and 0.95 both mean yes, and the report
+   * sorts on this answer, so the degree is the thing that was wanted. The levels
+   * are ordered lowest to highest. Their descriptions live in the question's
+   * instructions, because a Rate's criteria ARE the level names.
    */
-  consequence: {
-    true: "Sharing one would remove work, or stop the copies diverging.",
-    false: "Nobody would notice either way. The copies are stable and independent.",
-  },
+  consequenceLevels: [
+    "no_difference",
+    "slightly_clearer",
+    "meaningfully_better",
+    "removes_a_hazard",
+  ],
   verdict: {
     collapse: "They are one thing. Keep one of them and delete the rest.",
     keep_variants:

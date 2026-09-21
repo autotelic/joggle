@@ -16,6 +16,7 @@ export type { PackageManifest } from "./manifest.ts"
 
 import { shinglesOf } from "./similarity.ts"
 import { WorkspaceError, type SourceLocation } from "./schema.ts"
+import { emptyTypeIndex, type TypeFact, type TypeIndex } from "./typetrace.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Vocabulary                                                                  */
@@ -111,6 +112,17 @@ export interface Unit {
    * means something when we know where it came from.
    */
   typeSignature: string
+  /**
+   * What the compiler resolved this declaration's type to.
+   *
+   * `undefined` means the run had no trace, which is not the same as "the
+   * compiler had nothing to say": `at()` is the difference, and a rule that
+   * cannot tell the two apart reports silence as agreement. `display` is the
+   * checker's own printed form -- the structural fingerprint a trace can give --
+   * and `origin` is where the checker attributes the type, which is not always
+   * this declaration when an alias is involved.
+   */
+  typeFacts: TypeFact | undefined
   /** The comment directly above the declaration, if there is one. */
   readonly doc: string | undefined
 }
@@ -251,6 +263,16 @@ export interface Workspace {
    * those as duplication is reporting the compiler.
    */
   readonly excludedHelpers: number
+  /**
+   * The compiler's view of every declaration's type, or an empty index when the
+   * run did not ask for a trace.
+   *
+   * The index answers "what is this declaration's type" and "where does the
+   * checker say it was declared". A rule reads it directly for the second
+   * question; the first is already on the unit, filled in the same resolution
+   * pass that resolves type names.
+   */
+  readonly types: TypeIndex
 }
 
 /* -------------------------------------------------------------------------- */
@@ -949,6 +971,7 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         callSignature: "",
         test: policy.testFiles.test(file),
         typeSignature: "",
+        typeFacts: undefined,
         doc: docFor(site.docStart),
       })
     }
@@ -1248,6 +1271,14 @@ export const loadWorkspace = (
    * fingerprint, checked when the cache is opened.
    */
   parses: Parses = noParses(),
+  /**
+   * The compiler's type facts, when the run resolved them.
+   *
+   * A parameter rather than something this function generates, because
+   * generating a trace typechecks the whole program and that is a decision for
+   * the caller -- the same reason discovery and typechecking are separate.
+   */
+  types: TypeIndex = emptyTypeIndex,
 ): Effect.Effect<Workspace, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1333,6 +1364,10 @@ export const loadWorkspace = (
           .map((name) => resolveRef(file.path, name))
           .sort()
           .join("|")
+        // The compiler's answer, keyed by the declaration's own line, with the
+        // name as the fallback for the `const X` / `type X` pairs a trace puts
+        // on one declaration and joggle's unit on the other.
+        unit.typeFacts = types.at(unit.file, unit.location.line, unit.name)
       })
     })
     // Declarations from test files and from transpiler helpers are excluded
@@ -1396,5 +1431,6 @@ export const loadWorkspace = (
       manifests,
       testDeclarations,
       excludedHelpers,
+      types,
     }
   })

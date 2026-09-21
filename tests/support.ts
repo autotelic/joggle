@@ -17,6 +17,7 @@ export const tsgoStub = Layer.succeed(
   TsgoService.of({
     listFiles: () => Effect.succeed([]),
     typecheck: () => Effect.succeed([]),
+    generateTrace: () => Effect.void,
   }),
 )
 
@@ -39,6 +40,13 @@ export const withWorkspace = <A, E, R>(
   }).pipe(Effect.provide(NodeServices.layer))
 
 export const noul = (value: number): StubAnswer => ({ type: "noul", noul: value })
+
+/** A Score answer: a position on the question's levels, lowest to highest. */
+export const rate = (rating: number, confidence = 0.9): StubAnswer => ({
+  type: "rate",
+  rating,
+  confidence,
+})
 
 export const choice = (value: string, confidence: number): StubAnswer => ({
   type: "choice",

@@ -1,13 +1,16 @@
-import { Effect, Option, Schema } from "effect"
+import { Effect } from "effect"
 import { builtinModules } from "node:module"
-import { Decision, DecisionModel } from "effect/unstable/ai"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
 import {
   budgetNote,
-  defineRule,
   finding,
   marginOfAnswer,
   outcome,
+  type DecisionAnswers,
+  type PlannedRule,
   type Scope,
 } from "../rule.ts"
 import { packageNameOf } from "../roles.ts"
@@ -175,48 +178,49 @@ const dependenciesIn = (workspace: Workspace): Candidates => {
   return { dependencies, declared }
 }
 
-const DependencyEvidence = Schema.Struct({
-  repository: Schema.NullOr(Schema.String),
-  package: Schema.Struct({
-    path: Schema.String,
-    name: Schema.NullOr(Schema.String),
-    describes_itself_as: Schema.NullOr(Schema.String),
-    imports_this_in: Schema.Number,
-    examples: Schema.Array(Schema.String),
+/** The one question about one dependency, pointing at its atom by id. */
+const dependencyReview = (id: string) => ({
+  fit: Decision.classify({
+    instructions: [
+      `Does \`atoms[${id}].dependency.specifier\` belong in \`atoms[${id}].package.path\`?`,
+      `Inspect \`atoms[${id}].package\` and \`atoms[${id}].dependency\`.`,
+      `\`atoms[${id}].package.describes_itself_as\` is what this package says it is, and \`atoms[${id}].repository\` describes what the codebase is trying to be. Judge the dependency against BOTH: a Fastify plugin importing fastify is a package doing its job, and the same import in a domain package is the thing the architecture exists to prevent. Do not apply a constraint that belongs to one package to every package.`,
+      "Choose `belongs` unless something is clearly wrong. This rule is meant to be quiet.",
+    ].join("\n"),
+    criteria: dependencyVocabulary,
   }),
-  dependency: Schema.Struct({ specifier: Schema.String }),
 })
 
-const DependencyFit = Decision.make({
-  input: DependencyEvidence,
-  decisions: {
-    fit: Decision.classify({
-      instructions: [
-        "Does `dependency.specifier` belong in `package.path`?",
-        "Inspect `package` and `dependency`.",
-        "`package.describes_itself_as` is what this package says it is, and `repository` describes what the codebase is trying to be. Judge the dependency against BOTH: a Fastify plugin importing fastify is a package doing its job, and the same import in a domain package is the thing the architecture exists to prevent. Do not apply a constraint that belongs to one package to every package.",
-        "Choose `belongs` unless something is clearly wrong. This rule is meant to be quiet.",
-      ].join("\n"),
-      criteria: dependencyVocabulary,
-    }),
-  },
-})
-
-export const dependencyFit = defineRule({
+export const dependencyFit: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
   description: "A package depends on something its architecture says it should not.",
   judged: true,
-  run: Effect.fn("joggle/dependency-fit")(function* (
+  // The finding is a fact -- an undeclared import -- and the rule reads the
+  // absence of a judgement itself, so the engine must call it rather than skip it.
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/dependency-fit")(function* (
     workspace: Workspace,
-    _scope: Scope,
+    scope: Scope,
     context,
   ) {
-    const { dependencies, declared } = dependenciesIn(workspace)
+    const { dependencies: all, declared } = dependenciesIn(workspace)
+    // A scoped run asks about the CHANGE, and the change to a dependency is an
+    // IMPORT: the candidate is in scope when one of the files that imports it
+    // moved. Judging every undeclared import in the repository on every push is
+    // the full cost with none of the scoping.
+    const dependencies =
+      scope.changed === undefined
+        ? all
+        : all.filter((dependency) => dependency.examples.some((file) => scope.changed?.has(file)))
     if (dependencies.length === 0 && declared.length === 0) {
-      return outcome([], [
-        "no external dependency needed judging: everything imported is declared by its package or built into node",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            "no external dependency needed judging: everything imported is declared by its package or built into node",
+          ]),
+      }
     }
     const budget = policy.dependencyFit.maxDependencies
     const judged = dependencies.slice(0, budget)
@@ -231,64 +235,76 @@ export const dependencyFit = defineRule({
         entry.specifier +
         " in its own manifest, so importing it is what the package is for",
     }))
-
-    const diagnostics: Array<Diagnostic> = []
     // Declared dependencies are drops, not answers: the funnel has to account for
     // every candidate, and 129 of 241 never reached the model. This was computed
     // and then thrown away until plumb's no-unused-vars reported it, which is a
     // per-file rule finding a bug in the cross-file tool's own reporting.
-    const drops: Array<Drop> = [...answeredItself]
-    for (const dependency of dependencies.slice(budget)) drops.push({
+    const overBudget: ReadonlyArray<Drop> = dependencies.slice(budget).map((dependency) => ({
       ruleId: RULE_ID,
       subject: label(dependency),
       stage: "budget" as const,
       reason: "this run judged " + budget + " dependencies and this one was past the budget",
-    })
+    }))
 
-    // A verdict here is a guess about someone else's design, so without one the
-    // rule stays silent rather than inventing a finding. It still reports what it
-    // looked at: the candidate count is how you decide whether to make the run
-    // that needs a key. One DecisionModel.decide per dependency; a dependency
-    // whose answer cannot be read becomes an unreadable drop, not a failed rule.
-    const results = yield* Effect.forEach(
-      judged,
-      (dependency) => {
-        const manifest = workspace.manifests.get(dependency.directory)
-        const evidence = {
-          repository: context.config.evidence?.repository ?? null,
-          package: {
-            path: dependency.path,
-            // What the package says it IS. Without this the panel is asked whether
-            // a package should import a framework while being told nothing about
-            // the package -- and answers correctly for the wrong package.
-            name: manifest?.name ?? null,
-            describes_itself_as: manifest?.description ?? null,
-            imports_this_in: dependency.count,
-            examples: dependency.examples,
-          },
-          dependency: { specifier: dependency.specifier },
-        }
-        return DecisionModel.decide(DependencyFit, { input: evidence }).pipe(
-          Effect.map((result) => Option.some(result.answers.fit)),
-          Effect.catch(() => Effect.succeed(Option.none<Decision.ClassifyAnswer<string>>())),
-        )
-      },
-      { concurrency: policy.decision.requestConcurrency },
-    )
-
-
-    judged.forEach((dependency, index) => {
-      const answer = results[index]
-      if (answer === undefined || Option.isNone(answer)) {
-        drops.push({
+    const atoms = yield* Atoms
+    const planned: Array<{ readonly dependency: Dependency; readonly plan: Plan<DecisionAnswers> }> = []
+    for (const dependency of judged) {
+      const manifest = workspace.manifests.get(dependency.directory)
+      const id = yield* atoms.add({
+        repository: context.config.evidence?.repository ?? null,
+        package: {
+          path: dependency.path,
+          // What the package says it IS. Without this the panel is asked whether
+          // a package should import a framework while being told nothing about
+          // the package -- and answers correctly for the wrong package.
+          name: manifest?.name ?? null,
+          describes_itself_as: manifest?.description ?? null,
+          imports_this_in: dependency.count,
+          examples: dependency.examples,
+        },
+        dependency: { specifier: dependency.specifier },
+      })
+      planned.push({
+        dependency,
+        plan: {
           ruleId: RULE_ID,
           subject: label(dependency),
-          stage: "unreadable",
-          reason: "the response contained nothing for this dependency",
-        })
-        return
-      }
-      const verdict = answer.value
+          concerns: dependency.examples,
+          atoms: [id],
+          decisions: dependencyReview(id),
+          read: (answers) => answers,
+        },
+      })
+    }
+
+    return {
+      plans: planned.map((entry) => entry.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...answeredItself, ...overBudget]
+        planned.forEach((entry, index) => {
+          const dependency = entry.dependency
+          const answer = verdicts[index]
+          if (answer === undefined) {
+            drops.push({
+              ruleId: RULE_ID,
+              subject: label(dependency),
+              stage: "unreadable",
+              reason: "the response contained nothing for this dependency",
+            })
+            return
+          }
+          const verdict = answer["fit"]
+          if (verdict === undefined || !("label" in verdict)) {
+            drops.push({
+              ruleId: RULE_ID,
+              subject: label(dependency),
+              stage: "unreadable",
+              reason: "the response contained nothing for this dependency",
+            })
+            return
+          }
       // The model only decides WHICH of two problems this is. That the package
       // imports something it does not declare is a fact, and it is the more
       // common one: `@autotelic/fasdentify` imports `fastify` in 29 files and its
@@ -333,17 +349,19 @@ export const dependencyFit = defineRule({
           judged: false,
         }),
       )
-    })
+        })
 
-    return outcome(
-      diagnostics,
-      budgetNote(
-        "dependencies",
-        budget,
-        dependencies.length,
-        dependencies.slice(budget).map(label),
-      ),
-      drops,
-    )
-  }),
-})
+        return outcome(
+          diagnostics,
+          budgetNote(
+            "dependencies",
+            budget,
+            dependencies.length,
+            dependencies.slice(budget).map(label),
+          ),
+          drops,
+        )
+      },
+    }
+  })
+}

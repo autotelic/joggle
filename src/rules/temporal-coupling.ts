@@ -1,16 +1,17 @@
-import { Effect, Option, Schema } from "effect"
-import { Decision, DecisionModel } from "effect/unstable/ai"
-import { isUnreachable } from "../decision.ts"
+import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
 import {
   budgetNote,
   declined,
-  defineRule,
   finding,
   marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
+  type PlannedRule,
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
@@ -56,39 +57,27 @@ interface Candidate {
   readonly missing: string
 }
 
-const Evidence = Schema.Struct({
-  declaration: Schema.Struct({
-    name: Schema.String,
-    path: Schema.String,
-    source: Schema.String,
-    present: Schema.String,
-    missing: Schema.String,
+/** The two questions about one declaration, pointing at its atom by id. */
+const temporalReview = (id: string) => ({
+  verdict: Decision.classify({
+    instructions: [
+      `\`atoms[${id}].declaration.name\` calls \`atoms[${id}].declaration.present\` and not \`atoms[${id}].declaration.missing\`.`,
+      `Choose \`resource_needs_release\` when \`atoms[${id}].declaration.present\` acquires or opens something that \`atoms[${id}].declaration.missing\` would release or close, and the declaration does not release it another way.`,
+      "Choose `released_elsewhere` when the release is deliberate and elsewhere: the declaration returns the resource, or releasing is the caller's job, or another call in the declaration releases it.",
+      "Choose `unrelated_names` when the two names are not a pair -- they are different operations that happen to share a stem.",
+      "Choose `no_issue` when there is nothing to fix.",
+    ].join("\n"),
+    criteria: {
+      resource_needs_release: "It acquires something it must release, and does not.",
+      released_elsewhere: "The release is elsewhere by design.",
+      unrelated_names: "The names are not a pair.",
+      no_issue: "Nothing to fix.",
+    },
   }),
-})
-
-const TemporalReview = Decision.make({
-  input: Evidence,
-  decisions: {
-    verdict: Decision.classify({
-      instructions: [
-        "`declaration.name` calls `declaration.present` and not `declaration.missing`.",
-        "Choose `resource_needs_release` when `declaration.present` acquires or opens something that `declaration.missing` would release or close, and the declaration does not release it another way.",
-        "Choose `released_elsewhere` when the release is deliberate and elsewhere: the declaration returns the resource, or releasing is the caller's job, or another call in the declaration releases it.",
-        "Choose `unrelated_names` when the two names are not a pair -- they are different operations that happen to share a stem.",
-        "Choose `no_issue` when there is nothing to fix.",
-      ].join("\n"),
-      criteria: {
-        resource_needs_release: "It acquires something it must release, and does not.",
-        released_elsewhere: "The release is elsewhere by design.",
-        unrelated_names: "The names are not a pair.",
-        no_issue: "Nothing to fix.",
-      },
-    }),
-    worth_fixing: Decision.probability({
-      instructions: "Would the missing release cause a real problem a reviewer should fix?",
-      criteria: { false: "No, it would not.", true: "Yes, it would." },
-    }),
-  },
+  worth_fixing: Decision.probability({
+    instructions: `Would the missing release cause a real problem a reviewer should fix? The declaration is \`atoms[${id}].declaration.name\` in \`atoms[${id}].declaration.path\`.`,
+    criteria: { false: "No, it would not.", true: "Yes, it would." },
+  }),
 })
 
 const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Candidate> => {
@@ -106,54 +95,66 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Candida
   return found
 }
 
-export const temporalCoupling = defineRule({
+export const temporalCoupling: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
   description: "A function that acquires something it may not release.",
   judged: true,
-  run: Effect.fn("joggle/temporal-coupling")(function* (workspace: Workspace, scope: Scope) {
+  onUnavailable: "propagate",
+  plan: Effect.fn("joggle/temporal-coupling")(function* (workspace: Workspace, scope: Scope) {
     const candidates = candidatesIn(workspace, scope)
     if (candidates.length === 0) {
-      return outcome([], ["no function called one half of a paired operation"])
+      return {
+        plans: [],
+        read: () => outcome([], ["no function called one half of a paired operation"]),
+      }
     }
     const budget = policy.temporalCoupling.maxDeclarations
     const judged = candidates.slice(0, budget)
     const label = (candidate: Candidate): string =>
       candidate.unit.name + " (" + candidate.unit.file + ")"
+    const atoms = yield* Atoms
+    const planned: Array<{ readonly candidate: Candidate; readonly plan: Plan<DecisionAnswers> }> = []
+    for (const candidate of judged) {
+      const id = yield* atoms.add({
+        declaration: {
+          name: candidate.unit.name,
+          path: candidate.unit.file,
+          source: candidate.unit.text.slice(0, policy.evidence.maxSourceChars),
+          present: candidate.present,
+          missing: candidate.missing,
+        },
+      })
+      planned.push({
+        candidate,
+        plan: {
+          ruleId: RULE_ID,
+          subject: label(candidate),
+          concerns: [candidate.unit.file],
+          atoms: [id],
+          decisions: temporalReview(id),
+          read: (answers) => answers,
+        },
+      })
+    }
 
-    const results = yield* Effect.forEach(
-      judged,
-      (candidate) =>
-        DecisionModel.decide(TemporalReview, {
-          input: {
-            declaration: {
-              name: candidate.unit.name,
-              path: candidate.unit.file,
-              source: candidate.unit.text.slice(0, policy.evidence.maxSourceChars),
-              present: candidate.present,
-              missing: candidate.missing,
-            },
-          },
-        }).pipe(
-          Effect.map((result) => Option.some(result.answers)),
-          Effect.catch((error) =>
-            isUnreachable(error) ? Effect.fail(error) : Effect.succeed(Option.none<DecisionAnswers>()),
-          ),
-        ),
-      { concurrency: policy.decision.requestConcurrency },
-    )
-
-    const diagnostics: Array<Diagnostic> = []
-    const drops: Array<Drop> = candidates.slice(budget).map((candidate) => ({
+    const overflow: ReadonlyArray<Drop> = candidates.slice(budget).map((candidate) => ({
       ruleId: RULE_ID,
       subject: label(candidate),
       stage: "budget" as const,
       reason: "past the budget of " + budget + " paired-operation candidates",
     }))
 
-    judged.forEach((candidate, index) => {
-      const answer = results[index]
-      if (answer === undefined || Option.isNone(answer)) {
+    return {
+      plans: planned.map((entry) => entry.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...overflow]
+        planned.forEach((entry, index) => {
+          const candidate = entry.candidate
+          const answer = verdicts[index]
+          if (answer === undefined) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(candidate),
@@ -162,8 +163,8 @@ export const temporalCoupling = defineRule({
         })
         return
       }
-      const verdict = answer.value["verdict"]
-      const worth = answer.value["worth_fixing"]
+      const verdict = answer["verdict"]
+      const worth = answer["worth_fixing"]
       if (verdict === undefined || !("label" in verdict)) {
         drops.push({
           ruleId: RULE_ID,
@@ -219,12 +220,19 @@ export const temporalCoupling = defineRule({
           judged: true,
         }),
       )
-    })
+        })
 
-    return outcome(
-      diagnostics,
-      budgetNote("paired-operation candidates", budget, candidates.length, candidates.slice(budget).map(label)),
-      drops,
-    )
-  }),
-})
+        return outcome(
+          diagnostics,
+          budgetNote(
+            "paired-operation candidates",
+            budget,
+            candidates.length,
+            candidates.slice(budget).map(label),
+          ),
+          drops,
+        )
+      },
+    }
+  })
+}

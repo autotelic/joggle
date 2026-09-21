@@ -26,7 +26,7 @@ export const policy = {
    * or evidence change, so verdicts produced by older questions are not replayed
    * against newer ones.
    */
-  decisionVersion: "2026-09-08",
+  decisionVersion: "2026-09-20",
 
   /**
    * The declared analysis version: a FALLBACK and an OVERRIDE, not the gate.
@@ -55,6 +55,27 @@ export const policy = {
 
   decision: {
     baseUrl: "https://api.typesafe.ai",
+    /**
+     * Characters of shared state one request may carry.
+     *
+     * The engine batches every planned rule's questions into one request, and the
+     * provider has a token ceiling: a run of joggle against itself sent 105
+     * candidates' evidence at once and came back HTTP 400
+     * `max_tokens_exceeded`, which every judged rule then read as "unreadable".
+     * So the plans are cut into requests that fit. The per-question cache keeps a
+     * chunk boundary from costing a re-judgement.
+     */
+    maxStateChars: 24000,
+    /**
+     * Input tokens one run may spend on judgement.
+     *
+     * A backstop, not a target. The per-decision cache means a run pays only for
+     * evidence never judged before, so a push costs almost nothing and a cold run
+     * on a large repository costs a lot once. This bounds the runaway: when the
+     * estimate passes it, the run stops judging and reports what it did not judge
+     * as budget drops.
+     */
+    maxInputTokens: 1000000,
     /** How long a successful judgement stays fresh, in days. */
     timeToLiveDays: 30,
     /**
@@ -463,6 +484,21 @@ export const policy = {
     /** Inline JSX elements before a page's markup looks like someone's block. */
     minInlineElements: 15,
     maxPages: 400,
+  },
+
+  /**
+   * One name, several resolved types.
+   *
+   * Deterministic, because the compiler already decided: two declarations of one
+   * name that resolve to different printed types ARE two types. The finding is a
+   * fact; whether they should be one is the reader's call, and the help names
+   * every declaration so the reader can make it.
+   */
+  oneConceptOneType: {
+    /** Findings reported before the rest are counted and not listed. */
+    maxFindings: 20,
+    /** Characters of a resolved type shown before it is cut. */
+    maxTypeChars: 120,
   },
 
   /**

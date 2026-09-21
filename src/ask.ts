@@ -27,6 +27,12 @@ const AskEvidence = Schema.Struct({
       kind: Schema.String,
       path: Schema.String,
       source: Schema.String,
+      /**
+       * The compiler's resolved type, when the run asked for a trace. Absent
+       * otherwise, so the request a run without `--types` sends is byte-identical
+       * to the one it always sent.
+       */
+      resolved: Schema.optionalKey(Schema.String),
     }),
   ),
 })
@@ -95,6 +101,19 @@ const candidatesIn = (workspace: Workspace, query: string): ReadonlyArray<Unit> 
   return scored.slice(0, policy.ask.maxCandidates).map((entry) => entry.unit)
 }
 
+/** One candidate as the model sees it, with the compiler's answer when there is one. */
+const candidateEvidence = (unit: Unit) => {
+  const evidence = {
+    symbol: unit.name,
+    kind: unit.kind,
+    path: unit.file,
+    source: unit.text.slice(0, policy.ask.maxSourceChars),
+  }
+  const facts = unit.typeFacts
+  if (facts === undefined) return evidence
+  return { ...evidence, resolved: facts.display }
+}
+
 /**
  * Answer a question about the code.
  *
@@ -129,12 +148,7 @@ export const ask = (
     const decided = yield* DecisionModel.decide(definition, {
       input: {
         query,
-        candidates: candidates.map((unit) => ({
-          symbol: unit.name,
-          kind: unit.kind,
-          path: unit.file,
-          source: unit.text.slice(0, policy.ask.maxSourceChars),
-        })),
+        candidates: candidates.map((unit) => candidateEvidence(unit)),
       },
     })
 

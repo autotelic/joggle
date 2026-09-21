@@ -1,16 +1,17 @@
-import { Effect, Option, Schema } from "effect"
-import { Decision, DecisionModel } from "effect/unstable/ai"
-import { isUnreachable } from "../decision.ts"
+import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
 import {
   budgetNote,
   declined,
-  defineRule,
   finding,
   marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
+  type PlannedRule,
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
@@ -38,21 +39,10 @@ const RULE_ID = "joggle/doc-matches-code"
  * a concrete contradiction only -- so the rule reports drift rather than style.
  */
 
-const DocEvidence = Schema.Struct({
-  declaration: Schema.Struct({
-    name: Schema.String,
-    path: Schema.String,
-    kind: Schema.String,
-    doc: Schema.String,
-    source: Schema.String,
-    types: Schema.Array(Schema.String),
-  }),
-})
-
-const decisions = {
+const docReview = (id: string) => ({
   verdict: Decision.classify({
     instructions: [
-      "Does the JSDoc on `declaration.name` state a fact that `declaration.source` contradicts?",
+      `Does the JSDoc on \`atoms[${id}].declaration.name\` state a fact that \`atoms[${id}].declaration.source\` contradicts?`,
       "Choose `no_issue` when the doc states no fact the code contradicts. This is the answer for a doc that is short, informal, high-level, or a summary rather than a full description.",
       "Choose a contradiction ONLY when you can point to the source that contradicts the doc:",
       "- `stale_reference`: the doc names a symbol, note, option or parameter that does not exist.",
@@ -66,11 +56,6 @@ const decisions = {
       wrong_behavior: "The doc describes behaviour the code does not have.",
     },
   }),
-}
-
-const DocReview = Decision.make({
-  input: DocEvidence,
-  decisions,
 })
 
 /**
@@ -95,60 +80,73 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Unit> =
     .filter((unit) => scope.changed === undefined || scope.changed.has(unit.file))
     .sort((left, right) => left.file.localeCompare(right.file) || left.start - right.start)
 
-export const docMatchesCode = defineRule({
+export const docMatchesCode: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
   description: "A JSDoc that makes a claim the implementation contradicts.",
   judged: true,
-  run: Effect.fn("joggle/doc-matches-code")(function* (
+  onUnavailable: "propagate",
+  plan: Effect.fn("joggle/doc-matches-code")(function* (
     workspace: Workspace,
     scope: Scope,
   ) {
     const candidates = candidatesIn(workspace, scope)
     if (candidates.length === 0) {
-      return outcome([], [
-        "no exported declaration carries a doc block long enough to document a contract",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            "no exported declaration carries a doc block long enough to document a contract",
+          ]),
+      }
     }
 
     const budget = policy.docMatchesCode.maxDeclarations
     const judged = candidates.slice(0, budget)
     const label = (unit: Unit): string => unit.name + " (" + unit.file + ")"
+    const atoms = yield* Atoms
+    const planned: Array<{ readonly unit: Unit; readonly plan: Plan<DecisionAnswers> }> = []
+    for (const unit of judged) {
+      const id = yield* atoms.add({
+        declaration: {
+          name: unit.name,
+          path: unit.file,
+          kind: unit.kind,
+          doc: proseOf(unit.doc ?? "").slice(0, policy.evidence.maxDocChars * 4),
+          source: unit.text.slice(0, policy.evidence.maxSourceChars * 2),
+          types: unit.typeRefs,
+        },
+      })
+      planned.push({
+        unit,
+        plan: {
+          ruleId: RULE_ID,
+          subject: label(unit),
+          concerns: [unit.file],
+          atoms: [id],
+          decisions: docReview(id),
+          read: (answers) => answers,
+        },
+      })
+    }
 
-    const results = yield* Effect.forEach(
-      judged,
-      (unit) =>
-        DecisionModel.decide(DocReview, {
-          input: {
-            declaration: {
-              name: unit.name,
-              path: unit.file,
-              kind: unit.kind,
-              doc: proseOf(unit.doc ?? "").slice(0, policy.evidence.maxDocChars * 4),
-              source: unit.text.slice(0, policy.evidence.maxSourceChars * 2),
-              types: unit.typeRefs,
-            },
-          },
-        }).pipe(
-          Effect.map((result) => Option.some(result.answers)),
-          Effect.catch((error) =>
-            isUnreachable(error) ? Effect.fail(error) : Effect.succeed(Option.none<DecisionAnswers>()),
-          ),
-        ),
-      { concurrency: policy.decision.requestConcurrency },
-    )
-
-    const diagnostics: Array<Diagnostic> = []
-    const drops: Array<Drop> = candidates.slice(budget).map((unit) => ({
+    const overflow: ReadonlyArray<Drop> = candidates.slice(budget).map((unit) => ({
       ruleId: RULE_ID,
       subject: label(unit),
       stage: "budget" as const,
       reason: "past the budget of " + budget + " documented declarations",
     }))
 
-    judged.forEach((unit, index) => {
-      const answer = results[index]
-      if (answer === undefined || Option.isNone(answer)) {
+    return {
+      plans: planned.map((entry) => entry.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...overflow]
+        planned.forEach((entry, index) => {
+          const unit = entry.unit
+          const answer = verdicts[index]
+          if (answer === undefined) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
@@ -157,7 +155,7 @@ export const docMatchesCode = defineRule({
         })
         return
       }
-      const verdict = answer.value["verdict"]
+      const verdict = answer["verdict"]
       if (verdict === undefined || !("label" in verdict)) {
         drops.push({
           ruleId: RULE_ID,
@@ -201,12 +199,19 @@ export const docMatchesCode = defineRule({
           judged: true,
         }),
       )
-    })
+        })
 
-    return outcome(
-      diagnostics,
-      budgetNote("documented declarations", budget, candidates.length, candidates.slice(budget).map(label)),
-      drops,
-    )
-  }),
-})
+        return outcome(
+          diagnostics,
+          budgetNote(
+            "documented declarations",
+            budget,
+            candidates.length,
+            candidates.slice(budget).map(label),
+          ),
+          drops,
+        )
+      },
+    }
+  })
+}

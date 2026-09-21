@@ -9,7 +9,7 @@ coverage/
 # Judgement replay cache. Kept in git on purpose: CI replays reviewed verdicts
 # with no API key. Nothing else in .joggle/ is tracked.
 .joggle/*
-!.joggle/judgements.json
+!.joggle/answers.json
 !.joggle/baseline.json
 
 # Local secrets — never commit these.
