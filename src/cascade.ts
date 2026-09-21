@@ -4,29 +4,23 @@ import type { Unit, Workspace } from "./workspace.ts"
 /**
  * The 1-based line of a character offset, with the line starts cached per file.
  *
- * A cascade asks this question once per site, and a file with a thousand call
- * sites would otherwise be scanned a thousand times.
+ * A cascade asks this once per site, and a file with a thousand call sites would
+ * otherwise be scanned a thousand times.
  */
-const lineOf = (
-  starts: Map<string, ReadonlyArray<number>>,
-  file: string,
-  text: string,
-  offset: number,
-): number => {
-  let known = starts.get(file)
-  if (known === undefined) {
-    const found: Array<number> = [0]
-    for (let index = 0; index < text.length; index += 1) {
-      if (text[index] === "\n") found.push(index + 1)
-    }
-    known = found
-    starts.set(file, found)
+const lineStarts = (text: string): ReadonlyArray<number> => {
+  const found: Array<number> = [0]
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "\n") found.push(index + 1)
   }
+  return found
+}
+
+const lineAt = (starts: ReadonlyArray<number>, offset: number): number => {
   let low = 0
-  let high = known.length - 1
+  let high = starts.length - 1
   while (low < high) {
     const middle = Math.ceil((low + high) / 2)
-    if ((known[middle] ?? 0) <= offset) low = middle
+    if ((starts[middle] ?? 0) <= offset) low = middle
     else high = middle - 1
   }
   return low + 1
@@ -62,19 +56,26 @@ export const cascadeOf = (
     seen.add(key)
     edits.push(edit)
   }
+  const startsOf = (file: string, text: string): ReadonlyArray<number> => {
+    const known = starts.get(file)
+    if (known !== undefined) return known
+    const found = lineStarts(text)
+    starts.set(file, found)
+    return found
+  }
 
   for (const drop of drops) {
     const identity = drop.file + "#" + drop.name
 
-    // 1. The importers. They must import from where the survivor lives.
+    // 1. The importers. They must take the survivor's name from the survivor.
     for (const edge of workspace.imports.importersOfName(drop.file, drop.name)) {
       push({
         file: edge.from,
         line: 1,
         column: 1,
         instruction:
-          "import \`" + keep.name + "\` from \`" + keep.file +
-          "\` instead of \`" + drop.name + "\` from \`" + drop.file + "\`",
+          "import `" + keep.name + "` from `" + keep.file + "` instead of `" +
+          drop.name + "` from `" + drop.file + "`",
       })
     }
 
@@ -89,9 +90,9 @@ export const cascadeOf = (
           if (unit.calls[index] !== identity) return
           push({
             file: file.path,
-            line: lineOf(starts, file.path, file.text, site.start),
+            line: lineAt(startsOf(file.path, file.text), site.start),
             column: 1,
-            instruction: "call \`" + keep.name + "\` in " + keep.file,
+            instruction: "call `" + keep.name + "` in " + keep.file,
           })
         })
       }
@@ -104,7 +105,7 @@ export const cascadeOf = (
         file: unit.file,
         line: unit.location.line,
         column: 1,
-        instruction: "\`" + drop.name + "\` now resolves to " + keep.file,
+        instruction: "`" + drop.name + "` now resolves to " + keep.file,
       })
     }
   }
