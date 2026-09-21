@@ -262,7 +262,7 @@ const operationNote = (diagnostic: Diagnostic): string => {
  * change that adds declarations without adding concepts is the entropy this tool
  * exists to remove.
  */
-const shape = (structure: Structure): string => {
+const structureLine = (structure: Structure): string => {
   const { concepts, declarations, duplicated, overloaded } = structure
   // A replayed report has no measurement of its own, and a zero that looks
   // measured is worse than silence.
@@ -280,8 +280,8 @@ const text = (report: Report): string => {
   if (lines.length > 0) lines.push("")
   lines.push(...census(report))
   lines.push(problemSummary(report))
-  const shapeLine = shape(report.structure)
-  if (shapeLine !== "") lines.push(shapeLine)
+  const measured = structureLine(report.structure)
+  if (measured !== "") lines.push(measured)
   const provenanceLine = provenance(report)
   if (provenanceLine !== "") lines.push(provenanceLine)
   lines.push(...notes(report))
