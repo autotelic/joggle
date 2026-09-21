@@ -37,6 +37,7 @@
   },
   "scripts": {
     "joggle": "node --conditions=development src/main.ts",
+    "joggle:elsewhere": "sh scripts/joggle-elsewhere.sh",
     "build": "tsgo -p tsconfig.build.json",
     "prepack": "pnpm build",
     "typecheck": "tsgo --noEmit",

@@ -92,6 +92,22 @@ understand TypeScript. `pnpm link` symlinks the source, which works because the
 symlink's real path sits outside `node_modules` -- but a `file:` install needs
 `dist/`, and `pnpm build` is what makes it.
 
+### Inspecting a checkout you do not want to touch
+
+A repository is only modified if it is being onboarded. To analyse a sibling
+checkout without writing anything into it:
+
+```sh
+pnpm joggle:elsewhere ../shakti-v2 --since origin/develop --offline
+```
+
+`scripts/joggle-elsewhere.sh` runs `check --cwd <path>` and sends the answer
+cache to the machine cache **unless the target already has a committed
+`.joggle/`**, in which case the repository's own cache is used so a replay still
+works. Nothing else is written: the run cache, the parse cache and any type
+trace already live under the machine cache, and the default run makes no network
+call when there is no key.
+
 ### As a pi extension
 
 The repository is also a [pi](https://pi.dev) package. Install it once and pi
@@ -104,12 +120,21 @@ pi install /absolute/path/to/joggle    # or: pi -e /absolute/path/to/joggle
 | Name | What it does |
 | --- | --- |
 | `joggle_check` | Run a scoped check and return the findings. Defaults to the changed scope, so it answers what the current batch of work introduced; `scope: "pr"` answers what a pull request introduced. |
-| `joggle_rules` | List the rules the current repository enforces. |
+| `joggle_rules` | List the rules a repository enforces. |
 | `/joggle` | Run a check from the prompt line; arguments pass through, e.g. `/joggle --pr`. |
 
+Both tools take a `cwd`, so a session in one repository can check a sibling:
+
+```
+joggle_check { cwd: "../shakti-v2", scope: "since", since: "origin/develop" }
+```
+
+`joggle_check` follows the same non-invasive cache rule as the script above: it
+passes `--cache-dir` to the machine cache when the target has no `.joggle/`, and
+uses the committed cache when it does. Pass an explicit `cacheDir` to override.
 The extension is a shell over the CLI in this checkout (`dist/main.js`, falling
-back to `src/main.ts`), and it always analyses the repository pi is running in.
-`JOGGLE_BIN` points it at a different build or a wrapper.
+back to `src/main.ts`), and `JOGGLE_BIN` points it at a different build or a
+wrapper.
 
 Output formats follow oxlint, because oxlint already decided what a linter's
 output should be and its decisions are worth copying:

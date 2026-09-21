@@ -17,7 +17,9 @@
  * changed scope is git's view of the local checkout. That is what makes "cut a
  * PR, then iterate" work: the second run sees the edits made after the first.
  */
+import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
+import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent"
@@ -65,6 +67,34 @@ const run = async (
   })
   return { stdout: result.stdout, stderr: result.stderr, code: result.code }
 }
+
+/**
+ * The machine cache directory for one analysed root, matching the CLI's own
+ * layout so answers and the run cache sit together.
+ */
+const machineCache = (target: string): string => {
+  const base =
+    process.env.XDG_CACHE_HOME !== undefined && process.env.XDG_CACHE_HOME !== ""
+      ? process.env.XDG_CACHE_HOME
+      : process.platform === "darwin"
+        ? join(homedir(), "Library", "Caches")
+        : join(homedir(), ".cache")
+  const key = createHash("sha1").update(target).digest("hex").slice(0, 16)
+  return join(base, "joggle", key)
+}
+
+/**
+ * Where this run's answers go.
+ *
+ * `.joggle/answers.json` is a committed artifact in a repository being
+ * onboarded, and a side effect in one being inspected. The extension is global
+ * and pi runs it in repositories it does not own, so it only writes the
+ * committed cache where one already exists; otherwise the answers go to the
+ * machine cache, beside the run cache the CLI already keeps there. Pass an
+ * explicit `cacheDir` to override.
+ */
+const answerCache = (target: string): string | undefined =>
+  existsSync(join(target, ".joggle")) ? undefined : machineCache(target)
 
 /* -------------------------------------------------------------------------- */
 /* Reading the report                                                          */
@@ -211,6 +241,18 @@ const checkParameters = Type.Object({
       description: "Files or directories to analyse. Default: whatever tsgo says the project is.",
     }),
   ),
+  cwd: Type.Optional(
+    Type.String({
+      description:
+        "Repository to analyse, absolute or relative to pi's working directory. Default: the working directory pi is running in.",
+    }),
+  ),
+  cacheDir: Type.Optional(
+    Type.String({
+      description:
+        "Where the answer cache lives. Default: the target's .joggle if it already has one, otherwise the machine cache, so a repository without one is never modified.",
+    }),
+  ),
   rule: Type.Optional(
     Type.String({ description: "Only run these rule ids, comma-separated." }),
   ),
@@ -227,12 +269,14 @@ interface CheckParameters {
   readonly since?: string | undefined
   readonly prNumber?: string | undefined
   readonly paths?: ReadonlyArray<string> | undefined
+  readonly cwd?: string | undefined
+  readonly cacheDir?: string | undefined
   readonly rule?: string | undefined
   readonly offline?: boolean | undefined
   readonly maxWarnings?: number | undefined
 }
 
-const checkArgs = (params: CheckParameters): ReadonlyArray<string> => {
+const checkArgs = (params: CheckParameters, target: string): ReadonlyArray<string> => {
   const args = ["check", "--format", "json"]
   const chosen = params.scope ?? "changed"
   if (chosen === "changed") {
@@ -248,8 +292,20 @@ const checkArgs = (params: CheckParameters): ReadonlyArray<string> => {
   if (params.rule !== undefined) args.push("--rule", params.rule)
   if (params.offline === true) args.push("--offline")
   if (params.maxWarnings !== undefined) args.push("--max-warnings", String(params.maxWarnings))
+  // Non-invasive by default: a repository that has never been onboarded gets no
+  // `.joggle/` from a tool call.
+  if (params.cacheDir !== undefined) {
+    args.push("--cache-dir", params.cacheDir)
+  } else {
+    const fallback = answerCache(target)
+    if (fallback !== undefined) args.push("--cache-dir", fallback)
+  }
   return args
 }
+
+/** The repository a tool call is about: its `cwd`, or pi's working directory. */
+const targetFor = (params: { readonly cwd?: string | undefined }, ctx: ExtensionContext): string =>
+  params.cwd === undefined ? ctx.cwd : resolve(ctx.cwd, params.cwd)
 
 /* -------------------------------------------------------------------------- */
 /* The extension                                                               */
@@ -275,8 +331,9 @@ export default function (pi: ExtensionAPI): void {
       ctx: ExtensionContext,
     ): Promise<ToolResult> {
       try {
-        const args = checkArgs(params)
-        const result = await run(pi, ctx.cwd, args, signal)
+        const target = targetFor(params, ctx)
+        const args = checkArgs(params, target)
+        const result = await run(pi, target, args, signal)
         const report = parse(result.stdout)
         if (report === undefined) {
           const detail = (result.stderr.trim() === "" ? result.stdout : result.stderr).trim()
@@ -290,6 +347,7 @@ export default function (pi: ExtensionAPI): void {
           problems: report.summary.problems,
           errors: report.summary.errors,
           warnings: report.summary.warnings,
+          cwd: target,
           command: args.join(" "),
         })
       } catch (error) {
@@ -301,21 +359,29 @@ export default function (pi: ExtensionAPI): void {
   pi.registerTool({
     name: "joggle_rules",
     label: "joggle Rules",
-    description: "List the rules the current repository enforces, with their severities.",
+    description: "List the rules a repository enforces, with their severities.",
     promptSnippet: "List the rules joggle enforces here",
-    parameters: Type.Object({}),
+    parameters: Type.Object({
+      cwd: Type.Optional(
+        Type.String({
+          description:
+            "Repository to read, absolute or relative to pi's working directory. Default: the working directory pi is running in.",
+        }),
+      ),
+    }),
     async execute(
       _toolCallId: string,
-      _params: Record<string, never>,
+      params: { readonly cwd?: string | undefined },
       signal: AbortSignal | undefined,
       _onUpdate: unknown,
       ctx: ExtensionContext,
     ): Promise<ToolResult> {
       try {
-        const result = await run(pi, ctx.cwd, ["rules"], signal)
+        const target = targetFor(params, ctx)
+        const result = await run(pi, target, ["rules"], signal)
         const text = (result.stdout.trim() === "" ? result.stderr : result.stdout).trim()
         if (result.code !== 0) return failed(`joggle rules failed (exit ${result.code}): ${text}`, {})
-        return ok(text === "" ? "no rules configured" : text, { command: "joggle rules" })
+        return ok(text === "" ? "no rules configured" : text, { cwd: target, command: "joggle rules" })
       } catch (error) {
         return failed(`joggle could not run: ${reason(error)}`, { command: "joggle rules" })
       }
@@ -323,11 +389,22 @@ export default function (pi: ExtensionAPI): void {
   })
 
   pi.registerCommand("joggle", {
-    description: "Run a joggle check on this repository. Arguments pass through, e.g. /joggle --pr.",
+    description:
+      "Run a joggle check on this repository. Arguments pass through, e.g. /joggle --pr or /joggle --cwd ../other-repo --since origin/main.",
     handler: async (args: string, ctx: ExtensionContext) => {
       const extra = args.trim() === "" ? ["--changed"] : args.trim().split(/\s+/)
+      // `--cwd` names the repository the check is about; the cache rule follows
+      // it, so the command does not litter a checkout it was pointed at either.
+      const cwdIndex = extra.indexOf("--cwd")
+      const named = cwdIndex === -1 ? undefined : extra[cwdIndex + 1]
+      const target = named === undefined ? ctx.cwd : resolve(ctx.cwd, named)
+      const argv = [...extra]
+      if (!argv.includes("--cache-dir")) {
+        const fallback = answerCache(target)
+        if (fallback !== undefined) argv.push("--cache-dir", fallback)
+      }
       try {
-        const result = await run(pi, ctx.cwd, ["check", ...extra], ctx.signal)
+        const result = await run(pi, ctx.cwd, ["check", ...argv], ctx.signal)
         const text = (result.stdout.trim() === "" ? result.stderr : result.stdout).trim()
         ctx.ui.notify(text === "" ? "joggle: no output" : text, result.code === 0 ? "info" : "error")
       } catch (error) {
