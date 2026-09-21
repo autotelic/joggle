@@ -222,6 +222,12 @@ export const sweep = <T>(
   return compared
 }
 
+/**
+ * A diagnostic being built. The published type is readonly, so a finding that
+ * adds an optional field needs a mutable view of the same shape.
+ */
+type MutableDiagnostic = { -readonly [K in keyof Diagnostic]: Diagnostic[K] }
+
 export const finding = (input: {
   readonly ruleId: string
   readonly severity: Severity
@@ -235,18 +241,24 @@ export const finding = (input: {
   readonly identity?: string | undefined
   /** The smaller form this finding proposes, when the rule can propose one. */
   readonly repair?: Repair | undefined
-}): Diagnostic => ({
-  ruleId: input.ruleId,
-  severity: input.severity,
-  message: input.message,
-  location: input.location,
-  judged: input.judged,
-  ...(input.help === undefined ? {} : { help: input.help }),
-  ...(input.confidence === undefined ? {} : { confidence: input.confidence }),
-  ...(input.score === undefined ? {} : { score: input.score }),
-  ...(input.identity === undefined ? {} : { identity: input.identity }),
-  ...(input.repair === undefined ? {} : { repair: input.repair }),
-})
+}): Diagnostic => {
+  // Built field by field rather than with conditional spreads: an empty-object
+  // spread hides the omission, and a reader has to reason about two shapes to
+  // see that a field is optional.
+  const diagnostic: MutableDiagnostic = {
+    ruleId: input.ruleId,
+    severity: input.severity,
+    message: input.message,
+    location: input.location,
+    judged: input.judged,
+  }
+  if (input.help !== undefined) diagnostic.help = input.help
+  if (input.confidence !== undefined) diagnostic.confidence = input.confidence
+  if (input.score !== undefined) diagnostic.score = input.score
+  if (input.identity !== undefined) diagnostic.identity = input.identity
+  if (input.repair !== undefined) diagnostic.repair = input.repair
+  return diagnostic
+}
 
 /**
  * The one question every rule asks, and the only answer code reads.
