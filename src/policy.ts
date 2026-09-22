@@ -408,6 +408,15 @@ export const policy = {
   fieldTypeDrift: {
     maxFindings: 200,
     /**
+     * Names that mark a declaration as a raw mirror of something else.
+     *
+     * An `Unparsed*` type, a `*Json` wire shape, a `*Dto` or a `*Row` is the
+     * unbranded side of a parser, so its fields being the plain type while the
+     * domain type is branded is the design, not drift.
+     */
+    rawPrefixes: ["Unparsed", "Raw"],
+    rawSuffixes: ["Json", "Dto", "Row"],
+    /**
      * Words a field name must have before its type is compared.
      *
      * A single-word field is a generic slot: `id`, `name`, `type`, `files` mean

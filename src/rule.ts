@@ -67,13 +67,37 @@ export interface Scope {
    * resolve to). Undefined means every file.
    */
   readonly changed: ReadonlySet<string> | undefined
+  /**
+   * Files a git scope saw as a pure rename: the path moved and the bytes did not.
+   *
+   * A content rule has nothing to say about them -- their bytes are not new -- so
+   * it does not read this. A graph rule does, because the move itself can create
+   * a new relationship: a module that sat beside something may now sit above it.
+   */
+  readonly moved?: ReadonlySet<string> | undefined
 }
 
-export const everyFile: Scope = { changed: undefined }
+export const everyFile: Scope = { changed: undefined, moved: undefined }
 
-/** True when this declaration is in scope for the run. */
+/**
+ * True when this declaration's CONTENT is in scope for the run.
+ *
+ * The default, and what every rule that reads a declaration's body or name
+ * wants. A pure rename is deliberately not in scope: its content was already
+ * here under another name.
+ */
 export const inScope = (scope: Scope, file: string): boolean =>
   scope.changed === undefined || scope.changed.has(file)
+
+/**
+ * True when this file is in scope for a rule that reads the IMPORT GRAPH.
+ *
+ * A moved file's content is not new, but its edges are: a move can put a module
+ * on the wrong side of a boundary it used to respect. So graph rules see the
+ * union, and content rules see `changed` alone.
+ */
+export const inGraphScope = (scope: Scope, file: string): boolean =>
+  scope.changed === undefined || scope.changed.has(file) || (scope.moved?.has(file) ?? false)
 
 /**
  * What every rule is told about the run, beyond the code it is reading.

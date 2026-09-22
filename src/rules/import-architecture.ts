@@ -6,7 +6,7 @@ import {
   layersFrom,
   purityViolations,
 } from "../architecture.ts"
-import { defineRule, finding, outcome, type Rule, type RunContext, type Scope } from "../rule.ts"
+import { defineRule, finding, inGraphScope, outcome, type Rule, type RunContext, type Scope } from "../rule.ts"
 import type { Diagnostic } from "../schema.ts"
 import type { ImportEdge } from "../imports.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
@@ -69,9 +69,7 @@ export const layerDirection = defineRule({
     // when the importing file moved.
     const all = directionViolations(workspace.imports, layers)
     const violations =
-      scope.changed === undefined
-        ? all
-        : all.filter((violation) => scope.changed?.has(violation.from) === true)
+      scope.changed === undefined ? all : all.filter((violation) => inGraphScope(scope, violation.from))
     const files = filesByPath(workspace)
     const edgeAt = new Map(
       workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.to, edge]),
@@ -132,15 +130,15 @@ export const importCycle = defineRule({
     // anchored at a changed member so it points at the part of the loop the run
     // is about. Without this, a scoped run reported every cycle in the
     // repository while saying it had narrowed to the changed files.
-    const inScope = (files: ReadonlyArray<string>): boolean =>
-      scope.changed === undefined || files.some((file) => scope.changed?.has(file) === true)
+    const inCycleScope = (files: ReadonlyArray<string>): boolean =>
+      scope.changed === undefined || files.some((file) => inGraphScope(scope, file))
     const anchorOf = (files: ReadonlyArray<string>): string =>
       scope.changed === undefined
         ? files[0] ?? ""
-        : files.find((file) => scope.changed?.has(file) === true) ?? files[0] ?? ""
+        : files.find((file) => inGraphScope(scope, file)) ?? files[0] ?? ""
 
-    const scopedRuntime = runtime.filter((cycle) => inScope(cycle.files))
-    const scopedNamed = named.filter((cycle) => inScope(cycle.files))
+    const scopedRuntime = runtime.filter((cycle) => inCycleScope(cycle.files))
+    const scopedNamed = named.filter((cycle) => inCycleScope(cycle.files))
     const erasedEntirely = scopedNamed.filter((cycle) => cycle.typeOnly).length
     const partlyErased = scopedNamed.length - erasedEntirely
     const outside = runtime.length - scopedRuntime.length
@@ -190,9 +188,7 @@ export const layerPurity = defineRule({
 
     const all = purityViolations(workspace.imports, layers)
     const violations =
-      scope.changed === undefined
-        ? all
-        : all.filter((violation) => scope.changed?.has(violation.from) === true)
+      scope.changed === undefined ? all : all.filter((violation) => inGraphScope(scope, violation.from))
     const files = filesByPath(workspace)
     const edgeAt = new Map(
       workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.specifier, edge]),

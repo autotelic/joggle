@@ -81,6 +81,12 @@ export const objectShape = defineRule({
 
     const groups = new Map<string, Array<{ file: string; start: number }>>()
     for (const file of workspace.files) {
+      // A shape nobody names is a real problem in application code and not one in
+      // a test. The loudest findings this rule produced on a real repository were
+      // request options in REST tests and `fast-check` record shapes -- 964 and
+      // 802 literals -- and none of them wanted a type. A test file is where a
+      // fixture is supposed to be repeated.
+      if (policy.testFiles.test(file.path)) continue
       for (const site of file.facts.objects) {
         const keys = [...new Set(site.keys)]
         if (keys.length < minKeys) continue
@@ -142,7 +148,8 @@ export const objectShape = defineRule({
         " shape(s) repeated across files" +
         (repeated.length > findings.length
           ? ", " + (repeated.length - findings.length) + " outside the scope of this run"
-          : ""),
+          : "") +
+        "; test files were not searched, where a fixture is supposed to be repeated",
     ])
   }),
 })

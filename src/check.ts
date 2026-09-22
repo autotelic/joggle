@@ -23,6 +23,7 @@ import { funnelNotes, rankDiagnostics, type Report, type Skipped } from "./repor
 import {
   everyFile,
   finding,
+  inGraphScope,
   outcome,
   type PlannedRule,
   type Rule,
@@ -104,6 +105,11 @@ export interface Options {
    */
   readonly changedPaths?: ReadonlyArray<string> | undefined
   /**
+   * Files the git base saw as pure renames. Content rules ignore them; the graph
+   * rules read them, because a move can create a new relationship.
+   */
+  readonly movedPaths?: ReadonlyArray<string> | undefined
+  /**
    * A human name for the git base the scope came from, for the note that says
    * the base produced nothing. Absent for a stored-run scope.
    */
@@ -132,23 +138,41 @@ const typecheckFindings = (output: ReadonlyArray<{ readonly file: string; readon
 /* -------------------------------------------------------------------------- */
 
 /**
- * Which files moved since the stored run, or undefined when there is none to
- * compare against.
+ * Which files moved since the stored run.
+ *
+ * A content hash cannot see a rename directly, but it can see one indirectly: a
+ * path that is new whose bytes match a path that is gone is a move, not a new
+ * declaration. Splitting it out is the same distinction the git scope makes, so
+ * `--changed` and `--pr` answer a move the same way.
  */
-const changedSince = (
-  stored: StoredRun | undefined,
-  hashOf: ReadonlyMap<string, string>,
-): ReadonlySet<string> | undefined => {
-  if (stored === undefined) return undefined
+interface SinceStored {
+  readonly changed: ReadonlySet<string>
+  readonly moved: ReadonlySet<string>
+}
+
+const changedSince = (stored: StoredRun, hashOf: ReadonlyMap<string, string>): SinceStored => {
   const before = new Map(stored.sources.map((source) => [source.path, source.hash]))
+  const byHash = new Map<string, Array<string>>()
+  for (const [path, hash] of before) {
+    const list = byHash.get(hash)
+    if (list === undefined) byHash.set(hash, [path])
+    else list.push(path)
+  }
   const changed = new Set<string>()
+  const moved = new Set<string>()
   for (const [file, hash] of hashOf) {
-    if (before.get(file) !== hash) changed.add(file)
+    const prior = before.get(file)
+    if (prior === hash) continue
+    // A new path whose content matches a path that is gone is the same bytes
+    // under a new name.
+    const twin = (byHash.get(hash) ?? []).some((path) => !hashOf.has(path))
+    if (prior === undefined && twin) moved.add(file)
+    else changed.add(file)
   }
   for (const file of before.keys()) {
     if (!hashOf.has(file)) changed.add(file)
   }
-  return changed
+  return { changed, moved }
 }
 
 /** Exported declaration names by root-relative path. */
@@ -405,7 +429,8 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   let scope: Scope = everyFile
   if (options.changedPaths !== undefined) {
     const changed = new Set(options.changedPaths)
-    scope = { changed }
+    const moved = new Set(options.movedPaths ?? [])
+    scope = { changed, moved }
     const base = options.changedBase === undefined ? "the git base" : options.changedBase
     notes.push({
       ruleId: "joggle",
@@ -416,29 +441,37 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
             changed.size +
             " file(s) that differ from " +
             base +
+            (moved.size === 0
+              ? ""
+              : " and " + moved.size + " pure rename(s), which the content rules skip") +
             ": this answers what the change introduced, not what is wrong with the repository",
     })
   } else if (options.changed) {
-    const changed = changedSince(stored, hashOf)
-    if (changed === undefined) {
+    if (stored === undefined) {
       notes.push({
         ruleId: "joggle",
         reason: "scoped run with no stored run to compare against: every file is in scope",
       })
     } else {
+      const since = changedSince(stored, hashOf)
       const beforeExports = new Map(
-        (stored?.sources ?? []).map((source) => [source.path, source.exports]),
+        (stored.sources ?? []).map((source) => [source.path, source.exports]),
       )
       const affected = affectedBy(
-        changed,
+        since.changed,
         workspace.imports,
         beforeExports,
         exportsOf(workspace),
       )
-      scope = { changed: affected }
+      scope = { changed: affected, moved: since.moved }
       notes.push({
         ruleId: "joggle",
-        reason: `scoped to ${affected.size} file(s) that moved: this answers what the change introduced, not what is wrong with the repository`,
+        reason:
+          `scoped to ${affected.size} file(s) that moved` +
+          (since.moved.size === 0
+            ? ""
+            : ` and ${since.moved.size} pure rename(s), which the content rules skip`) +
+          ": this answers what the change introduced, not what is wrong with the repository",
       })
     }
   }
@@ -482,7 +515,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     // cannot spend a token on a candidate the run is not about, because the
     // engine never sends it and its answer is never read.
     const inScopePlan = (plan: Plan<unknown>): boolean =>
-      scope.changed === undefined || plan.concerns.some((file) => scope.changed?.has(file) === true)
+      scope.changed === undefined || plan.concerns.some((file) => inGraphScope(scope, file))
     const askedPerRule = phases.map((phase) =>
       Result.isSuccess(phase) ? phase.success.plans.filter(inScopePlan) : [],
     )
@@ -636,9 +669,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       // does: a finding about a file the run is not about is not reported. A
       // fact-based rule reports an unverified finding when its answer is missing,
       // so without this an out-of-scope cluster would leak into a scoped report.
-      const kept = result.diagnostics.filter(
-        (entry) => scope.changed === undefined || scope.changed.has(entry.location.file),
-      )
+      const kept = result.diagnostics.filter((entry) => inGraphScope(scope, entry.location.file))
       plannedOutcomes.push({ rule, result: Result.succeed({ ...result, diagnostics: kept, drops }), ms })
     })
 

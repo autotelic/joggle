@@ -174,8 +174,10 @@ const check = Command.make(
           : since === undefined
             ? undefined
             : { since }
-      const changedPaths =
+      const changedSet =
         gitScope === undefined ? undefined : yield* git.changedFiles(cwd, gitScope)
+      const changedPaths = changedSet?.changed
+      const movedPaths = changedSet?.moved
       const changedBase =
         gitScope === undefined
           ? undefined
@@ -210,6 +212,7 @@ const check = Command.make(
         replayUnchanged: !config.noReplay && changedPaths === undefined,
         changed: config.changed,
         changedPaths,
+        movedPaths,
         changedBase,
         baselinePath: Option.getOrUndefined(config.baseline),
         updateBaselinePath: Option.getOrUndefined(config.updateBaseline),

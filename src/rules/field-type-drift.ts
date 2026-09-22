@@ -33,6 +33,64 @@ const wordsOf = (name: string): ReadonlyArray<string> =>
     .split(/[^A-Za-z0-9]+/)
     .filter((word) => word !== "")
 
+/**
+ * Whether a declaration's name marks it as a raw mirror.
+ *
+ * `UnparsedPlanterDay.treesPlanted: number` and `PersonSummary.treesPlanted:
+ * Count` are not drift: the whole point of the unparsed type is that its fields
+ * are the raw values, and the parser beside it is what brands them. The name is
+ * the signal, and it is the one a reviewer would use.
+ */
+const isRawName = (name: string): boolean =>
+  policy.fieldTypeDrift.rawPrefixes.some((prefix) => name.startsWith(prefix)) ||
+  policy.fieldTypeDrift.rawSuffixes.some((suffix) => name.endsWith(suffix))
+
+const normalizeType = (text: string): string =>
+  text.replace(/^\s*:\s*/, "").replace(/\s+/g, " ").trim()
+
+/** An indexed access, `T['k']`, which reads a field's type out of `T`. */
+const indexedPattern = /^([A-Za-z_$][\w$]*)\s*\[\s*['"]([^'"]+)['"]\s*\]$/
+
+/**
+ * A type as far as the index can resolve it, before two are compared.
+ *
+ * `PersonPayrollRecord['personId']` and `PersonId` are the same type, and the
+ * first version of this rule reported them as drift because it compared the
+ * written text. An indexed access reads the field's declared type out of the
+ * type it indexes.
+ *
+ * Deliberately NOT resolved: a bare alias. Following `type Money = number &
+ * { _brand: "Money" }` to its right-hand side would make `Money` and `number`
+ * compose, which silences the exact drift this rule exists to catch. The index
+ * can see that two names are spelled differently; it cannot know whether the
+ * brand matters, and claiming they agree would be the wrong direction to guess.
+ */
+const resolveType = (
+  text: string,
+  byName: ReadonlyMap<string, import("../workspace.ts").Unit>,
+  depth = 0,
+): string => {
+  const current = normalizeType(text)
+  if (depth >= 4) return current
+  const match = indexedPattern.exec(current)
+  if (match === null) return current
+  const target = match[1] === undefined ? undefined : byName.get(match[1])
+  const annotation =
+    target === undefined || match[2] === undefined ? undefined : target.fieldTypes.get(match[2])
+  return annotation === undefined ? current : resolveType(annotation, byName, depth + 1)
+}
+
+/**
+ * True when a type is an indexed access the index could not follow.
+ *
+ * `PersonPayrollRecord` is derived from a `Schema.Struct`, so its fields are not
+ * in the index and `PersonPayrollRecord['personId']` cannot be read. That is not
+ * evidence of drift; it is evidence the type is out of reach, and reporting a
+ * disagreement about a type nobody can see is the wrong direction to guess. The
+ * type trace (`--types`) is what resolves this properly.
+ */
+const isUnresolvedIndexed = (text: string): boolean => indexedPattern.test(normalizeType(text))
+
 interface Declaration {
   readonly type: string
   readonly unit: string
@@ -72,6 +130,14 @@ export const fieldTypeDrift = defineRule({
 
     const findings: Array<Diagnostic> = []
     let drifted = 0
+    // Every type declaration by name, so an indexed access can be read out of
+    // the type it indexes and a bare alias can be followed. First declaration
+    // wins on a duplicate name; the resolver is a heuristic and says so.
+    const byName = new Map<string, import("../workspace.ts").Unit>()
+    for (const unit of workspace.units) {
+      if (unit.kind !== "interface" && unit.kind !== "type") continue
+      if (!byName.has(unit.name)) byName.set(unit.name, unit)
+    }
     // Group by the declaration the finding is anchored to. A type with five
     // drifting fields produced five findings on the same line, which read as
     // duplicates and inflated the count; one finding that lists them is smaller
@@ -88,7 +154,13 @@ export const fieldTypeDrift = defineRule({
           const one = entries[left]
           const two = entries[right]
           if (one === undefined || two === undefined) continue
-          if (!canCompose(one[0], two[0])) {
+          const oneType = resolveType(one[0], byName)
+          const twoType = resolveType(two[0], byName)
+          // An indexed access the index cannot follow is not evidence of drift.
+          if (isUnresolvedIndexed(oneType) || isUnresolvedIndexed(twoType)) continue
+          // Resolve before comparing, so `T['k']` and the type it indexes are the
+          // same type rather than two spellings of it.
+          if (!canCompose(oneType, twoType)) {
             pair = [one[0], two[0]]
             break
           }
@@ -100,6 +172,10 @@ export const fieldTypeDrift = defineRule({
       if (left === undefined || right === undefined) continue
       // One declaration cannot disagree with itself.
       if (left.file === right.file && left.unit === right.unit) continue
+      // A raw mirror is SUPPOSED to be unbranded. `UnparsedPlanterDay` and
+      // `PersonSummary` disagreeing about `treesPlanted` is the parser doing its
+      // job, not drift.
+      if (isRawName(left.unit) || isRawName(right.unit)) continue
       if (scope.changed !== undefined && !(scope.changed.has(left.file) || scope.changed.has(right.file))) {
         continue
       }

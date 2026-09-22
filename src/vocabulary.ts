@@ -231,20 +231,6 @@ export const edgeRolesOf = (ranks: ReadonlyMap<string, number>): ReadonlySet<str
  */
 export const EDGE_ROLES: ReadonlySet<string> = new Set(["transport_edge", "rendering_edge"])
 
-/**
- * The order the roles sit in, decided per repository rather than written down.
- *
- * `roleRank` was a hand-ranked table in code, and a rank is a taste about what
- * "domain" means wearing the costume of a derivation -- the exact defect
- * `joggle/rule-judgment` exists to find. It also hardcoded one architecture:
- * a repository where the UI is the product and the API is the edge would have
- * been reported upside down.
- *
- * So the order is asked for once, as a question, and the answer is per-module
- * data. `derives_from` is the one role that is genuinely derivable -- a library
- * core sits below whatever depends on it -- so it is the model's own verdict on
- * a specific pair, not a constant.
- */
 /** The rank a role label means, for the arithmetic. */
 export const rankOfLabel: Readonly<Record<string, number>> = {
   utilities: 0,
@@ -322,6 +308,12 @@ export const layerOrder: ReadonlyArray<string> = [
 export const dutyVocabulary = {
   domain_logic:
     "A rule, invariant or calculation about the business: something that would be true of the company even if this software were rewritten.",
+  request_validation:
+    "A rule about what the endpoint will ACCEPT: which fields are required, which values are in range, which options are mutually exclusive, and what earns a 400. It constrains the transport contract, not the business, and the same endpoint's UI may hold a different set of rules.",
+  input_adaptation:
+    "Reshaping input into what another layer expects: mapping database columns or a form's fields onto a domain schema. The rule is the domain's; this only converts.",
+  mechanical:
+    "A cache key, an identifier, a lookup table or a memoisation argument: a value that exists to make other code fast or addressable, with no business meaning.",
   transport_concern:
     "Parsing a request, shaping a response, choosing a status code, or reading a header.",
   rendering: "Producing markup, or preparing data purely for display.",

@@ -150,7 +150,7 @@ pi install /absolute/path/to/joggle    # or: pi -e /absolute/path/to/joggle
 
 | Name | What it does |
 | --- | --- |
-| `joggle_check` | Run a scoped check and return the findings. Defaults to the changed scope, so it answers what the current batch of work introduced; `scope: "pr"` answers what a pull request introduced. |
+| `joggle_check` | Run a scoped check and return the findings. Defaults to the changed scope, so it answers what the current batch of work introduced; `scope: "pr"` answers what a pull request introduced. Returns at most 50 findings; pass `limit` to change that, or `0` for all of them. |
 | `joggle_rules` | List the rules a repository enforces. |
 | `/joggle` | Run a check from the prompt line; arguments pass through, e.g. `/joggle --pr`. |
 
@@ -468,6 +468,14 @@ declarations it did not touch: every *new* finding has at least one changed
 member. Dependents come into scope only when a file's **exports** moved, because
 only then can their type names resolve to something else — a refinement the
 stored-run scope makes and the git scope does not.
+
+A **pure rename** is not a content change, and a PR that moves files is mostly
+renames. Both scopes split it out: `changed` is added, modified and
+renamed-with-edits, and `moved` is a rename git is certain kept every byte
+(`--changed` finds the same thing from matching content hashes). Content rules
+read `changed` alone — a moved file's bytes are not new — while the graph rules
+read the union, because the move itself can put a module on the wrong side of a
+boundary it used to respect. The scope note says how many were set aside.
 
 What neither does is report removals, and neither is a full report — so a scoped
 run leaves the stored run alone rather than becoming the next comparison base,

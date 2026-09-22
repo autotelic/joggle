@@ -346,7 +346,7 @@ export default function (pi: ExtensionAPI): void {
     name: "joggle_check",
     label: "joggle Check",
     description:
-      "Run joggle over this repository and return cross-file duplication, naming drift and architecture findings. Scoped to what changed by default, so it answers what the current batch of work introduced.",
+      "Run joggle over this repository and return cross-file duplication, naming drift and architecture findings. Scoped to what changed by default, so it answers what the current batch of work introduced. Returns at most 50 findings; pass `limit` to change that (`0` returns all of them) and the total is always reported.",
     promptSnippet: "Find cross-file duplication and naming drift with joggle",
     promptGuidelines: [
       "Use joggle_check after a batch of edits to find new cross-file duplication and naming drift; it defaults to the changed scope.",

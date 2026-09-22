@@ -7,6 +7,7 @@ import { verdictsOf, type Plan } from "../plans.ts"
 import {
   budgetNote,
   finding,
+  inGraphScope,
   marginOfAnswer,
   outcome,
   type DecisionAnswers,
@@ -212,7 +213,7 @@ export const dependencyFit: PlannedRule = {
     const dependencies =
       scope.changed === undefined
         ? all
-        : all.filter((dependency) => dependency.examples.some((file) => scope.changed?.has(file)))
+        : all.filter((dependency) => dependency.examples.some((file) => inGraphScope(scope, file)))
     if (dependencies.length === 0 && declared.length === 0) {
       return {
         plans: [],

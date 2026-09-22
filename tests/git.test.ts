@@ -51,12 +51,36 @@ test("a git scope is the branch diff plus uncommitted work", async () => {
   writeFileSync(join(dir, "src/a.ts"), "export const a = 2\n")
   writeFileSync(join(dir, "src/c.ts"), "export const c = 1\n")
 
-  expect(await changedFiles(dir, { since: "main" })).toEqual(["src/a.ts", "src/b.ts", "src/c.ts"])
+  expect(await changedFiles(dir, { since: "main" })).toEqual({
+    changed: ["src/a.ts", "src/b.ts", "src/c.ts"],
+    moved: [],
+  })
+})
+
+test("a pure rename is a move, not a content change", async () => {
+  const dir = repo()
+  const git = (...args: ReadonlyArray<string>): void => {
+    execFileSync("git", [...args], { cwd: dir, stdio: "pipe" })
+  }
+  git("checkout", "-qb", "feature")
+  // `git mv` with no edit: the bytes are identical, only the path moved.
+  mkdirSync(join(dir, "src/domain"))
+  git("mv", "src/a.ts", "src/domain/a.ts")
+  git("commit", "-qm", "move a")
+  // A rename that also edits content is a change, not a move.
+  writeFileSync(join(dir, "src/b.ts"), "export const b = 1\n")
+  git("add", "-A")
+  git("commit", "-qm", "add b")
+  writeFileSync(join(dir, "src/b.ts"), "export const b = 2\n")
+
+  const scope = await changedFiles(dir, { since: "main" })
+  expect(scope.moved).toEqual(["src/domain/a.ts"])
+  expect(scope.changed).toEqual(["src/b.ts"])
 })
 
 test("a branch with no changes yields no files", async () => {
   const dir = repo()
-  expect(await changedFiles(dir, { since: "main" })).toEqual([])
+  expect(await changedFiles(dir, { since: "main" })).toEqual({ changed: [], moved: [] })
 })
 
 test("a revision that does not exist is a typed failure, not a crash", async () => {

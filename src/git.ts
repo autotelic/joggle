@@ -21,9 +21,27 @@ export interface ChangedOptions {
   readonly pr?: string | undefined
 }
 
+/**
+ * What a diff did to the files, in the two sets that matter.
+ *
+ * A content rule has nothing to say about a file whose bytes did not change, so
+ * a pure rename must not put it in `changed`. But a MOVE can create a new
+ * architectural relationship -- a module now sits above something it used to sit
+ * beside -- so the graph rules still see it in `moved`. Keeping the two apart is
+ * what lets a scoped run answer "what did this change introduce" for a PR whose
+ * main act is moving files.
+ */
+export interface ChangedSet {
+  /** Added, modified, or renamed-with-edits: content the run has not seen. */
+  readonly changed: ReadonlyArray<string>
+  /** Pure renames: the path moved and the bytes did not. */
+  readonly moved: ReadonlyArray<string>
+}
+
 export interface Interface {
   /**
-   * Root-relative paths that differ from the base, including uncommitted work.
+   * Root-relative paths that differ from the base, including uncommitted work,
+   * split into content changes and pure renames.
    *
    * The union of the branch diff and the working tree is deliberate: a person
    * cuts a PR and then iterates on it, and the second pass must see the edit
@@ -32,7 +50,7 @@ export interface Interface {
   readonly changedFiles: (
     cwd: string,
     options: ChangedOptions,
-  ) => Effect.Effect<ReadonlyArray<string>, GitError, ChildProcessSpawner>
+  ) => Effect.Effect<ChangedSet, GitError, ChildProcessSpawner>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@joggle/Git") {}
@@ -138,7 +156,7 @@ const changedFiles = Effect.fn("Git.changedFiles")(function* (
     options.pr !== undefined
       ? yield* prRef(cwd, options.pr === "" ? undefined : options.pr)
       : options.since
-  if (base === undefined) return []
+  if (base === undefined) return { changed: [], moved: [] }
 
   // Three dots by hand: the merge base is where the branch forked, so the diff
   // is the PR's own work rather than every commit main has gained since. A ref
@@ -149,17 +167,35 @@ const changedFiles = Effect.fn("Git.changedFiles")(function* (
     Effect.orElseSucceed(() => base),
   )
 
-  const tracked = yield* command(
+  // `-M` turns rename detection on and `--name-status` reports it as `R<score>`.
+  // `R100` is a rename git is certain kept every byte; anything below it changed
+  // content on the way, so it is a normal change.
+  const status = yield* command(
     "git",
-    ["diff", "--name-only", "--diff-filter=ACMR", "--relative", mergeBase],
+    ["diff", "--name-status", "-M", "--diff-filter=ACMR", "--relative", mergeBase],
     cwd,
   )
+  const changed = new Set<string>()
+  const moved = new Set<string>()
+  for (const line of status.split(/\r?\n/)) {
+    if (line.trim() === "") continue
+    const [code = "", second, third] = line.split("\t")
+    if (code.startsWith("R")) {
+      // A rename's path is the third column; the second is where it came from.
+      if (third === undefined) continue
+      if (code === "R100") moved.add(third)
+      else changed.add(third)
+      continue
+    }
+    if (second !== undefined) changed.add(second)
+  }
   // A file the work just created is untracked, and a new duplicate most often
   // arrives in one. `--exclude-standard` keeps .gitignore's word.
   const untracked = yield* command("git", ["ls-files", "--others", "--exclude-standard"], cwd)
-  return [...new Set([...lines(tracked), ...lines(untracked)])].sort((left, right) =>
-    left.localeCompare(right),
-  )
+  for (const file of lines(untracked)) changed.add(file)
+
+  const order = (left: string, right: string): number => left.localeCompare(right)
+  return { changed: [...changed].sort(order), moved: [...moved].sort(order) }
 })
 
 const make = (): Interface => ({ changedFiles })

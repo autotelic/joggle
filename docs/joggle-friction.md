@@ -267,3 +267,81 @@ committed cache is the point) or visited (where it is litter).
 - `timeout` does not exist on macOS by default.
 - Piping the 50k-character tool payloads into a model's context twice -- which is
   itself the argument for the `limit` in #7.
+
+## Round four: PR #1572
+
+A PR whose main act is moving 44 files into a package, plus five response
+schemas. Scoped with `--pr-number 1572`. Six items from the run, five fixed and
+one pushed back.
+
+**A moved file inherits its whole history (fixed).** `--pr` reported findings in
+files the PR only *renames*. Git knows the difference, so the scope now splits:
+`changed` is added, modified and renamed-with-edits; `moved` is `R100`, a rename
+git is certain kept every byte. Content rules (`object-shape`,
+`field-type-drift`, the duplicate rules, ...) read `changed` alone, because a
+moved file's bytes are not new. Graph rules (`import-cycle`, the two layer rules,
+`module-direction`, `dependency-fit`) read the union, because the MOVE can put a
+module on the wrong side of a boundary it used to respect. `--changed` detects
+the same thing from content hashes, so both scopes answer a move the same way.
+
+On PR #1572: 54 findings -> 31, and `field-type-drift` 14 -> 6, `object-shape`
+15 -> 5. The scope note says how many were skipped.
+
+**A raw mirror is not drift (fixed).** `UnparsedPlanterDay.treesPlanted: number`
+against `PersonSummary.treesPlanted: Count` is the parser doing its job. A
+declaration whose name starts `Unparsed`/`Raw` or ends `Json`/`Dto`/`Row` is the
+unbranded side of one, and the rule now skips any pair that involves one. The
+markers are in `policy.fieldTypeDrift`, so a repository can extend them.
+
+**An indexed access (partly fixed).** `PersonPayrollRecord['personId']` and
+`PersonId` are one type. The rule now reads a field's declared type out of the
+type it indexes, so `T['k']` and the type it names compare equal. Where the
+indexed type is derived from a `Schema.Struct`, its fields are not in joggle's
+index and the access cannot be followed -- and there the pair is now SKIPPED
+rather than reported, because a disagreement about a type nobody can see is the
+wrong direction to guess. The type trace (`--types`) is what resolves it
+properly. Deliberately NOT resolved: a bare alias. Following `type Money =
+number & { _brand }` to its right-hand side would make `Money` and `number`
+compose, silencing the drift the rule exists to catch.
+
+**`object-shape` on test scaffolding (fixed).** The three loudest findings were
+request options in REST tests and `fast-check` record shapes. Test files are now
+skipped: a shape nobody names is a real problem in application code, and a test
+is where a fixture is supposed to be repeated.
+
+**`hoist-to-domain` and the request rule (fixed).** `resolveDateRange` and
+`resolveDateMode` are rules about what the endpoint ACCEPTS, and the UI's version
+of the mode has different semantics, so there is no second copy to disagree
+with. The duty vocabulary now offers `request_validation`,
+`input_adaptation` and `mechanical` (a cache key), and the reader already drops
+anything that is not `domain_logic`.
+
+**`language-drift` on "none" (fixed earlier).** "None" collides with the
+Choice's own decline option and is an ordinary English word. It is filtered
+before the question is asked; a regression test covers it.
+
+**`limit` is not documented (fixed).** It is in the tool description and in
+`JOGGLE.md` now.
+
+### Pushed back: `compose-types` contradicts `field-type-drift`
+
+It does not, on any pair, and the two cannot: `compose-types` fires only when
+`canCompose` is true for every shared field, and `field-type-drift` fires only
+when it is false for one. They share the predicate. The apparent contradiction is
+one declaration with two different counterparts: `UnparsedPlanterDay` composes
+`PlanterDay` (a composition candidate) while its `treesPlanted` disagrees with
+`PersonSummary` (a drift). Those are two facts about one type, not one rule
+overruling the other -- and the second is the raw mirror above.
+
+Tightening `compose-types` to require *identical* types would make it disagree
+with `field-type-drift` in the other direction: it would drop the genuine
+composition where two shared fields are written `AbortSignal` and `AbortSignal |
+undefined`, which is exactly the false negative `canCompose` was written to fix.
+
+### Still open
+
+**A changed-lines scope.** A file touched only by an import-specifier rewrite is
+in `changed`, and its findings are as old as the file. Excluding it needs a scope
+that is the changed *lines*, not the changed paths -- a bigger change than the
+rename split, and the other half of taking this run from 85 to 15.
+
