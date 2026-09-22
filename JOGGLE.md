@@ -90,12 +90,15 @@ joggle check --since origin/main
 ```
 
 The wrapper resolves its own checkout through the symlink and runs the build
-(falling back to the source). It supplies the TypeSafe key through doppler by
-explicit project and config -- `JOGGLE_DOPPLER_PROJECT` and
-`JOGGLE_DOPPLER_CONFIG` override the defaults `joggle` and `dev` -- so a
-sibling repository's `doppler.yaml` cannot shadow it, and `doppler run --` is
-never needed. Commands that need no key (`rules`, help, `--offline`) skip
-doppler entirely.
+(falling back to the source). It fetches the TypeSafe key with
+`doppler secrets get`, run from the joggle root: doppler resolves a project
+from the **working directory's** `doppler.yaml`, and a sibling repository's
+setup wins over explicit `--project`/`--config` (and over `DOPPLER_PROJECT` /
+`DOPPLER_CONFIG`), so fetching from the root is what makes it work from any
+checkout. `JOGGLE_DOPPLER_PROJECT` and `JOGGLE_DOPPLER_CONFIG` override the
+defaults `joggle` and `dev`. Commands that need no key (`rules`, help,
+`--offline`) skip doppler entirely, and a doppler that cannot answer degrades
+to unverified findings rather than taking the tool down.
 
 ### From another repository
 

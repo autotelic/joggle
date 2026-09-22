@@ -44,8 +44,20 @@ esac
 if [ "$needs_key" = true ] && [ -z "${TYPESAFE_API_KEY:-}" ] && command -v doppler >/dev/null 2>&1; then
   project=${JOGGLE_DOPPLER_PROJECT:-joggle}
   config=${JOGGLE_DOPPLER_CONFIG:-dev}
-  # shellcheck disable=SC2086
-  exec doppler run --project "$project" --config "$config" -- node $conditions "$entry" "$@"
+  # doppler resolves the project from the WORKING DIRECTORY's doppler.yaml, and a
+  # sibling repository's setup wins over the explicit --project/--config (and
+  # over DOPPLER_PROJECT/DOPPLER_CONFIG). So fetch the one secret from the joggle
+  # root, then run from the caller's directory: the analysed root, a relative
+  # --cwd, and the report's paths all stay what the caller asked for.
+  key=$(cd "$root" && doppler secrets get TYPESAFE_API_KEY --project "$project" --config "$config" --plain 2>/dev/null) || key=""
+  if [ -n "$key" ]; then
+    export TYPESAFE_API_KEY="$key"
+    # shellcheck disable=SC2086
+    exec node $conditions "$entry" "$@"
+  fi
+  # A doppler that cannot answer must not take the tool down with it: the run
+  # degrades to unverified findings, which is what a missing key already means.
+  echo "joggle: doppler could not supply TYPESAFE_API_KEY; running without the model" >&2
 fi
 
 # shellcheck disable=SC2086

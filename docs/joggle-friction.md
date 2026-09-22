@@ -58,10 +58,25 @@ note: no model key reached the provider, so judged rules were skipped.
 looked for the wrong project and died with `Could not find requested project
 'joggle'`.
 
-**Now:** the global wrapper supplies the key itself, by explicit project and
-config (`JOGGLE_DOPPLER_PROJECT` / `JOGGLE_DOPPLER_CONFIG` override the
-defaults `joggle` / `dev`). The working directory cannot shadow it. Commands
-that need no key -- `rules`, help, `--offline` -- skip doppler entirely.
+**Now:** the global wrapper supplies the key itself. The first attempt -- pass
+`--project joggle --config dev` -- was only half a fix, and the second session
+proved it: doppler resolves a project from the **working directory's**
+`doppler.yaml`, and a sibling repository's setup wins over the explicit flags.
+Even `DOPPLER_PROJECT` / `DOPPLER_CONFIG` in the environment lose. The matrix,
+same command, only the working directory varying:
+
+```sh
+cd mess      && doppler run --project joggle --config dev -- node dist/main.js rules   # ✓
+cd shakti-v2 && doppler run --project joggle --config dev -- node mess/dist/main.js rules   # ✗
+cd shakti-v2 && (cd mess && doppler run --project joggle --config dev -- node dist/main.js rules)  # ✓
+```
+
+The wrapper now fetches the one secret from the joggle root with
+`doppler secrets get TYPESAFE_API_KEY`, then runs the analysis from the
+caller's directory -- so the analysed root, a relative `--cwd`, and the report's
+paths all stay what the caller asked for. A doppler that cannot answer prints a
+warning and degrades to unverified findings instead of exiting 1, because a
+doppler problem should not take the tool down with it.
 
 ### 4. Relative `--cwd` + a git scope found nothing (bug)
 
