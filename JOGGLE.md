@@ -90,15 +90,19 @@ joggle check --since origin/main
 ```
 
 The wrapper resolves its own checkout through the symlink and runs the build
-(falling back to the source). It fetches the TypeSafe key with
-`doppler secrets get`, run from the joggle root: doppler resolves a project
-from the **working directory's** `doppler.yaml`, and a sibling repository's
-setup wins over explicit `--project`/`--config` (and over `DOPPLER_PROJECT` /
-`DOPPLER_CONFIG`), so fetching from the root is what makes it work from any
-checkout. `JOGGLE_DOPPLER_PROJECT` and `JOGGLE_DOPPLER_CONFIG` override the
-defaults `joggle` and `dev`. Commands that need no key (`rules`, help,
-`--offline`) skip doppler entirely, and a doppler that cannot answer degrades
-to unverified findings rather than taking the tool down.
+(falling back to the source). It looks for the TypeSafe key in three places, in
+order: the environment, a gitignored `.env.local` beside the wrapper, and
+doppler. The doppler fetch runs from the joggle root, because doppler resolves a
+project from the **working directory's** `doppler.yaml` and a sibling
+repository's setup wins over explicit `--project`/`--config` (and over
+`DOPPLER_PROJECT` / `DOPPLER_CONFIG`); it also restores `HOME` from the passwd
+database, because a host such as pi can spawn the command with no `HOME` and
+doppler needs it to find its own auth. `JOGGLE_DOPPLER_PROJECT` and
+`JOGGLE_DOPPLER_CONFIG` override the defaults `joggle` and `dev`. Commands that
+need no key (`rules`, help, `--offline`) skip the lookup entirely, and a key
+that cannot be found degrades to unverified findings -- with a warning on
+stderr, which the pi tools surface in their result -- rather than taking the
+tool down.
 
 ### From another repository
 

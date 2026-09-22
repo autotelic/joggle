@@ -1,5 +1,6 @@
 import { Config, Effect, Option } from "effect"
 import { createHash } from "node:crypto"
+import { homedir } from "node:os"
 
 /**
  * Where joggle's state lives, and how it is read back.
@@ -28,14 +29,17 @@ export const shortHash = (value: string): string =>
 
 /** The per-machine cache root, following the platform's convention. */
 export const machineCacheRoot: Effect.Effect<string> = Effect.gen(function* () {
-  const home = yield* Config.String("HOME").pipe(Effect.orElseSucceed(() => "."))
+  // A host such as pi can run with no HOME. Fall back to the passwd database,
+  // never to ".", because a relative root puts the cache inside the analysed
+  // repository -- the one place this file exists to keep it out of.
+  const home = yield* Config.String("HOME").pipe(Effect.orElseSucceed(() => homedir()))
   const xdg = yield* Config.option(Config.String("XDG_CACHE_HOME")).pipe(
     Effect.orElseSucceed(() => Option.none<string>()),
   )
   const root = Option.getOrUndefined(xdg)
   if (root !== undefined && root !== "") return root
   return process.platform === "darwin" ? `${home}/Library/Caches` : `${home}/.cache`
-}).pipe(Effect.orElseSucceed(() => "."))
+}).pipe(Effect.orElseSucceed(() => homedir()))
 
 /** A machine-local directory for one analysed root. */
 export const runCacheDirFor = (root: string): Effect.Effect<string> =>

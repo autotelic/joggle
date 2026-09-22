@@ -372,7 +372,9 @@ export default function (pi: ExtensionAPI): void {
             command: args.join(" "),
           })
         }
-        return ok(render(report, params.limit ?? 50), {
+        const warning = result.stderr.trim()
+        const body = render(report, params.limit ?? 50)
+        return ok(warning === "" ? body : body + "\n\nnote: " + warning, {
           code: result.code,
           problems: report.summary.problems,
           errors: report.summary.errors,
@@ -411,7 +413,12 @@ export default function (pi: ExtensionAPI): void {
         const result = await run(pi, target, ["rules"], signal)
         const text = (result.stdout.trim() === "" ? result.stderr : result.stdout).trim()
         if (result.code !== 0) return failed(`joggle rules failed (exit ${result.code}): ${text}`, {})
-        return ok(text === "" ? "no rules configured" : text, { cwd: target, command: "joggle rules" })
+        const warning = result.stdout.trim() === "" ? "" : result.stderr.trim()
+        const body = text === "" ? "no rules configured" : text
+        return ok(warning === "" ? body : body + "\n\nnote: " + warning, {
+          cwd: target,
+          command: "joggle rules",
+        })
       } catch (error) {
         return failed(`joggle could not run: ${reason(error)}`, { command: "joggle rules" })
       }

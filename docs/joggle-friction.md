@@ -74,9 +74,17 @@ cd shakti-v2 && (cd mess && doppler run --project joggle --config dev -- node di
 The wrapper now fetches the one secret from the joggle root with
 `doppler secrets get TYPESAFE_API_KEY`, then runs the analysis from the
 caller's directory -- so the analysed root, a relative `--cwd`, and the report's
-paths all stay what the caller asked for. A doppler that cannot answer prints a
-warning and degrades to unverified findings instead of exiting 1, because a
-doppler problem should not take the tool down with it.
+paths all stay what the caller asked for.
+
+A second session found the other half. pi spawns the wrapper directly, not
+through a login shell, and the environment it hands over has no `HOME` -- which
+doppler needs to find its own auth. `env -i PATH=… joggle check …` reproduced
+pi's `MissingKey` exactly, and adding `HOME` back fixed it. The wrapper now
+restores `HOME` from the passwd database when it is missing, and checks a
+gitignored `.env.local` beside itself before doppler, so a host without an auth
+context still gets the key. The failure is also visible now: the warning goes
+to stderr and the pi tools append it to the result, so a degraded run says
+`no model key …` instead of leaving a bare `skipped - MissingKey` to infer.
 
 ### 4. Relative `--cwd` + a git scope found nothing (bug)
 
