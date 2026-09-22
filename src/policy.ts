@@ -348,7 +348,8 @@ export const policy = {
    */
   reimplementedPrimitive: {
     minCalls: 3,
-    maxFindings: 200,
+    /** Pairs handed to one request. Above this the run's budget bounds it. */
+    maxPairs: 200,
   },
 
   /**

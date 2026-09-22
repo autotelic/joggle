@@ -301,8 +301,20 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
           ].join("\n"),
           criteria: duplicateVocabulary.difference,
         }),
-        // The model's own read of the operation, and its OPTIONS are the ones the
-        // graph permits. The model never sees a merge that cannot happen.
+        // The prescription, asked rather than tabulated. The operation options
+        // the graph permits are in the criteria, so the model cannot propose a
+        // merge across a package boundary -- the same guard `permitted` gave the
+        // table, now enforced on the answer instead of before the question.
+        prescription: Decision.classify({
+          instructions: [
+            `What should be done about the declarations named by \`${refs}\`?`,
+            "Answer with the ONE thing a reviewer should do, having read what they are and where they live.",
+            `The operations the import graph permits here are: ${operations.join(", ") || "none"}. \`atoms[${facts}].files\` lists every file involved.`,
+            "Choose `share_a_contract` when the copies cross a boundary that must not import across, and both sides must still agree.",
+            "Choose `leave_it` when the repetition is framework-required or stable enough that changing it costs more than it saves.",
+          ].join("\n"),
+          criteria: duplicateVocabulary.prescription,
+        }),
         operation: Decision.classify({
           instructions: [
             `What should happen to the declarations named by \`${refs}\`?`,
@@ -310,7 +322,9 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
             "Choose `no_issue` when nothing should change.",
           ].join("\n"),
           criteria: {
-            ...Object.fromEntries(operations.map((operation) => [operation, describeOperation(operation)])),
+            ...Object.fromEntries(
+              operations.map((operation) => [operation, describeOperation(operation)]),
+            ),
             no_issue: "Leave them as they are.",
           },
         }),
@@ -325,10 +339,17 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
           : (verdict.confidence ?? 1)
       const role = answers["role"]
       const relationship = answers["relationship"]
+      // The prescription is the model's answer; the table that used to derive it
+      // is gone. `prescriptionFor` remains for the unverified path and for tests.
+      const prescribed = answers["prescription"]
       const prescription =
-        role === undefined || !("label" in role) || relationship === undefined || !("label" in relationship)
-          ? undefined
-          : prescriptionFor(role.label, relationship.label)
+        prescribed !== undefined && "label" in prescribed
+          ? duplicateVocabulary.prescription[
+              prescribed.label as keyof typeof duplicateVocabulary.prescription
+            ] ?? undefined
+          : role === undefined || !("label" in role) || relationship === undefined || !("label" in relationship)
+            ? undefined
+            : prescriptionFor(role.label, relationship.label)
       // Ranked by consequence, gated by redundancy. A finding that does not
       // matter is still a finding and still reported; it sorts last.
       //

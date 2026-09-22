@@ -36,7 +36,9 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
 
     // A breach withholds every JUDGED rule, because their evidence would cross
     // repositories. The structural rules persist nothing, so they still run.
-    expect(report.rules).toBe(11)
+    // 11 -> 10 when `reimplemented-primitive` became judged: its candidate is now
+    // a question over the call graph, so a breach withholds it too.
+    expect(report.rules).toBe(10)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/dependency-fit",
@@ -48,6 +50,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       "joggle/module-direction",
       "joggle/name-as-address",
       "joggle/naming-drift",
+      "joggle/reimplemented-primitive",
       "joggle/rule-judgment",
       "joggle/shallow-module",
       "joggle/temporal-coupling",

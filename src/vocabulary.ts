@@ -1,3 +1,4 @@
+import { Schema } from "effect"
 import { Decision } from "effect/unstable/ai"
 
 /**
@@ -91,6 +92,26 @@ export const duplicateVocabulary = {
     value: "The same thing with a different constant, option or parameter, so one could take the other's.",
     meaning: "A different concept that happens to read alike.",
     unclear: "The evidence does not say.",
+  },
+  /**
+   * What to DO about it, asked rather than tabulated.
+   *
+   * `prescriptionFor` was a table over `(role, relationship)`, and a table over
+   * two answers is the code deciding an order the model can decide in one
+   * question. It is asked instead, with the facts the table used to encode as
+   * STATE rather than as branches: the operations the import graph permits are
+   * already computed, so the options are the ones that can actually happen.
+   */
+  prescription: {
+    merge:
+      "Delete the copies and import one. These files can reach each other, so the survivor is available to all of them.",
+    move:
+      "The shared part belongs somewhere every copy can depend on. Move it there and import it from each site.",
+    split: "One name with two meanings. Give each meaning its own name and declaration.",
+    share_a_contract:
+      "Expected duplication across a deployable boundary. Give both sides one shared contracts package if they must agree, and leave it alone if they must not.",
+    leave_it:
+      "Framework shapes and stable copies that nobody will change. Leave them as they are.",
   },
   verdict: {
     collapse: "They are one thing. Keep one of them and delete the rest.",
@@ -186,8 +207,109 @@ export const moduleRoles = {
   not_applicable: "Tests, scripts, migrations, seeds or configuration.",
 }
 
-/** Whether a module can hold a declaration that has crept out of the core. */
+/**
+ * Which roles are edges, for the rules that ask "is this the outer layer?".
+ *
+ * `EDGE_ROLES` was a constant set, and it is the same defect `roleRank` had: it
+ * hardcodes that transport and rendering are the outer layer. With a rank in
+ * hand it is derivable -- an edge is the highest layer this repository has --
+ * and a rule that needs the set builds it from the answer.
+ */
+export const edgeRolesOf = (ranks: ReadonlyMap<string, number>): ReadonlySet<string> => {
+  let top = Number.NEGATIVE_INFINITY
+  for (const rank of ranks.values()) if (rank > top) top = rank
+  const edges = new Set<string>()
+  for (const [role, rank] of ranks) if (rank === top) edges.add(role)
+  return edges
+}
+
+/**
+ * Whether a module can hold a declaration that has crept out of the core.
+ *
+ * The constant, kept for the vocabulary's own tests and as the fallback a rule
+ * uses when no rank was decided. A rule with ranks should call `edgeRolesOf`.
+ */
 export const EDGE_ROLES: ReadonlySet<string> = new Set(["transport_edge", "rendering_edge"])
+
+/**
+ * The order the roles sit in, decided per repository rather than written down.
+ *
+ * `roleRank` was a hand-ranked table in code, and a rank is a taste about what
+ * "domain" means wearing the costume of a derivation -- the exact defect
+ * `joggle/rule-judgment` exists to find. It also hardcoded one architecture:
+ * a repository where the UI is the product and the API is the edge would have
+ * been reported upside down.
+ *
+ * So the order is asked for once, as a question, and the answer is per-module
+ * data. `derives_from` is the one role that is genuinely derivable -- a library
+ * core sits below whatever depends on it -- so it is the model's own verdict on
+ * a specific pair, not a constant.
+ */
+/** The rank a role label means, for the arithmetic. */
+export const rankOfLabel: Readonly<Record<string, number>> = {
+  utilities: 0,
+  // A module the run could not classify still occupies a layer; the helpers and
+  // third-party clients that nothing internal depends on sit at the bottom.
+  below_everything: 0,
+  infrastructure: 1,
+  // The machinery of a tool or library sits at its own repository's level.
+  derives_from: 2,
+  domain_core: 2,
+  library_core: 2,
+  domain: 2,
+  transport_edge: 3,
+  rendering_edge: 3,
+}
+
+/**
+ * The layer ordering, as data the rules read.
+ *
+ * `rankOf(role)` is the model's answer written back into one number, which is
+ * the same shape `roleRank` had -- except the table is now the labels, and the
+ * answer comes from the repository rather than from this file.
+ */
+export const rankOf = (label: string): number | undefined => rankOfLabel[label]
+
+/**
+ * The rank question, whole.
+ *
+ * Lives here rather than in `roles.ts` because every string a model is asked to
+ * choose between belongs in one file -- the same reason the rest of this module
+ * exists.
+ */
+const RankEvidence = Schema.Struct({
+  repository: Schema.optionalKey(Schema.String),
+  roles: Schema.Array(Schema.String),
+})
+
+export const RoleRanking = Decision.make({
+  input: RankEvidence,
+  decisions: {
+    order: Decision.classify({
+      instructions: [
+        "Put the roles in `roles` in this codebase's dependency order, lowest first.",
+        "A module in a lower layer must never depend on a module in a higher one.",
+        "The lowest layer holds things everything else may use: generic helpers and third-party clients.",
+        "Above that sits the domain: the rules and shapes the business is about.",
+        "Above the domain sit the edges: HTTP that calls it and UI that renders it.",
+        "`library_core` is the machinery of a tool or library; place it where this repository's engine actually sits.",
+        "`not_applicable` is outside the order: tests, scripts and configuration are not part of it.",
+        "Choose the option whose description names the role that should sit LOWEST in this repository.",
+      ].join("\n"),
+      criteria: Object.fromEntries(
+        Object.entries(moduleRoles).map(([role, description]) => [role, description]),
+      ),
+    }),
+  },
+})
+
+/** The order, for the note. */
+export const layerOrder: ReadonlyArray<string> = [
+  "utilities",
+  "infrastructure",
+  "domain_core",
+  "transport_edge",
+]
 
 /**
  * What a declaration is doing, which decides whether its location is a problem.

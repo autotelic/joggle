@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { layersFrom } from "../architecture.ts"
-import { classifyModules, moduleOf, modulesOf, roleRank } from "../roles.ts"
+import { classifyModules, moduleOf, modulesOf } from "../roles.ts"
 import { defineRule, finding, outcome, type Scope } from "../rule.ts"
 import type { Diagnostic } from "../schema.ts"
 import type { Workspace } from "../workspace.ts"
@@ -74,10 +74,12 @@ export const moduleDirection = defineRule({
       // which is what nesting is for, and reporting it as an architectural
       // violation is how a direction check becomes noise.
       if (from.startsWith(to + "/") || to.startsWith(from + "/")) continue
-      const fromRank = roleRank[from]
-      const toRank = roleRank[to]
+      const fromRank = classified.ranks.get(from)
+      const toRank = classified.ranks.get(to)
       // A role with no rank is not part of the architecture: a test may import
-      // anything, and a module nobody could classify is not a claim about anyone.
+      // anything, a module nobody could classify is not a claim about anyone, and
+      // a run that could not order the roles reports no direction at all rather
+      // than inventing one.
       if (fromRank === undefined || toRank === undefined) continue
       if (toRank <= fromRank) continue
       const key = from + "\u0000" + to
@@ -99,12 +101,12 @@ export const moduleDirection = defineRule({
             ".",
           help:
             "The roles are ordered " +
-            order() +
+            order(classified.ranks) +
             ", and " +
             from +
             " sits below " +
             to +
-            ". That is inferred from what the two modules are, not from a declared layering -- write one in joggle.config.json if this repository disagrees, and this rule will step aside.",
+            ". That order was inferred from what the two modules are, not from a declared layering -- write one in joggle.config.json if this repository disagrees, and this rule will step aside.",
           location: { file: edge.from, line: 1, column: 1 },
           identity: [RULE_ID, from, to].join("\u0000"),
           // The roles came from the model, so this finding does too. Saying
@@ -132,8 +134,8 @@ const moduleKey = (file: string, workspace: Workspace): string => {
 }
 
 /** The order, written once so the help and the arithmetic cannot disagree. */
-const order = (): string =>
-  Object.entries(roleRank)
+const order = (ranks: ReadonlyMap<string, number>): string =>
+  [...ranks.entries()]
     .sort((left, right) => left[1] - right[1] || left[0].localeCompare(right[0]))
     .map(([role]) => role.replace(/_/g, " "))
     .join(" below ")

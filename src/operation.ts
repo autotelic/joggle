@@ -61,6 +61,12 @@ export const permitted = (
 /**
  * The table. ONE estimator, and a policy rather than a proof.
  *
+ * It is a PEER of the model's own read, not a stage before it: `settle` compares
+ * the two and reports a disagreement rather than letting either decide alone.
+ * That is what the `difference` question is for -- it is the one input the model
+ * supplies to the table, and the table's answer is then a second opinion rather
+ * than a verdict the question was designed to rubber-stamp.
+ *
  * @param input.candidate - What the candidate is: a name declared twice, a name
  *   with two meanings, or logic in the wrong place. A fact, not an answer.
  * @param input.oneThing - The probability that the declarations are one concept.
@@ -89,11 +95,16 @@ export interface Settled {
 }
 
 /**
- * Reconcile the table with the model's own read.
+ * Reconcile the table with the model's own read, as peers.
  *
  * Agreement is the strongest signal this tool has, because the two methods fail
  * differently. Disagreement is not a failure: it is the case a person should
  * look at, so it is reported rather than resolved.
+ *
+ * Neither decides first. The table is a policy a person wrote; the model read
+ * the whole candidate. A question built so that one of them is pre-computed is a
+ * question whose answer was fixed before it was asked -- the defect the deleted
+ * `merge_changes_behavior` had -- so both are read and compared.
  *
  * @param input.derived - The table's answer, or undefined when it has none.
  * @param input.proposed - The model's answer, or undefined when it declined.

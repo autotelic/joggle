@@ -14,7 +14,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import { classifyModules, moduleOf } from "../roles.ts"
-import { dutyVocabulary, EDGE_ROLES, homeVocabulary } from "../vocabulary.ts"
+import { dutyVocabulary, EDGE_ROLES, edgeRolesOf, homeVocabulary } from "../vocabulary.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -182,10 +182,14 @@ export const hoistToDomain: PlannedRule = {
 
     const edge = new Map<string, string>()
     const notAnEdge: Array<Drop> = []
+    // Derived from the rank the run decided, so a repository whose outer layer is
+    // the API rather than the UI gets the right edge. The constant is the
+    // fallback for a run that could not order the roles.
+    const edgeRoles = classified.ranks.size === 0 ? EDGE_ROLES : edgeRolesOf(classified.ranks)
     for (const unit of all) {
       const path = moduleOf(unit)
       const role = classified.roles.get(path)
-      if (role !== undefined && EDGE_ROLES.has(role)) {
+      if (role !== undefined && edgeRoles.has(role)) {
         edge.set(path, role)
         continue
       }
