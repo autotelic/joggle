@@ -16,5 +16,9 @@ it.effect("a literal that uses a declared type is not a missing type", () =>
     expect(messages.some((message) => message.includes("{ x; y }"))).toBe(false)
     // { alpha, beta, gamma } has no declared type anywhere.
     expect(messages.some((message) => message.includes("{ alpha; beta; gamma }"))).toBe(true)
+    // { x, y, label } is a use of Labelled, whose field set is Base's plus its
+    // own. Resolving `extends` is what keeps composing a type from turning its
+    // own literals into findings.
+    expect(messages.some((message) => message.includes("{ label; x; y }"))).toBe(false)
   }).pipe(Effect.provide(modelStub({})), Effect.provide(NodeServices.layer)),
 )

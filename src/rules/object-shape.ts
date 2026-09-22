@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import { policy } from "../policy.ts"
 import { defineRule, finding, outcome, type Scope } from "../rule.ts"
 import type { Diagnostic } from "../schema.ts"
-import type { Workspace } from "../workspace.ts"
+import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/object-shape"
 
@@ -35,16 +35,40 @@ export const objectShape = defineRule({
     // A shape a declared type already describes is not a shape nobody named.
     // Every interface and type alias contributes its field set, and a
     // `Schema.Struct` field object contributes its keys and the non-optional ones.
-    // A shape a declared type already names is not a shape nobody named. A
-    // literal is a use of a type when every key it has is a field of that type:
-    // an exact match, and also a projection that drops optional fields -- the
-    // common case, and the one the old "has every required field" test missed,
-    // because optionality is not recorded for an interface.
+    // A declared type's field set is its own fields plus the fields of the types
+    // it composes -- `extends`, `A & B`, `type T = A` -- resolved across files.
+    // Without this, composing a type made the literals that used to match its
+    // full field set look unnamed, so the rule penalised exactly what
+    // compose-types and name-the-primitive recommend.
+    const byId = new Map<string, Unit>()
+    for (const unit of workspace.units) {
+      if (unit.kind !== "interface" && unit.kind !== "type") continue
+      byId.set(unit.file + "#" + unit.name, unit)
+    }
+    const complete = new Map<string, ReadonlySet<string>>()
+    const fieldsOfUnit = (unit: Unit, seen: ReadonlySet<string>): ReadonlySet<string> => {
+      const id = unit.file + "#" + unit.name
+      const cached = complete.get(id)
+      if (cached !== undefined) return cached
+      if (seen.has(id)) return new Set(unit.fields)
+      const next = new Set(seen)
+      next.add(id)
+      const fields = new Set(unit.fields)
+      for (const base of unit.composed) {
+        const target = byId.get(base.resolved)
+        if (target === undefined) continue
+        for (const field of fieldsOfUnit(target, next)) fields.add(field)
+      }
+      complete.set(id, fields)
+      return fields
+    }
+
     const declared: Array<ReadonlySet<string>> = []
     for (const unit of workspace.units) {
       if (unit.kind !== "interface" && unit.kind !== "type") continue
-      if (unit.fields.length < minKeys) continue
-      declared.push(new Set(unit.fields))
+      const fields = fieldsOfUnit(unit, new Set())
+      if (fields.size < minKeys) continue
+      declared.push(fields)
     }
     for (const file of workspace.files) {
       for (const site of file.facts.objects) {

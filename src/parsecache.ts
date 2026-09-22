@@ -44,7 +44,7 @@ import {
  * size, and the talk is honest about the overheads -- memory, and "global
  * algorithms harm incrementality" -- that such a system brings with it.
  */
-export const CACHE_VERSION = "5"
+export const CACHE_VERSION = "6"
 
 /** One parse's key: which file, and what it said. */
 export const keyOf = (file: string, text: string): string =>
@@ -64,6 +64,7 @@ const encodeUnit = (unit: Unit): Schema.Schema.Type<typeof EncodedUnit> => ({
   typed: unit.typed,
   fields: unit.fields,
   fieldTypes: Object.fromEntries(unit.fieldTypes),
+  bases: unit.composed.map((base) => base.name),
   test: unit.test,
   ...(unit.doc === undefined ? {} : { doc: unit.doc }),
 })
@@ -102,6 +103,9 @@ const EncodedUnit = Schema.Struct({
   typed: Schema.Boolean,
   fields: Schema.Array(Schema.String),
   fieldTypes: Schema.Record(Schema.String, Schema.String),
+  // Absent in caches written before composition was recorded; the version bump
+  // rebuilds them, and this keeps a stale entry decodable rather than an issue.
+  bases: Schema.optionalKey(Schema.Array(Schema.String)),
   test: Schema.Boolean,
   doc: Schema.optionalKey(Schema.String),
 })
@@ -176,6 +180,7 @@ const unitFrom = (
     typed: entry.typed,
     fields: entry.fields,
     fieldTypes: new Map(Object.entries(entry.fieldTypes)),
+    composed: (entry.bases ?? []).map((name) => ({ name, resolved: "" })),
     test: entry.test,
     // Three fields the resolution pass fills in, so none is stored: the calls a
     // declaration makes depend on the whole file set, exactly as its resolved

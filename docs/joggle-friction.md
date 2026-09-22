@@ -207,6 +207,51 @@ diagnostics but replaced the stored notes with the replay message alone, so a
 replayed run lost the funnel and every "rule skipped" line -- which made a
 replay look like a run that had nothing to say. The stored notes are now kept.
 
+## Round three
+
+A second real PR against `shakti-v2`, and four more things the tool decided.
+
+**`reimplemented-primitive` keyed a body by callee names alone.** Three of
+thirteen were false positives: `companyYearTotalsJson` was reported as a
+re-implementation of `crewSummaryToJson` because both read `Number -> Number ->
+Number -> String`. The key now carries what each call READS, not just what it
+calls. Keying on the raw argument text instead broke the true positive -- one
+declaration writes `save(validate(normalise(row)))` and another sequences the
+same three calls through locals -- so a nested call and a bare identifier (a
+local or a parameter) become `#`, while a member access or a literal is kept. A
+chain therefore keeps only its source, and two different sources stop looking
+alike.
+
+**`import-cycle` ignored the scope.** A PR-scoped run reported all eight of the
+repository's cycles while saying it had narrowed to 18 files, all of them in UI
+files the PR never touched. A cycle is now in scope only when one of its members
+moved, the finding is anchored at a changed member, and the note names how many
+were left out. `layer-direction` and `layer-purity` had the same hole and are
+fixed the same way.
+
+**`object-shape` penalised composition.** Composing a type made the literals
+that used to match its full field set look unnamed, so the rule reported exactly
+what `compose-types` and `name-the-primitive` recommend. A declared type's field
+set is now its own fields plus the fields of the types it composes --
+`extends`, `A & B`, `type T = A` -- resolved across files.
+
+**Grouped findings move the count without the substance moving.** In the PR's
+own files, 13 before and 13 after: the composition finding was fixed, but
+grouping `projectRole` with `dailyAverages` split in two when those fields moved
+into `PersonRef`. The number is a count of findings, not a score; the PR-scope
+total went 30 -> 33 entirely from `object-shape` notices outside the branch.
+
+Measured on the whole repository: 1126 -> 1088 findings, cycles unchanged.
+
+## Still open
+
+**`<cwd>/.joggle` is still how the CLI writes into a checkout.** Running
+`joggle check` without `--cache-dir` creates `.joggle/` in the analysed
+repository, which is the only way to write into a tree you are inspecting. The
+pi extension passes a machine cache and `scripts/joggle.sh` is the shell, but
+the CLI itself cannot know whether a repository is being onboarded (where the
+committed cache is the point) or visited (where it is litter).
+
 ## Disproved suspicions
 
 - **"`--pr` uses the invoking repository's `gh` context."** False. `gh` is

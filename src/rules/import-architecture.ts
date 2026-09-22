@@ -55,7 +55,7 @@ export const layerDirection = defineRule({
   judged: false,
   run: Effect.fn("joggle/layer-direction")(function* (
     workspace: Workspace,
-    _scope: Scope,
+    scope: Scope,
     context: RunContext,
   ) {
     const layers = layersFrom(context.config)
@@ -65,7 +65,13 @@ export const layerDirection = defineRule({
       ])
     }
 
-    const violations = directionViolations(workspace.imports, layers)
+    // Scoped like every other rule: an upward import is this run's business only
+    // when the importing file moved.
+    const all = directionViolations(workspace.imports, layers)
+    const violations =
+      scope.changed === undefined
+        ? all
+        : all.filter((violation) => scope.changed?.has(violation.from) === true)
     const files = filesByPath(workspace)
     const edgeAt = new Map(
       workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.to, edge]),
@@ -96,7 +102,8 @@ export const layerDirection = defineRule({
     // it says what it looked at: a layering where nothing matched looks exactly
     // like a layering where everything obeyed.
     return outcome(diagnostics, [
-      `${violations.length} upward import(s) among ${ranked} ranked file(s) in ${layers.length} declared layer(s); ${unranked} file(s) in no layer`,
+      `${violations.length} upward import(s) among ${ranked} ranked file(s) in ${layers.length} declared layer(s); ${unranked} file(s) in no layer` +
+        (all.length > violations.length ? `; ${all.length - violations.length} outside the scope of this run` : ""),
     ])
   }),
 })
@@ -113,18 +120,33 @@ export const importCycle = defineRule({
   severity: "warn",
   description: "A module imports, directly or indirectly, from itself.",
   judged: false,
-  run: Effect.fn("joggle/import-cycle")(function* (workspace: Workspace, _scope: Scope) {
+  run: Effect.fn("joggle/import-cycle")(function* (workspace: Workspace, scope: Scope) {
     const cycles = cyclesIn(workspace.imports)
     // A loop made entirely of `import type` is erased at build time, so it cannot
     // cause the load-order problem this rule exists to catch. Named in the note
     // rather than dropped: it is still a wart, just not one that can break.
     const runtime = cycles.filter((cycle) => cycle.runtime)
     const named = cycles.filter((cycle) => !cycle.runtime)
-    const erasedEntirely = named.filter((cycle) => cycle.typeOnly).length
-    const partlyErased = named.length - erasedEntirely
 
-    const diagnostics = runtime.map((cycle): Diagnostic => {
-      const first = cycle.files[0] ?? ""
+    // A cycle is in scope only when one of its members moved, and the finding is
+    // anchored at a changed member so it points at the part of the loop the run
+    // is about. Without this, a scoped run reported every cycle in the
+    // repository while saying it had narrowed to the changed files.
+    const inScope = (files: ReadonlyArray<string>): boolean =>
+      scope.changed === undefined || files.some((file) => scope.changed?.has(file) === true)
+    const anchorOf = (files: ReadonlyArray<string>): string =>
+      scope.changed === undefined
+        ? files[0] ?? ""
+        : files.find((file) => scope.changed?.has(file) === true) ?? files[0] ?? ""
+
+    const scopedRuntime = runtime.filter((cycle) => inScope(cycle.files))
+    const scopedNamed = named.filter((cycle) => inScope(cycle.files))
+    const erasedEntirely = scopedNamed.filter((cycle) => cycle.typeOnly).length
+    const partlyErased = scopedNamed.length - erasedEntirely
+    const outside = runtime.length - scopedRuntime.length
+
+    const diagnostics = scopedRuntime.map((cycle): Diagnostic => {
+      const first = anchorOf(cycle.files)
       return finding({
         ruleId: CYCLE_RULE,
         severity: "warn",
@@ -137,8 +159,9 @@ export const importCycle = defineRule({
     })
 
     return outcome(diagnostics, [
-      `${runtime.length} runtime cycle(s), ${erasedEntirely} type-only, ${partlyErased} partly erased, in ${workspace.imports.edges.length} import edge(s)`,
-      ...named.map((cycle) =>
+      `${scopedRuntime.length} runtime cycle(s), ${erasedEntirely} type-only, ${partlyErased} partly erased, in ${workspace.imports.edges.length} import edge(s)` +
+        (outside > 0 ? `; ${outside} cycle(s) outside the scope of this run` : ""),
+      ...scopedNamed.map((cycle) =>
         cycle.typeOnly
           ? `type-only cycle, erased entirely at build time: ${cycle.files.join(" -> ")}`
           : `cycle with an erased edge, so broken before it loads: ${cycle.files.join(" -> ")}`,
@@ -154,7 +177,7 @@ export const layerPurity = defineRule({
   judged: false,
   run: Effect.fn("joggle/layer-purity")(function* (
     workspace: Workspace,
-    _scope: Scope,
+    scope: Scope,
     context: RunContext,
   ) {
     const layers = layersFrom(context.config)
@@ -165,7 +188,11 @@ export const layerPurity = defineRule({
       ])
     }
 
-    const violations = purityViolations(workspace.imports, layers)
+    const all = purityViolations(workspace.imports, layers)
+    const violations =
+      scope.changed === undefined
+        ? all
+        : all.filter((violation) => scope.changed?.has(violation.from) === true)
     const files = filesByPath(workspace)
     const edgeAt = new Map(
       workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.specifier, edge]),
@@ -204,7 +231,8 @@ export const layerPurity = defineRule({
       violations.length +
         " forbidden import(s) across " +
         constrained.length +
-        " constrained layer(s)",
+        " constrained layer(s)" +
+        (all.length > violations.length ? "; " + (all.length - violations.length) + " outside the scope of this run" : ""),
     ])
   }),
 })

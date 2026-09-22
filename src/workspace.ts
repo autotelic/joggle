@@ -82,6 +82,15 @@ export interface Unit {
    */
   readonly fieldTypes: ReadonlyMap<string, string>
   /**
+   * The types this declaration composes -- `extends`, `A & B`, `type T = A` --
+   * as `{ name, resolved }` pairs. A composed type's field set is its own fields
+   * plus these, and two parallel arrays would be two sources of truth.
+   *
+   * `resolved` is filled in the resolution pass, once the whole file set is
+   * known, so a rule comparing field sets can follow inheritance across files.
+   */
+  composed: ReadonlyArray<ComposedBase>
+  /**
    * Every call this declaration makes, resolved to where the callee is declared.
    *
    * Ordered, with repeats: two calls to the same function are two calls. This is
@@ -537,6 +546,8 @@ interface DeclarationSite extends Span {
   readonly exported: boolean
   readonly fields: ReadonlyArray<string>
   readonly fieldTypes: ReadonlyMap<string, string>
+  /** The types this declaration composes, before resolution. */
+  readonly bases: ReadonlyArray<string>
   /**
    * Where the declaration's own statement starts, for the doc lookup.
    *
@@ -548,63 +559,114 @@ interface DeclarationSite extends Span {
 }
 
 /**
- * The property names a type declaration lists.
+ * The property names a type declaration lists, and the types it composes.
  *
- * An interface keeps them in `body.body`; a type alias keeps them in the members
- * of its annotation when that annotation is a literal. A union or an intersection
- * has no single field set and returns nothing -- `A & B` states its composition
- * already, which is the thing this is looking for.
+ * An interface keeps its own fields in `body.body` and its `extends` clauses on
+ * the declaration; a type alias keeps a literal's members, an intersection's
+ * named constituents (`A & B`) and literal constituents, or a plain alias
+ * target (`type T = A`). A union has no single field set and returns nothing.
+ *
+ * The bases are recorded rather than resolved here: a base can live in another
+ * file, and only the workspace pass knows where a name is declared.
  */
 interface FieldSet {
   readonly names: ReadonlyArray<string>
   readonly declarations: ReadonlyMap<string, string>
+  readonly bases: ReadonlyArray<string>
+}
+
+/** The name a type reference or heritage clause points at, if it has one. */
+const referenceName = (node: unknown): string | undefined => {
+  if (!isRecord(node)) return undefined
+  if (node["type"] === "TSTypeReference") {
+    const typeName = node["typeName"]
+    if (isRecord(typeName) && typeof typeName["name"] === "string") return typeName["name"]
+    return undefined
+  }
+  if (node["type"] === "TSInterfaceHeritage" || node["type"] === "TSClassImplements") {
+    return referenceName(node["expression"])
+  }
+  if (node["type"] === "Identifier" && typeof node["name"] === "string") return node["name"]
+  return undefined
+}
+
+/**
+ * A composed base: the name as written, and where it resolves to.
+ *
+ * One list of pairs rather than two parallel arrays, because two arrays are two
+ * sources of truth that can drift apart. `resolved` is filled by the resolution
+ * pass, once the whole file set is known.
+ */
+export interface ComposedBase {
+  readonly name: string
+  readonly resolved: string
 }
 
 const fieldsOf = (node: Record<string, unknown>, text: string): FieldSet => {
-  const members =
-    node["type"] === "TSInterfaceDeclaration"
-      ? isRecord(node["body"])
-        ? (node["body"] as Record<string, unknown>)["body"]
-        : undefined
-      : node["type"] === "TSTypeAliasDeclaration" && isRecord(node["typeAnnotation"])
-        ? (node["typeAnnotation"] as Record<string, unknown>)["members"]
-        : undefined
-  if (!Array.isArray(members)) return { names: [], declarations: new Map() }
+  const memberLists: Array<unknown> = []
+  const bases: Array<string> = []
+  if (node["type"] === "TSInterfaceDeclaration") {
+    const body = node["body"]
+    if (isRecord(body)) memberLists.push(body["body"])
+    const heritage = node["extends"]
+    if (Array.isArray(heritage)) {
+      for (const entry of heritage) {
+        const base = referenceName(entry)
+        if (base !== undefined) bases.push(base)
+      }
+    }
+  } else if (node["type"] === "TSTypeAliasDeclaration" && isRecord(node["typeAnnotation"])) {
+    const annotation = node["typeAnnotation"]
+    if (Array.isArray(annotation["members"])) memberLists.push(annotation["members"])
+    if (annotation["type"] === "TSIntersectionType" && Array.isArray(annotation["types"])) {
+      for (const part of annotation["types"]) {
+        if (isRecord(part) && Array.isArray(part["members"])) memberLists.push(part["members"])
+        const base = referenceName(part)
+        if (base !== undefined) bases.push(base)
+      }
+    } else {
+      const base = referenceName(annotation)
+      if (base !== undefined) bases.push(base)
+    }
+  }
   const names: Array<string> = []
   const declarations = new Map<string, string>()
-  for (const member of members) {
-    if (!isRecord(member)) continue
-    const key = member["key"]
-    if (!isRecord(key)) continue
-    const name =
-      typeof key["name"] === "string"
-        ? key["name"]
-        : typeof key["value"] === "string"
-          ? key["value"]
-          : undefined
-    if (name === undefined || declarations.has(name)) continue
-    // The TYPE annotation, not the whole member.
-    //
-    // This recorded the member's source, which made "signal?: AbortSignal" and
-    // "signal: AbortSignal" different declarations -- and they are not, for the
-    // question being asked. A and B intersected with the first in one and the
-    // second in the other is "signal: AbortSignal", which is what the whole type
-    // wanted, so optionality is exactly the difference composition RESOLVES.
-    // Running against a real SDK, that false difference hid a genuine finding.
-    //
-    // A different TYPE is a different matter: "x: string" against "x: number"
-    // intersects to never, and there the fields genuinely disagree.
-    const annotation = member["typeAnnotation"]
-    const start = isRecord(annotation) ? annotation["start"] : undefined
-    const end = isRecord(annotation) ? annotation["end"] : undefined
-    const declaration =
-      typeof start === "number" && typeof end === "number"
-        ? text.slice(start, end).replace(/\s+/g, " ").trim()
-        : name
-    names.push(name)
-    declarations.set(name, declaration)
+  for (const members of memberLists) {
+    if (!Array.isArray(members)) continue
+    for (const member of members) {
+      if (!isRecord(member)) continue
+      const key = member["key"]
+      if (!isRecord(key)) continue
+      const name =
+        typeof key["name"] === "string"
+          ? key["name"]
+          : typeof key["value"] === "string"
+            ? key["value"]
+            : undefined
+      if (name === undefined || declarations.has(name)) continue
+      // The TYPE annotation, not the whole member.
+      //
+      // This recorded the member's source, which made "signal?: AbortSignal" and
+      // "signal: AbortSignal" different declarations -- and they are not, for the
+      // question being asked. A and B intersected with the first in one and the
+      // second in the other is "signal: AbortSignal", which is what the whole type
+      // wanted, so optionality is exactly the difference composition RESOLVES.
+      // Running against a real SDK, that false difference hid a genuine finding.
+      //
+      // A different TYPE is a different matter: "x: string" against "x: number"
+      // intersects to never, and there the fields genuinely disagree.
+      const annotation = member["typeAnnotation"]
+      const start = isRecord(annotation) ? annotation["start"] : undefined
+      const end = isRecord(annotation) ? annotation["end"] : undefined
+      const declaration =
+        typeof start === "number" && typeof end === "number"
+          ? text.slice(start, end).replace(/\s+/g, " ").trim()
+          : name
+      names.push(name)
+      declarations.set(name, declaration)
+    }
   }
-  return { names, declarations }
+  return { names, declarations, bases }
 }
 
 const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<DeclarationSite> => {
@@ -633,6 +695,7 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
       exported,
       fields: fieldSet.names,
       fieldTypes: fieldSet.declarations,
+      bases: fieldSet.bases,
       docStart: docStart ?? start,
     })
   }
@@ -706,6 +769,7 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
               exported,
               fields: [],
               fieldTypes: new Map(),
+              bases: [],
               docStart: typeof member["start"] === "number" ? member["start"] : value["start"],
             })
           } else {
@@ -967,6 +1031,7 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         typed: typeRefs.length > 0,
         fields: site.fields,
         fieldTypes: site.fieldTypes,
+        composed: site.bases.map((name) => ({ name, resolved: "" })),
         calls: [],
         callSignature: "",
         test: policy.testFiles.test(file),
@@ -1360,6 +1425,12 @@ export const loadWorkspace = (
           .filter((site) => site.start >= unit.start && site.end <= unit.end)
           .map((site) => resolveRef(file.path, site.name))
         unit.callSignature = unit.calls.join("|")
+        // The types this declaration composes, resolved the same way. A field
+        // set is only complete once `extends`/`&` bases are followed.
+        unit.composed = unit.composed.map((base) => ({
+          name: base.name,
+          resolved: resolveRef(file.path, base.name),
+        }))
         unit.typeSignature = unit.typeRefs
           .map((name) => resolveRef(file.path, name))
           .sort()

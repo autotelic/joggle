@@ -14,6 +14,10 @@ it.effect("a function that inlines an existing primitive says which call to make
     // The primitive is named, and it is the one whose whole body is the run.
     expect(found.message).toContain("cleanRow")
     expect(found.message).toContain("cleanInline")
+    // Two functions with the same callee names but different INPUTS are not
+    // re-implementations of each other. Keying the body on names alone reported
+    // exactly this pair.
+    expect(diagnostics.some((entry) => entry.message.includes("Ownership"))).toBe(false)
     // The operation is replace, because the call sequences are identical: a fact,
     // not a judgement.
     expect(found.repair?.operation).toBe("replace")
