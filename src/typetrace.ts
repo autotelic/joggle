@@ -15,12 +15,20 @@ import { Service as Tsgo } from "./tsgo.ts"
  * the declaration it was attributed to, and the type arguments and union members
  * it was built from.
  *
- * What it does NOT carry is an object type's members as data. `display` holds
- * them as text -- `{ readonly id: String; readonly email: String }` -- which is
- * comparable within one run because the checker printed it, and which is the
- * whole of the structural signal available from a trace. The members are not a
- * list, so a rule can say "these two printed the same" but not "these two differ
- * in exactly one field".
+ * What it does NOT carry is an object type's members. This was assumed otherwise
+ * and measured false (2026-09, tsgo 7.0.0-dev.20260707.2): a NAMED interface or
+ * type alias has no `display` at all -- `PersonSummary` is just a descriptor with
+ * `flags: ["Object"]` and a symbol name -- and the trace records no property
+ * list, so `PersonSummary.treesPlanted`'s resolved type cannot be read from it.
+ * Only an ANONYMOUS object type gets a printed `display` --
+ * `{ readonly id: String; readonly email: String }` -- which is why an object
+ * literal's inferred type is readable and a declaration's fields are not.
+ *
+ * Type ALIASES are worse: `type ProjectRole = (typeof PROJECT_ROLES)[number]`
+ * produced no entry attributed to `ProjectRole` at all. So a field-level
+ * resolved type is simply not in the trace, and `field-type-drift` cannot be
+ * made trace-based. What would answer it is a checker host that calls
+ * `getTypeAtLocation` on the property -- `docs/type-resolution.md`.
  */
 export const TypeFact = Schema.Struct({
   /**

@@ -258,44 +258,61 @@ from text.
 The first three are the priority: they are the ones JOGGLE.md already promises,
 and they replace text similarity with a proof.
 
-## The next increment, scoped: stop comparing text in `field-type-drift`
+## The next increment: measured, and it is not the trace
 
-This is the one rule that currently *hand-rolls* resolution, and it is frozen as
-a stopgap (see the comment on `resolveType` in
-`src/rules/field-type-drift.ts`). Everything below is the work that replaces it.
-The reason it is field-level and not declaration-level is the whole difficulty.
+The plan above (`docs/type-resolution.md`'s first draft of this section) said to
+extract object members from the trace and replace `field-type-drift`'s text
+resolver with them. **That plan is wrong, and it is wrong for a measured reason.**
+Three probes against `tsgo 7.0.0-dev.20260707.2`, in `T/trace-probe*`:
 
-**The gap.** `TypeFact.members` is the checker's resolved **union** members.
-There is no per-field resolved type for an object, so `PersonSummary.treesPlanted`
-and `RoleYearComparison.totalTrees` are compared as the strings `Count` and
-`number` -- and `ProjectRole` against `ProjectCrewRoles` as two names the type
-system computed. `one-concept-one-type` and `cluster-verdict` already read
-`typeFacts`; `field-type-drift` cannot, because the fact it needs is a member
-type, not a declaration type.
+1. `export interface PersonSummary { treesPlanted: Count; name: string }` has a
+   trace entry with `flags: ["Object"]`, a `symbolName`, and **no `display` and no
+   property list**. Only anonymous object types print their members:
+   `__object @ { treesPlanted: Count; name: string }` appears for a literal, not
+   for the interface. So a named type's fields are not in the trace.
+2. `type ProjectRole = (typeof PROJECT_ROLES)[number]` and
+   `type ProjectCrewRole = Schema["_output"]["type"]` produced **no entry
+   attributed to either name** — the alias declarations are absent entirely.
+3. `trace.json` is performance events only (`createSourceFile`, `checkSourceFile`,
+   ...); it contains neither `PersonSummary` nor any member name. There is no
+   second place to look.
 
-**The steps.**
+So the fact `field-type-drift` needs is a **member** type, and the trace carries
+declaration types only, and not even those for an alias. The trace route is
+exhausted. `resolveType` in the rule therefore stays, still frozen, as the
+stopgap it is.
 
-1. `typetrace.ts`: extract **object members** from the trace as
-   `ReadonlyArray<{ name: string; display: string; flags: ReadonlyArray<string> }>`
-   on `TypeFact`, beside the existing union `members`. Keyed by the same
-   declaration join (`at(file, line, name)`), which already exists and already
-   caches.
-2. `field-type-drift.ts`: when both declarations have `typeFacts`, compare
-   `typeFacts.fields.get(field)` displays -- resolved against resolved. When one
-   does not, fall back to the text resolver and **say so on the finding**, the
-   way `shapeOnlyNote` already does for an untyped cluster.
-3. Only after (2) is green on two real repositories: delete `resolveType`,
-   `unionParts`, `aliasTargetOf` and `isDerivedType` from the rule. The stopgap
-   comment names each case so the deletion is mechanical.
+### What actually does the job, by cost
 
-**Definition of done.** On `shakti-v2` with `--types`, `ProjectRole`/`ProjectCrewRoles`
-and `Count`/`number` are decided by resolved type, not by name; every
-`field-type-drift` finding is either resolved-verified or explicitly marked
-text-only; and the rule contains no string resolver.
+| Route | Field-level resolved type? | Cost |
+| --- | --- | --- |
+| `--generateTrace` (current) | **No** — no members, no alias entries | free, already wired |
+| tsgo LSP / query | **No** — `tsgo --help --all` has no `--lsp`, `--server` or query flag | unavailable |
+| JS `typescript` program | Yes: `getTypeOfSymbolAtLocation(prop)` + `isTypeAssignableTo` | A second checker beside tsgo, a ~20MB dependency, and a whole-program create for a rule that today runs free. The decision to add it is the user's, not the rule's |
+| Own checker host (Effect's shape) | Yes, and the protocol is controlled | The largest build: a maintained fork or sidecar, the "eventual host" |
 
-**What not to do.** Do not add a sixth heuristic to `resolveType`, and do not
-ask the model. Type identity is the checker's fact; a model is worse at it than
-a string is, because at least the string is deterministic.
+### The cheaper route that is not the trace
+
+`field-type-drift`'s finding is "one field name, two incompatible types". The
+*incompatibility* is a type fact, but the question a reader actually answers is
+**"one concept, or two?"** — and the feedback that produced this note answered it
+in exactly those words ("two concepts, not one"). That is a meaning question, so
+per `docs/two-regimes.md` it belongs to a `Choice`, not to a resolver and not to
+a `getTypeAtLocation` call.
+
+Which means the deterministic pass should keep doing what it is good at --
+"same field name, different annotation", high recall -- and the *verdict* should
+be asked, with the two declarations as state. That would delete `resolveType`
+for the right reason (the question subsumes it), and it directly addresses
+`ProjectRole`/`ProjectCrewRoles` and `SiteSummary`/`RoleYearComparison`, which no
+amount of resolution settles because the answer is intent.
+
+**Recommendation.** Do not grow the resolver and do not add JS tsc. Turn
+`field-type-drift`'s surviving candidates into one `Noul` per field ("do these
+two declarations name the same concept?"), the way the duplicate rules already
+work, and let the deterministic pass stay the generator. That is the same shape
+the rest of the tool settled on.
+
 
 
 ## Sources

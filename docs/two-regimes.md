@@ -144,17 +144,24 @@ asserting them. The breach count in `check.test.ts` went 11 -> 10 for the same
 reason: a rule that asks a question is withheld when its evidence would cross a
 repository boundary.
 
-## The one that is not a classifier problem
+## The one that is not a text problem either
 
-`field-type-drift` is the rule to watch, and it is not Regime 1. "Is this the
-same type?" is a fact, not a meaning -- so neither deleting the branch for a
-question nor keeping the text heuristic is right, and a model is worse at it than
-a string because at least the string is deterministic. The authority is the
-checker. The rule grew a ~100-line resolver (`resolveType` and friends:
-indexed access, aliases, unions, derived types) fixing real false positives one
-at a time, and that growth is the smell. It is frozen as a stopgap and named in
-one place; `docs/type-resolution.md` scopes the resolved-type fact that replaces
-it. `object-shape`, `compose-types` and `name-the-primitive` are the remaining
-Regime 1 rules, and their deterministic pass should stay as high-recall candidate
-generation rather than grow into the verdict.
+`field-type-drift` is the rule to watch, and the lesson from it is narrower than
+"use the checker". "Is this the same **type**?" is a fact, so a model is the
+wrong authority -- nobody eyeballs `string` against `Array<string>`. But the
+rule's finding is not that; it is "one field name, **two concepts?**", and the
+feedback that produced this note answered it in exactly those words. Two concepts
+sharing a field name is a meaning question, which makes the rule Regime 1 after
+all -- the deterministic pass should generate the candidates ("same name,
+different annotation") and a `Choice` should decide.
+
+The measured detour: the rule grew a ~100-line resolver (`resolveType` and
+friends: indexed access, aliases, unions, derived types) fixing real false
+positives one at a time, on the theory that the compiler's trace would replace it.
+`docs/type-resolution.md` records why it cannot -- the trace has no object
+members and no entries for aliases -- so the resolver is frozen as a stopgap and
+the recommendation is a question over the candidates, not a bigger resolver and
+not JS `tsc`. `object-shape`, `compose-types` and `name-the-primitive` are the
+remaining Regime 1 rules, and their deterministic pass should likewise stay
+candidate generation rather than grow into the verdict.
 
