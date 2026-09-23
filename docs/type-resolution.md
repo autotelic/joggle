@@ -291,27 +291,57 @@ stopgap it is.
 | JS `typescript` program | Yes: `getTypeOfSymbolAtLocation(prop)` + `isTypeAssignableTo` | A second checker beside tsgo, a ~20MB dependency, and a whole-program create for a rule that today runs free. The decision to add it is the user's, not the rule's |
 | Own checker host (Effect's shape) | Yes, and the protocol is controlled | The largest build: a maintained fork or sidecar, the "eventual host" |
 
-### The cheaper route that is not the trace
+### The cheaper route, tried and disproved
 
-`field-type-drift`'s finding is "one field name, two incompatible types". The
-*incompatibility* is a type fact, but the question a reader actually answers is
-**"one concept, or two?"** — and the feedback that produced this note answered it
-in exactly those words ("two concepts, not one"). That is a meaning question, so
-per `docs/two-regimes.md` it belongs to a `Choice`, not to a resolver and not to
-a `getTypeAtLocation` call.
+The recommendation above was to turn the surviving candidates into a `Choice`
+("one concept, or two?"). It was built and measured, and **it made the rule
+worse**. Reverted; the numbers are the reason.
 
-Which means the deterministic pass should keep doing what it is good at --
-"same field name, different annotation", high recall -- and the *verdict* should
-be asked, with the two declarations as state. That would delete `resolveType`
-for the right reason (the question subsumes it), and it directly addresses
-`ProjectRole`/`ProjectCrewRoles` and `SiteSummary`/`RoleYearComparison`, which no
-amount of resolution settles because the answer is intent.
+The design: `field-type-drift` became a `PlannedRule`. The deterministic pass kept
+`canCompose` as the candidate filter (176 field names on `shakti-v2`), and each
+candidate got one `Choice` with three options -- `same_type`, `drift`,
+`two_concepts` -- over the two declarations' names, paths and annotations.
 
-**Recommendation.** Do not grow the resolver and do not add JS tsc. Turn
-`field-type-drift`'s surviving candidates into one `Noul` per field ("do these
-two declarations name the same concept?"), the way the duplicate rules already
-work, and let the deterministic pass stay the generator. That is the same shape
-the rest of the tool settled on.
+The result, on the whole repository:
+
+| | candidates | findings | `projectRole`/`ProjectCrewRoles` |
+| --- | --- | --- | --- |
+| deterministic + resolver (current) | -- | 102 | reported, warn |
+| judged with the concept question | 176 | **150** | reported, **warn** |
+| ... of the 176 | | 150 `drift`, 25 `two_concepts`, 1 gated | |
+
+So the model answered **"one concept" 85% of the time**. That is not a
+calibration problem; it is a state problem, and it is circular: `ProjectRole` and
+`ProjectCrewRoles` are two vocabularies, and telling them apart means comparing
+their **values** -- which is exactly the resolved type the trace does not carry,
+and which was the whole reason this note exists. Asked "do these mean the same
+thing?" with no values in the state, the model does what anyone would: it reads
+`projectRole` twice and says yes.
+
+The lesson is the earlier one, twice over: a question cannot recover a fact that
+is missing from its state. `same_type` could never be answered either, because
+one indexed access and one alias look identical to a model that cannot resolve
+them.
+
+### What is left
+
+- **The value sets, from the checker.** The only thing that separates two
+  vocabularies. Needs a host (`getTypeAtLocation` per property), per the route
+  table above -- not the trace.
+- **Relatedness, deterministically.** "These two declarations can never be
+  assigned to each other, so a shared field name is not a hazard" is decidable
+  from the import graph and packages, needs no model, and would have silenced
+  both reported cases (`ProjectRole`/`ProjectCrewRoles` cross a UI/domain
+  boundary; `SiteSummary`/`RoleYearComparison` cross manage-plots/domain). The
+  risk is the same one `docs/names.md` warns about for duplicates -- two unrelated
+  areas can still hold one concept -- but for *drift* the hazard really is
+  coupling, which is a graph fact, not a meaning question.
+- **Config.** `ignore` already exists; a repository that knows its wire/UI split
+  is expected can say so.
+
+Until one of those lands, `resolveType` stays: frozen, documented, and the least
+bad instrument available.
+
 
 
 

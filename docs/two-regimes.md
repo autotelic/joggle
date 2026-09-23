@@ -147,21 +147,23 @@ repository boundary.
 ## The one that is not a text problem either
 
 `field-type-drift` is the rule to watch, and the lesson from it is narrower than
-"use the checker". "Is this the same **type**?" is a fact, so a model is the
-wrong authority -- nobody eyeballs `string` against `Array<string>`. But the
-rule's finding is not that; it is "one field name, **two concepts?**", and the
-feedback that produced this note answered it in exactly those words. Two concepts
-sharing a field name is a meaning question, which makes the rule Regime 1 after
-all -- the deterministic pass should generate the candidates ("same name,
-different annotation") and a `Choice` should decide.
+"use the checker" and narrower than "ask a question". Its finding is "one field
+name, two incompatible types"; the feedback that produced this note answered
+whether that matters in the words "two concepts, not one", which looks like a
+meaning question -- so it was built as one, and **measured worse**: 150 findings
+against the deterministic rule's 102, with the model answering "one concept" 85%
+of the time and `ProjectRole`/`ProjectCrewRoles` still a confident warning.
 
-The measured detour: the rule grew a ~100-line resolver (`resolveType` and
-friends: indexed access, aliases, unions, derived types) fixing real false
-positives one at a time, on the theory that the compiler's trace would replace it.
-`docs/type-resolution.md` records why it cannot -- the trace has no object
-members and no entries for aliases -- so the resolver is frozen as a stopgap and
-the recommendation is a question over the candidates, not a bigger resolver and
-not JS `tsc`. `object-shape`, `compose-types` and `name-the-primitive` are the
-remaining Regime 1 rules, and their deterministic pass should likewise stay
-candidate generation rather than grow into the verdict.
+The reason is circular and worth stating plainly: telling two vocabularies apart
+means comparing their **values**, and the values are the resolved type the trace
+does not carry. A question cannot recover a fact missing from its state, and the
+state here -- two field names and two annotation strings -- has never contained
+what the answer needs. `docs/type-resolution.md` keeps the measurement and the
+three routes that remain (a checker host, a relatedness filter, config).
+
+So the rule keeps its frozen text resolver as the least bad instrument. The
+remaining Regime 1 rules -- `object-shape`, `compose-types`,
+`name-the-primitive` -- should likewise keep their deterministic pass as high
+recall candidate generation, and should be asked for a question only when the
+state a question needs is actually present.
 
