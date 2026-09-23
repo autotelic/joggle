@@ -26,6 +26,46 @@ const RULE_ID = "joggle/field-type-drift"
 // Deterministic, so it needs no model and no key. Whether the two are one concept
 // or two is the reader's call; the finding states the disagreement.
 
+/**
+ * Whether the two declarations could ever be confused for each other.
+ *
+ * A field name with two types is a hazard when code can move between the two
+ * declarations -- assign one where the other is expected, or carry a value from
+ * one into the other. When they sit in different packages and neither file
+ * imports the other, no such move exists, and the shared name is a coincidence
+ * rather than a promise about meaning. `ProjectRole`/`ProjectCrewRoles` cross a
+ * UI constants module and the domain; `SiteSummary`/`RoleYearComparison` cross
+ * manage-plots and pay-review. Both were reported, and both are one word for two
+ * purposes.
+ *
+ * This is the LOCALITY argument `docs/names.md` warns about for duplicates -- two
+ * unrelated areas can still hold one concept -- but a duplicate is a claim about
+ * identity, while drift is a claim about a hazard, and a hazard needs a path. So
+ * the test is decidable and free: same file, same package, or one file directly
+ * importing the other.
+ *
+ * A cross test/application pair is not related either, which is the boundary the
+ * duplicate rules already draw: a fixture is supposed to repeat.
+ */
+const related = (
+  left: Declaration,
+  right: Declaration,
+  workspace: Workspace,
+  reachable: ReadonlySet<string>,
+  isTest: (file: string) => boolean,
+): boolean => {
+  if (left.file === right.file) return true
+  if (isTest(left.file) !== isTest(right.file)) return false
+  if (reachable.has(left.file + "\u0000" + right.file)) return true
+  if (reachable.has(right.file + "\u0000" + left.file)) return true
+  const packageOf = (file: string): string => {
+    const cut = file.lastIndexOf("/")
+    return workspace.manifests.get(cut === -1 ? "." : file.slice(0, cut))?.name ?? ""
+  }
+  const leftPackage = packageOf(left.file)
+  return leftPackage !== "" && leftPackage === packageOf(right.file)
+}
+
 /** The words a name is built from: `supervisorRate` is two, `files` is one. */
 const wordsOf = (name: string): ReadonlyArray<string> =>
   name
@@ -199,6 +239,7 @@ export const fieldTypeDrift = defineRule({
 
     const findings: Array<Diagnostic> = []
     let drifted = 0
+    let unrelated = 0
     // Every type declaration by name, so an indexed access can be read out of
     // the type it indexes and a bare alias can be followed. First declaration
     // wins on a duplicate name; the resolver is a heuristic and says so.
@@ -207,6 +248,12 @@ export const fieldTypeDrift = defineRule({
       if (unit.kind !== "interface" && unit.kind !== "type") continue
       if (!byName.has(unit.name)) byName.set(unit.name, unit)
     }
+    // Direct import edges, so relatedness is a lookup rather than a scan.
+    const reachable = new Set<string>()
+    for (const edge of workspace.imports.edges) {
+      if (edge.resolved) reachable.add(edge.from + "\u0000" + edge.to)
+    }
+    const isTest = (file: string): boolean => policy.testFiles.test(file)
     // Group by the declaration the finding is anchored to. A type with five
     // drifting fields produced five findings on the same line, which read as
     // duplicates and inflated the count; one finding that lists them is smaller
@@ -247,6 +294,13 @@ export const fieldTypeDrift = defineRule({
       // `PersonSummary` disagreeing about `treesPlanted` is the parser doing its
       // job, not drift.
       if (isRawName(left.unit) || isRawName(right.unit)) continue
+      // A shared field name is only a hazard when a value can move between the
+      // two declarations. Two packages that cannot reach each other share a word
+      // by coincidence.
+      if (!related(left, right, workspace, reachable, isTest)) {
+        unrelated += 1
+        continue
+      }
       if (scope.changed !== undefined && !(scope.changed.has(left.file) || scope.changed.has(right.file))) {
         continue
       }
@@ -315,6 +369,12 @@ export const fieldTypeDrift = defineRule({
 
     return outcome(findings, [
       byField.size + " field name(s) across the type declarations; " + drifted + " with incompatible types",
+      ...(unrelated > 0
+        ? [
+            unrelated +
+              " were skipped: the two declarations are in different packages and neither imports the other",
+          ]
+        : []),
       ...(drifted > findings.length
         ? [drifted - findings.length + " were past the limit of " + policy.fieldTypeDrift.maxFindings + " and were not reported"]
         : []),

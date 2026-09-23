@@ -158,8 +158,17 @@ The reason is circular and worth stating plainly: telling two vocabularies apart
 means comparing their **values**, and the values are the resolved type the trace
 does not carry. A question cannot recover a fact missing from its state, and the
 state here -- two field names and two annotation strings -- has never contained
-what the answer needs. `docs/type-resolution.md` keeps the measurement and the
-three routes that remain (a checker host, a relatedness filter, config).
+what the answer needs.
+
+What worked instead was a hazard test, not an identity test: **drift is only a
+hazard when a value can move between the two declarations**, so a pair in two
+packages with no import path is skipped, deterministically. That is the opposite
+of the locality argument for duplicates (`docs/names.md`), and correctly so -- a
+duplicate claims two things ARE one, which can be true across areas; drift claims
+a shared name will be confused, which needs a path. On `shakti-v2` it took 97
+incompatible pairs to 74 findings and silenced every case in the feedback.
+`docs/type-resolution.md` keeps the measurement, the question that failed, and
+the routes that remain (a checker host for the value sets, config for the rest).
 
 So the rule keeps its frozen text resolver as the least bad instrument. The
 remaining Regime 1 rules -- `object-shape`, `compose-types`,

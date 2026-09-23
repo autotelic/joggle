@@ -325,22 +325,24 @@ them.
 
 ### What is left
 
-- **The value sets, from the checker.** The only thing that separates two
-  vocabularies. Needs a host (`getTypeAtLocation` per property), per the route
-  table above -- not the trace.
-- **Relatedness, deterministically.** "These two declarations can never be
-  assigned to each other, so a shared field name is not a hazard" is decidable
-  from the import graph and packages, needs no model, and would have silenced
-  both reported cases (`ProjectRole`/`ProjectCrewRoles` cross a UI/domain
-  boundary; `SiteSummary`/`RoleYearComparison` cross manage-plots/domain). The
-  risk is the same one `docs/names.md` warns about for duplicates -- two unrelated
-  areas can still hold one concept -- but for *drift* the hazard really is
-  coupling, which is a graph fact, not a meaning question.
-- **Config.** `ignore` already exists; a repository that knows its wire/UI split
-  is expected can say so.
+- **Relatedness was implemented and kept.** A shared field name is a hazard only
+  when a value can move between the two declarations, which is decidable from the
+  import graph: same file, same package, or one file directly importing the other.
+  A cross test/application pair is not related, the same boundary the duplicate
+  rules draw. On `shakti-v2`: 97 incompatible → **51 skipped, 74 findings** (was
+  102), and every case from the feedback is gone -- `projectRole`/`ProjectCrewRoles`
+  (UI constants vs the domain), `SiteSummary`/`RoleYearComparison`
+  (manage-plots vs pay-review), `treesSupervised`/`RecordOptions` (application vs
+  test). It also suppressed `estimate_tree_basis`, which nobody flagged; that is
+  the accepted cost of a hazard test rather than an identity test.
+- **The value sets, from the checker.** Still the only thing that separates two
+  vocabularies that DO share a path -- two roles in one package, say. Needs a host
+  (`getTypeAtLocation` per property), per the route table above.
+- **Config.** `ignore` remains for a repository that knows a pair is expected.
 
-Until one of those lands, `resolveType` stays: frozen, documented, and the least
-bad instrument available.
+The resolver stays either way: frozen, documented, and the least bad instrument
+for the pairs relatedness keeps.
+
 
 
 

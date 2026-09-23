@@ -28,3 +28,22 @@ it.effect("resolves an indexed access, and leaves a raw mirror alone", () =>
     expect(fields.some((message) => message.includes("totalScore"))).toBe(true)
   }).pipe(Effect.provide(NodeServices.layer)),
 )
+
+/**
+ * A shared field name is a hazard only when a value can move between the two
+ * declarations. Two packages that cannot reach each other share a word by
+ * coincidence, and reporting it is how the rule told a UI constants module and
+ * the domain wire vocabulary to reconcile.
+ */
+it.effect("drift across two packages with no import path is not reported", () =>
+  Effect.gen(function* () {
+    const workspace = yield* loadWorkspace("tests/fixtures/field-type-drift", ["packages"])
+    const diagnostics = yield* diagnosticsOf(fieldTypeDrift, workspace)
+    const messages = diagnostics.map((entry) => entry.message)
+    // `One` and `OneOther` are one package: the finding stands.
+    expect(messages.some((message) => message.includes("totalScore") && message.includes("OneOther"))).toBe(true)
+    // `crossScore` only exists on `One` and `Two`, in packages with no path
+    // between them, so the shared name is a coincidence and it is skipped.
+    expect(messages.some((message) => message.includes("crossScore"))).toBe(false)
+  }).pipe(Effect.provide(NodeServices.layer)),
+)
