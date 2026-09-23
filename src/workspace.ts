@@ -921,6 +921,37 @@ const structureIn = (root: unknown): StructureFacts => {
         }
         break
       }
+      // A literal the author put a type ON is a named shape, whatever form the
+      // naming takes. `satisfies T` and `as T` are checked against a type just
+      // as an annotation is, and the object-shape rule keys on the literal's
+      // field set, so without this a `satisfies Record<Role, Band>` looked like
+      // a shape nobody named.
+      case "TSSatisfiesExpression":
+      case "TSAsExpression": {
+        const expression = node["expression"]
+        if (
+          isRecord(expression) &&
+          expression["type"] === "ObjectExpression" &&
+          typeof expression["start"] === "number"
+        ) {
+          declaredObjects.set(expression["start"], [])
+        }
+        break
+      }
+      case "VariableDeclarator": {
+        const id = node["id"]
+        const init = node["init"]
+        if (
+          isRecord(id) &&
+          isRecord(id["typeAnnotation"]) &&
+          isRecord(init) &&
+          init["type"] === "ObjectExpression" &&
+          typeof init["start"] === "number"
+        ) {
+          declaredObjects.set(init["start"], [])
+        }
+        break
+      }
       case "JSXOpeningElement":
       case "JSXSelfClosingElement": {
         const element = nameOf(node["name"])

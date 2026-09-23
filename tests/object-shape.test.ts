@@ -20,5 +20,9 @@ it.effect("a literal that uses a declared type is not a missing type", () =>
     // own. Resolving `extends` is what keeps composing a type from turning its
     // own literals into findings.
     expect(messages.some((message) => message.includes("{ label; x; y }"))).toBe(false)
+    // { admin, member, viewer } is named by `satisfies Record<Role, number>`, an
+    // annotation, and a cast -- three ways of naming a literal that are not a
+    // declared field set.
+    expect(messages.some((message) => message.includes("{ admin; member; viewer }"))).toBe(false)
   }).pipe(Effect.provide(modelStub({})), Effect.provide(NodeServices.layer)),
 )

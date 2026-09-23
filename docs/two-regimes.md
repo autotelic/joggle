@@ -144,3 +144,17 @@ asserting them. The breach count in `check.test.ts` went 11 -> 10 for the same
 reason: a rule that asks a question is withheld when its evidence would cross a
 repository boundary.
 
+## The one that is not a classifier problem
+
+`field-type-drift` is the rule to watch, and it is not Regime 1. "Is this the
+same type?" is a fact, not a meaning -- so neither deleting the branch for a
+question nor keeping the text heuristic is right, and a model is worse at it than
+a string because at least the string is deterministic. The authority is the
+checker. The rule grew a ~100-line resolver (`resolveType` and friends:
+indexed access, aliases, unions, derived types) fixing real false positives one
+at a time, and that growth is the smell. It is frozen as a stopgap and named in
+one place; `docs/type-resolution.md` scopes the resolved-type fact that replaces
+it. `object-shape`, `compose-types` and `name-the-primitive` are the remaining
+Regime 1 rules, and their deterministic pass should stay as high-recall candidate
+generation rather than grow into the verdict.
+

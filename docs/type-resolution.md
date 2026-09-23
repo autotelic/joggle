@@ -258,6 +258,46 @@ from text.
 The first three are the priority: they are the ones JOGGLE.md already promises,
 and they replace text similarity with a proof.
 
+## The next increment, scoped: stop comparing text in `field-type-drift`
+
+This is the one rule that currently *hand-rolls* resolution, and it is frozen as
+a stopgap (see the comment on `resolveType` in
+`src/rules/field-type-drift.ts`). Everything below is the work that replaces it.
+The reason it is field-level and not declaration-level is the whole difficulty.
+
+**The gap.** `TypeFact.members` is the checker's resolved **union** members.
+There is no per-field resolved type for an object, so `PersonSummary.treesPlanted`
+and `RoleYearComparison.totalTrees` are compared as the strings `Count` and
+`number` -- and `ProjectRole` against `ProjectCrewRoles` as two names the type
+system computed. `one-concept-one-type` and `cluster-verdict` already read
+`typeFacts`; `field-type-drift` cannot, because the fact it needs is a member
+type, not a declaration type.
+
+**The steps.**
+
+1. `typetrace.ts`: extract **object members** from the trace as
+   `ReadonlyArray<{ name: string; display: string; flags: ReadonlyArray<string> }>`
+   on `TypeFact`, beside the existing union `members`. Keyed by the same
+   declaration join (`at(file, line, name)`), which already exists and already
+   caches.
+2. `field-type-drift.ts`: when both declarations have `typeFacts`, compare
+   `typeFacts.fields.get(field)` displays -- resolved against resolved. When one
+   does not, fall back to the text resolver and **say so on the finding**, the
+   way `shapeOnlyNote` already does for an untyped cluster.
+3. Only after (2) is green on two real repositories: delete `resolveType`,
+   `unionParts`, `aliasTargetOf` and `isDerivedType` from the rule. The stopgap
+   comment names each case so the deletion is mechanical.
+
+**Definition of done.** On `shakti-v2` with `--types`, `ProjectRole`/`ProjectCrewRoles`
+and `Count`/`number` are decided by resolved type, not by name; every
+`field-type-drift` finding is either resolved-verified or explicitly marked
+text-only; and the rule contains no string resolver.
+
+**What not to do.** Do not add a sixth heuristic to `resolveType`, and do not
+ask the model. Type identity is the checker's fact; a model is worse at it than
+a string is, because at least the string is deterministic.
+
+
 ## Sources
 
 - Host and hooks: `etscheckerhooks/init.go`, `etscheckerhooks/doc.go`.

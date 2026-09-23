@@ -319,7 +319,7 @@ export const dutyVocabulary = {
   rendering: "Producing markup, or preparing data purely for display.",
   orchestration: "Calling other things in order, owning no rules of its own.",
   infrastructure:
-    "Talking to a database, a queue, a file system or a third-party service.",
+    "Talking to a database, a queue, a file system or a third-party service. A function that takes a database handle -- Knex, a transaction, a connection -- is infrastructure however much business logic it reads out of rows: the domain is pure by design, so moving the query into it is the wrong repair.",
   not_applicable: "None of these: a helper with no meaning outside its immediate caller.",
 } as const
 

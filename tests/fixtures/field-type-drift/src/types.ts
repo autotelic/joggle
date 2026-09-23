@@ -39,3 +39,18 @@ export interface GenuineA {
 export interface GenuineB {
   totalScore: number
 }
+
+const ROLES_A = ["a", "b"] as const
+const ROLES_B = ["c", "d"] as const
+
+export type RoleA = (typeof ROLES_A)[number]
+export type RoleB = (typeof ROLES_B)[number]
+
+/** Both sides are computed, so text cannot compare them. */
+export interface DerivedX {
+  teamRole: RoleA
+}
+
+export interface DerivedY {
+  teamRole: RoleB
+}

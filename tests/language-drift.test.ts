@@ -4,7 +4,7 @@ import { NodeServices } from "@effect/platform-node"
 import { languageDrift } from "../src/rules/language-drift.ts"
 import { plannedDiagnosticsOf } from "../src/testing.ts"
 import { loadWorkspace } from "../src/workspace.ts"
-import { modelStub } from "./support.ts"
+import { choice, modelStub } from "./support.ts"
 
 /**
  * A capitalized English word mid-sentence is not a domain concept.
@@ -20,4 +20,31 @@ it.effect("an ordinary English word is not a candidate", () =>
     const result = yield* plannedDiagnosticsOf(languageDrift, workspace)
     expect(result.diagnostics).toEqual([])
   }).pipe(Effect.provide(modelStub({})), Effect.provide(NodeServices.layer)),
+)
+
+const fixture = () => loadWorkspace("tests/fixtures/language-drift", ["src"])
+
+it.effect("a confident answer is a finding", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(languageDrift, workspace)
+    expect(result.diagnostics.some((entry) => entry.message.includes("harvest"))).toBe(true)
+  }).pipe(
+    Effect.provide(modelStub({ concept: choice("harvest", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
+it.effect("an unsure answer is dropped, not reported as a file-level notice", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(languageDrift, workspace)
+    // Confidence below the review floor is the model saying it cannot tell, and
+    // a file-level "the prose says X" at 0.56 is noise.
+    expect(result.diagnostics).toEqual([])
+    expect(result.drops.some((drop) => drop.stage === "gated")).toBe(true)
+  }).pipe(
+    Effect.provide(modelStub({ concept: choice("harvest", 0.56) })),
+    Effect.provide(NodeServices.layer),
+  ),
 )

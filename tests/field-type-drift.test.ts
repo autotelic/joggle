@@ -22,6 +22,8 @@ it.effect("resolves an indexed access, and leaves a raw mirror alone", () =>
     expect(fields.some((message) => message.includes("personId"))).toBe(false)
     // The raw mirror is not drift either.
     expect(fields.some((message) => message.includes("treesPlanted"))).toBe(false)
+    // Two types computed from different consts cannot be compared as text.
+    expect(fields.some((message) => message.includes("teamRole"))).toBe(false)
     // The genuine disagreement still is.
     expect(fields.some((message) => message.includes("totalScore"))).toBe(true)
   }).pipe(Effect.provide(NodeServices.layer)),

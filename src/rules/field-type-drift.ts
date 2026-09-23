@@ -54,31 +54,100 @@ const indexedPattern = /^([A-Za-z_$][\w$]*)\s*\[\s*['"]([^'"]+)['"]\s*\]$/
 /**
  * A type as far as the index can resolve it, before two are compared.
  *
- * `PersonPayrollRecord['personId']` and `PersonId` are the same type, and the
- * first version of this rule reported them as drift because it compared the
- * written text. An indexed access reads the field's declared type out of the
- * type it indexes.
+ * STOPGAP. This is a hand-rolled approximation of type resolution, and it is
+ * deliberately frozen: `docs/type-resolution.md` scopes the real fix, which is
+ * to read the type the COMPILER resolved from the trace and compare that. Text
+ * cannot decide type identity -- `ProjectRole` and `ProjectCrewRoles` are two
+ * vocabularies computed by the type system, and no amount of string handling
+ * settles whether they are the same values. A model is no better here: nobody
+ * eyeballs `string` against `Array<string>`. So the authority is the checker,
+ * and each heuristic below is a case the trace should answer instead:
  *
- * Deliberately NOT resolved: a bare alias. Following `type Money = number &
- * { _brand: "Money" }` to its right-hand side would make `Money` and `number`
- * compose, which silences the exact drift this rule exists to catch. The index
- * can see that two names are spelled differently; it cannot know whether the
- * brand matters, and claiming they agree would be the wrong direction to guess.
+ *   - indexed access (`PersonPayrollRecord['personId']`) -- the field's type
+ *   - a local alias (`type Count = number & Brand<'Count'>`) -- its right side
+ *   - a union (`ProjectRole | null`) -- one constituent at a time
+ *   - a derived type (`typeof`, `keyof`, `z.infer`) -- unreadable, so skipped
+ *
+ * Do not add another case here. Add it to the trace join.
  */
+const barePattern = /^[A-Za-z_$][\w$]*$/
+
+const aliasTargetOf = (text: string): string => {
+  const match = /^\s*(?:export\s+)?(?:declare\s+)?type\s+\w+(?:\s*<[^>]*>)?\s*=\s*([\s\S]*)$/.exec(
+    text,
+  )
+  const rhs = match?.[1]
+  return rhs === undefined ? "" : rhs.replace(/;\s*$/, "").trim()
+}
+
+/** Split on a top-level `|`, respecting nesting so `Array<A | B>` stays whole. */
+const unionParts = (text: string): ReadonlyArray<string> => {
+  const parts: Array<string> = []
+  let depth = 0
+  let start = 0
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index] ?? ""
+    if (character === "<" || character === "(" || character === "[" || character === "{") depth += 1
+    else if ((character === ">" || character === ")" || character === "]" || character === "}") && depth > 0) {
+      depth -= 1
+    } else if (depth === 0 && character === "|") {
+      parts.push(text.slice(start, index))
+      start = index + 1
+    }
+  }
+  parts.push(text.slice(start))
+  return parts.map((part) => part.trim()).filter((part) => part !== "")
+}
+
 const resolveType = (
   text: string,
   byName: ReadonlyMap<string, import("../workspace.ts").Unit>,
+  seen: Set<string>,
   depth = 0,
 ): string => {
   const current = normalizeType(text)
-  if (depth >= 4) return current
-  const match = indexedPattern.exec(current)
-  if (match === null) return current
-  const target = match[1] === undefined ? undefined : byName.get(match[1])
-  const annotation =
-    target === undefined || match[2] === undefined ? undefined : target.fieldTypes.get(match[2])
-  return annotation === undefined ? current : resolveType(annotation, byName, depth + 1)
+  if (depth >= 6 || seen.has(current)) return current
+  seen.add(current)
+
+  // `ProjectRole | null` is only resolvable one constituent at a time. Each gets
+  // its own `seen` so one part's alias cannot block another's.
+  if (current.includes("|")) {
+    const parts = unionParts(current)
+    if (parts.length > 1) {
+      return parts.map((part) => resolveType(part, byName, new Set(seen), depth + 1)).join(" | ")
+    }
+  }
+
+  const indexed = indexedPattern.exec(current)
+  if (indexed !== null) {
+    const target = indexed[1] === undefined ? undefined : byName.get(indexed[1])
+    const annotation =
+      target === undefined || indexed[2] === undefined ? undefined : target.fieldTypes.get(indexed[2])
+    return annotation === undefined ? current : resolveType(annotation, byName, seen, depth + 1)
+  }
+
+  if (barePattern.test(current)) {
+    const target = byName.get(current)
+    const rhs = target === undefined ? "" : aliasTargetOf(target.text)
+    if (rhs !== "" && rhs !== current) return resolveType(rhs, byName, seen, depth + 1)
+  }
+  return current
 }
+
+/**
+ * True when a type is computed by the type system rather than written down.
+ *
+ * `(typeof ROLES)[number]`, `keyof T`, `z.infer<typeof X>`,
+ * `Schema.Schema.Type<typeof Y>` -- two of these cannot be compared as text,
+ * because the values they stand for are not in it. `ProjectRole` is
+ * `(typeof PROJECT_ROLES)[number]` and `ProjectCrewRoles` is a zod inference;
+ * the rule reported them as drift when they may be the same vocabulary written
+ * through two libraries. When BOTH sides are computed, the comparison is
+ * meaningless and the pair is skipped. One derived against a written type is
+ * still compared, because that asymmetry is real evidence.
+ */
+const isDerivedType = (text: string): boolean =>
+  /\btypeof\b|\bkeyof\b|z\.infer|Schema\.Schema\.(Type|Encoded)/.test(text)
 
 /**
  * True when a type is an indexed access the index could not follow.
@@ -154,10 +223,12 @@ export const fieldTypeDrift = defineRule({
           const one = entries[left]
           const two = entries[right]
           if (one === undefined || two === undefined) continue
-          const oneType = resolveType(one[0], byName)
-          const twoType = resolveType(two[0], byName)
+          const oneType = resolveType(one[0], byName, new Set())
+          const twoType = resolveType(two[0], byName, new Set())
           // An indexed access the index cannot follow is not evidence of drift.
           if (isUnresolvedIndexed(oneType) || isUnresolvedIndexed(twoType)) continue
+          // Two computed types cannot be compared as text.
+          if (isDerivedType(oneType) && isDerivedType(twoType)) continue
           // Resolve before comparing, so `T['k']` and the type it indexes are the
           // same type rather than two spellings of it.
           if (!canCompose(oneType, twoType)) {

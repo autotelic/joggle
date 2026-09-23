@@ -134,6 +134,7 @@ const hoistReview = (id: string) => ({
       "Choose `request_validation` when the rule is about what the endpoint ACCEPTS -- a required field, a range, a mutual exclusion, a 400 -- rather than about the business.",
       "Choose `input_adaptation` when its only job is to reshape input into what another layer (usually the domain's own parser) expects.",
       "Choose `mechanical` for a cache key, an identifier or a lookup table.",
+      "Choose `infrastructure` when it takes a database handle (Knex, a transaction, a connection) or runs a query. The domain is pure by design, so moving SQL into it is the wrong repair, however much business logic the query's result carries.",
       "Choose `orchestration` when it mostly calls other things and decides little itself.",
     ].join("\n"),
     criteria: dutyVocabulary,

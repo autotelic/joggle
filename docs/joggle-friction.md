@@ -345,3 +345,42 @@ in `changed`, and its findings are as old as the file. Excluding it needs a scop
 that is the changed *lines*, not the changed paths -- a bigger change than the
 rename split, and the other half of taking this run from 85 to 15.
 
+
+## Round five: the false positives that stayed
+
+Four classes from a broader run on the same repository. All four fixed; the
+trade each one made is noted.
+
+**`object-shape` fired on a literal that HAS a name (fixed).**
+`satisfies Record<ProjectRole, ReportingBand>`, `const byRole: ComparisonsByRole
+= {...}` and `{...} as MultiComboBoxFilterProps` all name the literal, and the
+rule keyed only on the literal's own field set. `satisfies`, `as` and an
+annotated initializer now mark a literal as declared, alongside the
+`Schema.Struct` argument that already did. A `Record<...>` has no declared field
+set of its own, which is why the declared-type check could not see it.
+
+**`field-type-drift` compared two types the type system computed (fixed).**
+`ProjectRole` is `(typeof PROJECT_ROLES)[number]` and `ProjectCrewRoles` is a zod
+inference; there is no text to compare. Three changes: resolution follows a local
+alias (so `type Count = number & Brand<'Count'>` composes with `number` -- the
+"brands erased at the wire" class the adapter layer kept reporting), a union is
+resolved constituent by constituent (so `ProjectRole | null` is reached), and
+when BOTH sides come out computed (`typeof`, `keyof`, `z.infer`,
+`Schema.Schema.Type`) the pair is skipped rather than guessed -- the same rule the
+unresolved indexed access already followed.
+
+The trade is explicit: this raises precision and lowers recall. Two genuinely
+different vocabularies computed from two different consts are now silent, and the
+type trace (`--types`) is what would tell them apart.
+
+**`hoist-to-domain` mistook persistence for a business rule (fixed).** All five
+took a `Knex` or a `Knex.Transaction`. The duty question now says so in as many
+words: a function that takes a database handle is `infrastructure`, and the domain
+is pure by design, so moving the query into it is the wrong repair however much
+business logic the rows carry.
+
+**`language-drift` reported an unsure guess (fixed).** A file-level notice at
+confidence 0.56 is the model saying it cannot tell. The rule now reports only a
+confident answer and drops an unsure one with the reason -- unlike the duplicate
+rules, where an unsure answer still points at two declarations a reader can
+compare.

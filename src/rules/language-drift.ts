@@ -205,19 +205,23 @@ export const languageDrift: PlannedRule = {
         margin: marginOfAnswer(concept),
         confidence: concept.confidence,
       })
-      if (quality.quality === "drop") {
+      // This rule asks a model to guess whether an English word in a comment is
+      // a domain concept, and it is the noisiest one it has. A confident answer
+      // is a finding; an unsure one is the model saying it cannot tell, and a
+      // file-level notice at confidence 0.56 is noise. So only `act` is
+      // reported -- unlike the duplicate rules, where an unsure answer still
+      // points at two declarations a reader can compare.
+      if (quality.quality !== "act") {
         drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "gated", reason: quality.reason })
         return
       }
-      const review = quality.quality === "review"
       diagnostics.push(
         finding({
           ruleId: RULE_ID,
-          severity: review ? "info" : "warn",
+          severity: "warn",
           message: "The prose says \"" + concept.label + "\", and no declaration, path or import uses the word.",
           help:
-            "Either the code is named for something else, or the prose describes a concept the code has not named. The first is drift; the second is a missing name." +
-            (review ? " For review: " + quality.reason + "." : ""),
+            "Either the code is named for something else, or the prose describes a concept the code has not named. The first is drift; the second is a missing name.",
           location: { file: candidate.file.path, line: 1, column: 1 },
           identity: [RULE_ID, concept.label].join("\u0000"),
           confidence: concept.confidence ?? 1,
