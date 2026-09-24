@@ -332,10 +332,10 @@ export const dutyVocabulary = {
  */
 export const dataErrorVocabulary = {
   row_absence_is_normal:
-    "The lookup coming back empty is a normal outcome for this request, so a 5xx tells the caller the server is broken when it is not. A missing row is a 404, an empty list, or a 4xx the caller caused.",
+    "The row being absent, or its data being undecodable, is a normal outcome for this request. A 5xx tells the caller the server is broken when it is not: it should be a 404, an empty list, or a 4xx the caller caused.",
   row_absence_is_an_error:
-    "An empty row here is genuinely a broken invariant or corrupt data, so a 5xx is the honest answer.",
-  not_applicable: "The branch is not about a row's absence, or the status is not the point of it.",
+    "The failure is a genuine server fault, or an empty row here means data that must exist does not, so a 5xx is honest.",
+  not_applicable: "The branch is not about a row's absence.",
 } as const
 
 /**

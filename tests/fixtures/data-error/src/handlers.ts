@@ -1,12 +1,13 @@
 /**
  * A handler that reads a row and answers 5xx when it is not there.
  *
- * The lookup is a call whose name says it reads a row; the guard is `!row`; the
- * status is 500. All three are syntax, so the candidate is deterministic and the
- * question is only whether an absent row here is normal or a broken invariant.
+ * The guard is `!row`; the status is 500. The candidate no longer cares what the
+ * read is CALLED -- `store.retrieve` is not `find*`, `get*` or `parse*`, and the
+ * old name gate would have missed it. Whether the branch is about a row is now
+ * the model's answer (`about_a_row`), not a name convention.
  */
 export async function getProject(reply, id) {
-  const row = await db.findById(id)
+  const row = await store.retrieve(id)
   if (!row) {
     return reply.code(500).send("missing")
   }
@@ -15,7 +16,7 @@ export async function getProject(reply, id) {
 
 /** The same shape with a 404: the guard meets no 5xx, so it is not a candidate. */
 export async function getProjectOk(reply, id) {
-  const row = await db.findById(id)
+  const row = await store.retrieve(id)
   if (!row) {
     return reply.code(404).send("not found")
   }
@@ -32,7 +33,7 @@ export async function getCrew(res, id) {
   res.send(crew)
 }
 
-/** A lookup that is read but never guarded: not a candidate. */
+/** A 5xx that no guard and no catch reaches: not a candidate. */
 export async function listProjects(reply, id) {
   const rows = await projectStore.fetchAll(id)
   reply.code(500).send(rows)

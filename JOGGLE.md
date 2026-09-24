@@ -526,23 +526,30 @@ and the endpoint reports a server outage for it. One bad request becomes an
 outage signal — pagers, error budgets, retries against a request that will never
 succeed.
 
-`joggle/data-error-as-outage` is judged, and the split is the point. Two
-candidate shapes, both syntax:
+`joggle/data-error-as-outage` is judged, and the split is deliberate:
 
-- **A guard:** the handler reads a row (a call whose name says so — `findById`,
-  `getComments`), guards the result for absence (`!row`, `row == null`), and emits
-  a 5xx inside that guard (`reply.code(500)`, `res.statusCode = 503`).
-- **A catch:** a `try` that reads or decodes a row, whose `catch` emits a 5xx.
-  This is the shape that amplified the payroll bug — a null in a row threw in the
-  decode, and the throw became a 500.
+- **Candidate (deterministic, high recall):** any branch that could be about a
+  row and answers a 5xx — a nullish guard (`!row`, `row == null`) with a 5xx
+  inside, or a `try` whose `catch` answers a 5xx (`reply.code(500)`,
+  `res.statusCode = 503`).
+- **Questions (Jev), atomic, over the same handler source:**
+  - `about_a_row` (Noul) — does the branch concern a row from a data store?
+  - `verdict` (Choice) — is the absent row normal, or a broken invariant?
+- **Composed in code:** report only when the branch IS about a row and the
+  absence is normal. `row_absence_is_normal` reports; `row_absence_is_an_error`
+  drops; a deliberate 5xx is pinned in `.joggle/answers.json`.
 
-The question (Jev) is the same for both: is the absence a normal outcome or a
-broken invariant? `row_absence_is_normal` reports; `row_absence_is_an_error`
-drops. Code decides what to do with the answer, and a deliberate 5xx is pinned in
-`.joggle/answers.json`.
+A nullish guard with a 5xx inside is specific enough to report unverified when no
+model is available; a bare `catch` is not — every ordinary error handler has one —
+so a `catch` is reported only once the model confirms it is about a row.
 
-Nothing here knows Fastify, Express or a schema library. A repository that names
-its lookups otherwise teaches the rule by extending `policy.dataError`.
+The candidate does **not** decide what a row read is. An earlier version named it
+in code (`find*`, `get*`, `load*`, `parse*`), and against a real repository it
+missed a read inside a callback, a bare call, and a verb that was not on the list
+— three false negatives no answer could recover, because a candidate that is
+never sent cannot be judged. So the code finds the *shape* and asks the question
+the names were guessing at: state, not a pre-decided classifier. Nothing here
+knows Fastify, Express or a schema library.
 
 ## Not here yet
 

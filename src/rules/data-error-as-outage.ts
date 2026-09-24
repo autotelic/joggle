@@ -6,6 +6,7 @@ import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
 import {
   budgetNote,
+  declined,
   finding,
   marginOfAnswer,
   outcome,
@@ -20,30 +21,34 @@ import type { Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/data-error-as-outage"
 
-// 
-// A 5xx for a row that is simply not there.
-// 
+// A 5xx for a row that is not there.
+//
 // The amplifier the nullability work cannot see. A missing row is a normal
 // outcome -- somebody deleted it, or the id is wrong -- and answering "the server
 // is broken" turns one bad request into an outage signal: pagers, error budgets,
-// retries against a request that will never succeed. The endpoint is confidently
-// answering the wrong question.
-// 
-// Deterministic CANDIDATE: a branch guarded by a lookup's absence whose body
-// emits a 5xx. All three are syntax. The JUDGEMENT is whether an absent row here
-// is a normal outcome or a broken invariant, which is meaning, and it is exactly
-// what Jev is for. State is the handler's source, the guarded declaration and the
-// status; the answer is one Choice; code keeps control of what it does with it.
-// 
-// Generic by construction: nothing here knows Fastify, Express or a schema
-// library. It reads a nullish guard on a call whose name says it reads a row, and
-// a numeric status. A repository that names things otherwise teaches the rule by
-// adding to the lists in policy.
+// retries against a request that will never succeed.
+//
+// THE CANDIDATE IS HIGH RECALL, AND IT DOES NOT DECIDE WHAT A ROW READ IS.
+//
+// An earlier version of this rule decided "does this branch read a row?" in code,
+// by the callee's name: `find*`, `get*`, `load*`, and `parse*`. That was the
+// classifier's work done ahead of time. Against a real repository it missed a
+// read named inside a callback, a bare call, and a read whose verb was not on the
+// list -- three false negatives a reviewer had to find by hand, because a
+// candidate that is never sent cannot be recovered by any answer. So the code now
+// finds the SHAPE that could be about a row (a nullish guard, or a catch, that
+// answers a 5xx) and asks the model the question the names were guessing at.
+//
+// Two questions, atomic, answered against the same state:
+//   about_a_row  is the branch about a row in a data store?   (Noul)
+//   verdict      is the absent row normal, or a broken invariant? (Choice)
+// Code composes them: report only when the branch IS about a row and the absence
+// is normal. The names are gone; the state carries the answer.
 
 /** The method names that emit an HTTP status. */
 const STATUS_METHODS = new Set(["code", "status", "statusCode"])
 
-/** The node kinds that make a scope for the lookup bindings. */
+/** The node kinds that make a scope for the status walk. */
 const FUNCTION_KINDS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"])
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -53,9 +58,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * The name a call names, bare or dotted: `getComments` -> `getComments`,
  * `reply.code` -> `code`.
  *
- * Both matter. A read is as often a bare `getComments(...)` or
- * `parsePersonPayrollRecord(...)` as it is `db.findById(...)`, and reading only
- * the property of a member call sees neither bare form.
+ * Used only to READ a status or to describe a branch in the state. It no longer
+ * decides whether anything is a row read -- that is the question.
  */
 const calleeName = (callee: unknown): string | undefined => {
   if (!isRecord(callee)) return undefined
@@ -65,27 +69,12 @@ const calleeName = (callee: unknown): string | undefined => {
   return isRecord(property) && typeof property["name"] === "string" ? property["name"] : undefined
 }
 
-const isLookupMethod = (method: string | undefined): boolean =>
-  method !== undefined &&
-  (policy.dataError.lookupPrefixes.some((prefix) => method.startsWith(prefix)) ||
-    policy.dataError.lookupNames.some((name) => name === method))
-
-/**
- * The call names that DECODE a row: `Schema.decodeUnknownResult`, `parsePerson`.
- *
- * A `catch` around a decode is the shape that amplified the payroll bug: a null
- * in a row made the decode throw, and the throw became a 500. So a decode counts
- * as reading a row even when no lookup is named.
- */
-const isDecodeMethod = (method: string | undefined): boolean =>
-  method !== undefined && (method.startsWith("decode") || method.startsWith("parse"))
-
 /**
  * Visit every node under `root` that is NOT inside a nested function.
  *
- * The lookup bindings, the guard and the status have to belong to the SAME
- * handler. A walk that descends into nested functions attributes an inner
- * callback's status to an outer handler, which is a candidate that never existed.
+ * The guard and the status have to belong to the SAME handler. A walk that
+ * descends into nested functions attributes an inner callback's status to an
+ * outer handler, which is a candidate that never existed.
  */
 const eachOwn = (root: unknown, visit: (node: Record<string, unknown>) => void): void => {
   const stack: Array<unknown> = []
@@ -103,7 +92,6 @@ const eachOwn = (root: unknown, visit: (node: Record<string, unknown>) => void):
       continue
     }
     if (!isRecord(node)) continue
-    // A nested function is a new scope: do not read its body as this one's.
     if (FUNCTION_KINDS.has(String(node["type"]))) continue
     visit(node)
     pushChildren(node)
@@ -177,67 +165,35 @@ export interface Outage {
   readonly file: string
   readonly line: number
   readonly handler: string
-  /** How the 5xx is reached: a nullish guard, or a catch around a row read. */
+  /** How the 5xx is reached: a nullish guard, or a catch. */
   readonly reached: "guard" | "catch"
-  /** The guarded binding (`row`), or the read (`findById`) a catch wraps. */
+  /** A description of the branch: the guarded binding, or the try's first call. */
   readonly trigger: string
   readonly code: number
-  /** The handler's source, bounded, which is the state the question reads. */
+  /** The handler's source, bounded, which is the state the questions read. */
   readonly source: string
 }
 
 /**
- * The first call in this subtree that reads or decodes a row, or "".
+ * One candidate per handler: a branch that could be about a row and answers a 5xx.
  *
- * A DEEP walk, unlike `eachOwn`: the read is often inside a callback the try
- * hands to a helper -- `profiler.timeStep('Query comments', () => getComments(...))`
- * -- and skipping nested functions there would see no read at all. Attribution
- * matters for the 5xx (it must be the handler's), not for the read (any read the
- * try performs is one the catch will answer for).
- */
-const rowReadIn = (root: unknown): string => {
-  let method = ""
-  const stack: Array<unknown> = [root]
-  while (stack.length > 0) {
-    const node = stack.pop()
-    if (Array.isArray(node)) {
-      for (const child of node) stack.push(child)
-      continue
-    }
-    if (!isRecord(node)) continue
-    if (method === "" && node["type"] === "CallExpression") {
-      const name = calleeName(node["callee"])
-      if (isLookupMethod(name) || isDecodeMethod(name)) method = name ?? ""
-    }
-    for (const value of Object.values(node)) {
-      if (value !== null && typeof value === "object") stack.push(value)
-    }
-  }
-  return method
-}
-
-/**
- * One candidate per handler: a lookup's result guarded for absence, and a 5xx
- * inside that guard.
- *
- * A file is parsed a second time only after the facts already indexed say it
- * could hold a candidate, so the extra parse is paid on the handful of files
- * that emit statuses and read rows rather than on every file.
+ * No name decides this. A nullish guard with a 5xx inside, or a try whose catch
+ * answers a 5xx, is the shape; whether the branch is about a ROW is the question.
  */
 const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage> => {
   const found: Array<Outage> = []
   for (const file of workspace.files) {
     if (scope.changed !== undefined && !scope.changed.has(file.path)) continue
+    // A cheap gate from the facts already indexed, so only a file that could hold
+    // a candidate is parsed a second time.
     const names = file.facts.callSites.map((site) => site.name.split(".").at(-1) ?? "")
     if (!names.some((name) => STATUS_METHODS.has(name)) && !file.text.includes("statusCode")) continue
-    if (!names.some((name) => isLookupMethod(name))) continue
 
     const parsed = parseSync(file.path, file.text)
     if (parsed.errors.length > 0) continue
 
-    // Each function WITH its parent, so an anonymous handler can be named from
-    // the call it was handed to -- `fastify.decorate('getComments', async ...)` is
-    // `getComments`, and `fastify.get('/api/x', async ...)` names the route.
+    // Each function WITH its parent, so an anonymous handler can be named from the
+    // call it was handed to -- `fastify.decorate('getComments', async ...)`.
     const functions: Array<{
       readonly node: Record<string, unknown>
       readonly parent: Record<string, unknown> | undefined
@@ -259,7 +215,6 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
     }
     collect(parsed.program)
 
-    /** A name for an anonymous handler, from the call it was handed to. */
     const nameFromCaller = (parent: Record<string, unknown> | undefined): string | undefined => {
       if (!isRecord(parent) || parent["type"] !== "CallExpression") return undefined
       const args = parent["arguments"]
@@ -277,17 +232,6 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
       const body = handler["body"]
       if (body === undefined) continue
 
-      const lookups = new Set<string>()
-      eachOwn(body, (node) => {
-        if (node["type"] !== "VariableDeclarator" || !isRecord(node["id"])) return
-        const id = node["id"]
-        if (id["type"] !== "Identifier" || typeof id["name"] !== "string") return
-        let init: unknown = node["init"]
-        if (isRecord(init) && init["type"] === "AwaitExpression") init = init["argument"]
-        if (isRecord(init) && init["type"] === "CallExpression" && isLookupMethod(calleeName(init["callee"]))) {
-          lookups.add(id["name"])
-        }
-      })
       const line = file.text.slice(0, start).split("\n").length
       const handlerName =
         isRecord(handler["id"]) && typeof handler["id"]["name"] === "string"
@@ -297,37 +241,33 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
         start,
         Math.min(file.text.length, start + policy.evidence.maxSourceChars),
       )
+
       let candidate: Outage | undefined
-      // Narrower first: a guard on a lookup's own result.
-      if (lookups.size > 0) {
-        eachOwn(body, (node) => {
-          if (candidate !== undefined || node["type"] !== "IfStatement") return
-          const guarded = guardedVariable(node["test"])
-          if (guarded === undefined || !lookups.has(guarded)) return
-          const code = outageIn(node["consequent"])
-          if (code === undefined) return
-          candidate = {
-            file: file.path,
-            line,
-            handler: handlerName,
-            reached: "guard",
-            trigger: guarded,
-            code,
-            source,
-          }
-        })
-      }
-      // Wider: a catch whose try reads or decodes a row, and whose body answers a
-      // 5xx. This is the shape that amplified the payroll bug -- a null in a row
-      // threw in the decode and the throw became a 500.
+      // Narrower first: a guard on a value's absence. The guard shape is a subset
+      // of the catch shape's reach, so it is preferred when both are present.
+      eachOwn(body, (node) => {
+        if (candidate !== undefined || node["type"] !== "IfStatement") return
+        const guarded = guardedVariable(node["test"])
+        if (guarded === undefined) return
+        const code = outageIn(node["consequent"])
+        if (code === undefined) return
+        candidate = {
+          file: file.path,
+          line,
+          handler: handlerName,
+          reached: "guard",
+          trigger: guarded,
+          code,
+          source,
+        }
+      })
+      // Wider: a catch that answers a 5xx. Whether the try read a row is the
+      // question, not a name lookup.
       if (candidate === undefined) {
         eachOwn(body, (node) => {
           if (candidate !== undefined || node["type"] !== "TryStatement") return
-          const block = node["block"]
           const handlerNode = node["handler"]
           if (!isRecord(handlerNode)) return
-          const read = rowReadIn(block)
-          if (read === "") return
           const code = outageIn(handlerNode["body"])
           if (code === undefined) return
           candidate = {
@@ -335,7 +275,7 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
             line,
             handler: handlerName,
             reached: "catch",
-            trigger: read,
+            trigger: "",
             code,
             source,
           }
@@ -361,7 +301,7 @@ const labelOf = (outage: Outage): string => outage.handler + " (" + outage.file 
 const describe = (outage: Outage): string =>
   outage.reached === "guard"
     ? "when `" + outage.trigger + "` is empty"
-    : "when its row read (`" + outage.trigger + "`) fails"
+    : "when reading the row fails"
 
 const findingFor = (outage: Outage, unverified: string | undefined): Diagnostic =>
   finding({
@@ -374,7 +314,7 @@ const findingFor = (outage: Outage, unverified: string | undefined): Diagnostic 
       String(outage.code) +
       " " +
       describe(outage) +
-      ", so a fact about a row reads as a server outage.",
+      ", so a missing row reads as a server outage.",
     help:
       "A lookup that finds nothing is usually a normal outcome: a 404, an empty list, or a 4xx the caller caused. If the absence really is a broken invariant, say so here; otherwise answer the request. " +
       (unverified === undefined
@@ -391,17 +331,14 @@ export const dataErrorAsOutage: PlannedRule = {
   description: "A 5xx answer to a row that is simply not there.",
   judged: true,
   onUnavailable: "report",
-  plan: Effect.fn("joggle/data-error-as-outage")(function* (
-    workspace: Workspace,
-    scope: Scope,
-  ) {
+  plan: Effect.fn("joggle/data-error-as-outage")(function* (workspace: Workspace, scope: Scope) {
     const all = candidatesIn(workspace, scope)
     if (all.length === 0) {
       return {
         plans: [],
         read: () =>
           outcome([], [
-            "no handler answers a 5xx for a guarded lookup: the guard and the status did not meet",
+            "no branch answers a 5xx for a guarded or failed read: the guard and the status did not meet",
           ]),
       }
     }
@@ -425,10 +362,41 @@ export const dataErrorAsOutage: PlannedRule = {
         trigger: outage.trigger,
         source: outage.source,
       })
-      const reading =
+      // The predicate the candidate used to guess at, now asked. Each shape gets
+      // the question it needs: a guard tests a VALUE (is it a row?), a catch wraps
+      // a TRY (does it read a row?). Asking a catch whether "the branch concerns a
+      // row" got "it is error handling" -- the branch is the catch, the read is the
+      // try, and the question has to point at the try.
+      const aboutInstructions =
         outage.reached === "guard"
-          ? `It reads a row (the result is bound to \`atoms[${id}].trigger\`) and answers \`atoms[${id}].status\` when that row is empty.`
-          : `It reads or decodes a row (\`atoms[${id}].trigger\`) inside a \`try\`, and answers \`atoms[${id}].status\` in the \`catch\`.`
+          ? [
+              `\`atoms[${id}].source\` is an HTTP handler that answers \`atoms[${id}].status\` when \`atoms[${id}].trigger\` is empty.`,
+              `Is \`atoms[${id}].trigger\` a row in a data store, so that an empty value is a row that is absent?`,
+              "Answer true when it is a database record or a stored entity.",
+              "Answer false when it is the request, a cache entry, configuration, an external service response, or an unrelated value.",
+            ]
+          : [
+              `\`atoms[${id}].source\` is an HTTP handler that answers \`atoms[${id}].status\` in a \`catch\`. The \`try\` it wraps is in \`atoms[${id}].source\`.`,
+              "Does that `try` read or decode a row in a data store, so that a missing or undecodable row is a plausible cause of the failure it catches?",
+              "Answer true when the try reads or decodes a database record or a stored entity.",
+              "Answer false when the try only writes, validates input, calls an external service, or does unrelated work.",
+            ]
+      const verdictInstructions =
+        outage.reached === "guard"
+          ? [
+              `\`atoms[${id}].source\` answers \`atoms[${id}].status\` when \`atoms[${id}].trigger\` is empty.`,
+              "Is an empty row here a normal outcome, or a broken invariant?",
+              "Answer `row_absence_is_normal` when the request can legitimately name a row that is not there -- a wrong id, a deleted record, an empty result set.",
+              "Answer `row_absence_is_an_error` when an empty row here means data that must exist does not, so a 5xx is honest.",
+              "Answer `not_applicable` when the branch is not about a row's absence.",
+            ]
+          : [
+              `\`atoms[${id}].source\` answers \`atoms[${id}].status\` in a \`catch\`. The \`try\` it wraps is in \`atoms[${id}].source\`.`,
+              "When that read fails, is the likely cause a missing or undecodable row (a data fact), or a genuine server fault?",
+              "Answer `row_absence_is_normal` when the failure is the data being absent or undecodable -- a wrong id, a deleted record, a row that does not match the contract -- so a 5xx misreports a data fact as a server outage.",
+              "Answer `row_absence_is_an_error` when the failure is a genuine server fault, so a 5xx is honest.",
+              "Answer `not_applicable` when the branch is not about a row's absence.",
+            ]
       planned.push({
         outage,
         plan: {
@@ -437,14 +405,15 @@ export const dataErrorAsOutage: PlannedRule = {
           concerns: [outage.file],
           atoms: [id],
           decisions: {
+            about_a_row: Decision.probability({
+              instructions: aboutInstructions.join("\n"),
+              criteria: {
+                false: "The branch is not about a row.",
+                true: "The branch is about a row.",
+              },
+            }),
             verdict: Decision.classify({
-              instructions: [
-                `\`atoms[${id}].source\` is an HTTP handler. ${reading}`,
-                "Is the row's absence a normal outcome, or a broken invariant?",
-                "Answer `row_absence_is_normal` when the request can legitimately name a row that is not there -- a wrong id, a deleted record, an empty result set -- or when the caught failure is the data being absent or undecodable rather than the server being down.",
-                "Answer `row_absence_is_an_error` when an empty row here means data that must exist does not, or when the caught failure is a genuine server fault, so a 5xx is honest.",
-                "Answer `not_applicable` when the branch is not about a row's absence.",
-              ].join("\n"),
+              instructions: verdictInstructions.join("\n"),
               criteria: dataErrorVocabulary,
             }),
           },
@@ -462,9 +431,49 @@ export const dataErrorAsOutage: PlannedRule = {
         planned.forEach((entry, index) => {
           const outage = entry.outage
           const answer = verdicts[index]
+          const about = answer === undefined ? undefined : answer["about_a_row"]
           const verdict = answer === undefined ? undefined : answer["verdict"]
-          if (verdict === undefined || !("label" in verdict)) {
-            diagnostics.push(findingFor(outage, "no judgement was available"))
+          if (
+            about === undefined ||
+            !("probability" in about) ||
+            verdict === undefined ||
+            !("label" in verdict)
+          ) {
+            // A nullish guard with a 5xx inside is specific enough to report
+            // without a judgement. A catch that answers a 5xx is not: every
+            // ordinary error handler has one, so reporting it unverified would
+            // be the noise the verification exists to remove.
+            if (outage.reached === "guard") {
+              diagnostics.push(findingFor(outage, "no judgement was available"))
+            } else {
+              drops.push({
+                ruleId: RULE_ID,
+                subject: labelOf(outage),
+                stage: "unreadable",
+                reason: "not judged, and a `catch` that answers a 5xx is too common to report without one",
+              })
+            }
+            return
+          }
+          // The verification the name prefixes used to skip: is this branch about
+          // a row at all? A low probability is the model saying no, which is a
+          // verdict, not a shrug -- so it is a decline, not a gate failure.
+          if (about.probability < policy.decision.gates.probabilityFloor) {
+            drops.push({
+              ruleId: RULE_ID,
+              subject: labelOf(outage),
+              stage: "declined",
+              reason: "the branch is not about a row (probability " + about.probability.toFixed(2) + ")",
+            })
+            return
+          }
+          if (declined(verdict.label)) {
+            drops.push({
+              ruleId: RULE_ID,
+              subject: labelOf(outage),
+              stage: "declined",
+              reason: "the model read the branch as not about a row's absence",
+            })
             return
           }
           if (verdict.label !== "row_absence_is_normal") {
@@ -472,16 +481,12 @@ export const dataErrorAsOutage: PlannedRule = {
               ruleId: RULE_ID,
               subject: labelOf(outage),
               stage: "declined",
-              reason:
-                verdict.label === "not_applicable"
-                  ? "the model read the branch as not about a row's absence"
-                  : "the model read the absence as a broken invariant, so a 5xx is honest",
+              reason: "the model read the absence as a broken invariant, so a 5xx is honest",
             })
             return
           }
-          const score = verdict.probabilities[verdict.label] ?? 0
           const quality = qualityOf({
-            score,
+            score: about.probability,
             margin: marginOfAnswer(verdict),
             confidence: verdict.confidence,
           })
