@@ -324,6 +324,21 @@ export const dutyVocabulary = {
 } as const
 
 /**
+ * Whether a 5xx is the right answer to a row that is not there.
+ *
+ * The amplifier the nullability work cannot see: the data is legitimately
+ * absent, and the endpoint reports a server outage for it. One question, three
+ * options, and the code reads the answer -- which is what Jev is for.
+ */
+export const dataErrorVocabulary = {
+  row_absence_is_normal:
+    "The lookup coming back empty is a normal outcome for this request, so a 5xx tells the caller the server is broken when it is not. A missing row is a 404, an empty list, or a 4xx the caller caused.",
+  row_absence_is_an_error:
+    "An empty row here is genuinely a broken invariant or corrupt data, so a 5xx is the honest answer.",
+  not_applicable: "The branch is not about a row's absence, or the status is not the point of it.",
+} as const
+
+/**
  * Whether a file is already where logic like this belongs.
  *
  * The question a declared `domain` layer would have answered. Asked instead of

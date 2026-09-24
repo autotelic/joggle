@@ -531,6 +531,24 @@ export const policy = {
   },
 
   /**
+   * The amplifier: a 5xx answer to a row that is simply not there.
+   *
+   * A missing row is a normal outcome -- a wrong id, a deleted record -- and
+   * answering "the server is broken" turns one bad request into an outage signal.
+   * The names are policy rather than vocabulary because a repository teaches the
+   * rule which of its calls read a row by adding to them; nothing here knows
+   * Fastify, Express or a schema library.
+   */
+  dataError: {
+    /** Callee-name prefixes that read a row: `findById`, `fetchOne`, `loadRow`. */
+    lookupPrefixes: ["find", "fetch", "load", "lookup", "select", "query"],
+    /** Exact callee names that read one row. */
+    lookupNames: ["first", "one", "single", "maybeSingle", "oneOrNone", "findOrFail"],
+    /** Handlers judged before the rest are counted and not asked about. */
+    maxHandlers: 40,
+  },
+
+  /**
    * How much of a cluster is described to the model.
    *
    * A cluster of two hundred declarations is one decision but not one question:
