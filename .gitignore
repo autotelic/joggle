@@ -1,5 +1,3 @@
-entropy-machine/target/
-entropy-machine/entropy-types
 repos/
 node_modules/
 dist/

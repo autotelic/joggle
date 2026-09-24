@@ -584,9 +584,7 @@ tests/
   fixtures/corpus/          intentionally duplicated fixture project
 ```
 
-`docs/` and `entropy-machine/` are untouched. `docs/` is the thinking that
-motivated this layer -- how agents navigate code, why names are addresses, parse
-don't validate, incremental computation, the deterministic harness.
-`entropy-machine/` is the previous implementation: a Rust CLI of hand-written
-heuristics. It stays as a reference for what these rules are trying to capture,
-and as a reminder of why they are being written differently.
+`docs/` is the thinking that motivated this layer -- how agents navigate code,
+why names are addresses, parse don't validate, incremental computation, the
+deterministic harness. The previous implementation -- a Rust CLI of hand-written
+heuristics -- has been removed; the ideas worth keeping are the rules here.
