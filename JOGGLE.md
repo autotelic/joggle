@@ -341,7 +341,7 @@ judged by text similarity. That is the wrong instrument, and the material in
 * `docs/parse.md` -- the entire argument is that the type system is where a
   program makes illegal states unrepresentable, and that validation which
   discards what it learned is the anti-pattern.
-* `docs/something.md` -- the goal is a compiler on top of the codebase that can
+* `docs/reference/something.md` -- the goal is a compiler on top of the codebase that can
   refuse a change because "this file is in the wrong relationship to that".
 * `docs/new-passes.md` names four pillars: AST structure, dependency graph,
   **type resolution data**, and text analysis. joggle has the first, part of
