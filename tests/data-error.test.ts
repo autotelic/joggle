@@ -22,14 +22,17 @@ it.effect("a 5xx guarded by a lookup's absence is a candidate, and the model rep
   Effect.gen(function* () {
     const workspace = yield* fixture()
     const result = yield* plannedDiagnosticsOf(dataErrorAsOutage, workspace)
-    // Two candidates: the `!row`/`code(500)` handler and the `=== null`/
-    // `statusCode = 503` handler. The 404 and the unguarded lookup are not.
-    expect(result.diagnostics.length).toBe(2)
+    // Three candidates: the `!row`/`code(500)` guard, the `=== null`/
+    // `statusCode = 503` guard, and the `try`/`catch` around a decode. The 404
+    // and the unguarded lookup are not.
+    expect(result.diagnostics.length).toBe(3)
     const messages = result.diagnostics.map((entry) => entry.message).join("\n")
     expect(messages).toContain("getProject")
     expect(messages).toContain("500")
     expect(messages).toContain("getCrew")
     expect(messages).toContain("503")
+    expect(messages).toContain("getReview")
+    expect(messages).toContain("row read")
     expect(messages).not.toContain("getProjectOk")
     expect(messages).not.toContain("listProjects")
     expect(result.diagnostics.every((entry) => entry.judged)).toBe(true)
@@ -52,7 +55,7 @@ it.effect("without a model the candidate surfaces unverified, not silently", () 
   Effect.gen(function* () {
     const workspace = yield* fixture()
     const result = yield* plannedDiagnosticsOf(dataErrorAsOutage, workspace)
-    expect(result.diagnostics.length).toBe(2)
+    expect(result.diagnostics.length).toBe(3)
     expect(result.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(result.diagnostics[0]?.help).toContain("Not verified")
   }).pipe(Effect.provide(modelFailing("the model was unreachable")), Effect.provide(NodeServices.layer)),

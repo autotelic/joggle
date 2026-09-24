@@ -37,3 +37,19 @@ export async function listProjects(reply, id) {
   const rows = await projectStore.fetchAll(id)
   reply.code(500).send(rows)
 }
+
+/**
+ * The catch-all shape: a `try` that reads and decodes a row, and a `catch` that
+ * answers 5xx. This is the shape that amplified the payroll bug -- a null in a
+ * row threw in the decode, and the throw became a 500.
+ */
+export async function getReview(reply, id) {
+  try {
+    const raw = await db.findById(id)
+    const review = Schema.decodeUnknownResult(ReviewSchema)(raw)
+    return reply.send(review)
+  } catch (error) {
+    fastify.log.error(error)
+    return reply.code(500).send({ error: "Failed to fetch review" })
+  }
+}

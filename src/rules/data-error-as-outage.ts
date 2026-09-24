@@ -49,9 +49,18 @@ const FUNCTION_KINDS = new Set(["FunctionDeclaration", "FunctionExpression", "Ar
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
 
-/** The property name of a member callee: `reply.code` -> `code`. */
-const methodOf = (callee: unknown): string | undefined => {
-  if (!isRecord(callee) || callee["type"] !== "MemberExpression") return undefined
+/**
+ * The name a call names, bare or dotted: `getComments` -> `getComments`,
+ * `reply.code` -> `code`.
+ *
+ * Both matter. A read is as often a bare `getComments(...)` or
+ * `parsePersonPayrollRecord(...)` as it is `db.findById(...)`, and reading only
+ * the property of a member call sees neither bare form.
+ */
+const calleeName = (callee: unknown): string | undefined => {
+  if (!isRecord(callee)) return undefined
+  if (callee["type"] === "Identifier" && typeof callee["name"] === "string") return callee["name"]
+  if (callee["type"] !== "MemberExpression") return undefined
   const property = callee["property"]
   return isRecord(property) && typeof property["name"] === "string" ? property["name"] : undefined
 }
@@ -60,6 +69,16 @@ const isLookupMethod = (method: string | undefined): boolean =>
   method !== undefined &&
   (policy.dataError.lookupPrefixes.some((prefix) => method.startsWith(prefix)) ||
     policy.dataError.lookupNames.some((name) => name === method))
+
+/**
+ * The call names that DECODE a row: `Schema.decodeUnknownResult`, `parsePerson`.
+ *
+ * A `catch` around a decode is the shape that amplified the payroll bug: a null
+ * in a row made the decode throw, and the throw became a 500. So a decode counts
+ * as reading a row even when no lookup is named.
+ */
+const isDecodeMethod = (method: string | undefined): boolean =>
+  method !== undefined && (method.startsWith("decode") || method.startsWith("parse"))
 
 /**
  * Visit every node under `root` that is NOT inside a nested function.
@@ -128,7 +147,7 @@ const outageIn = (root: unknown): number | undefined => {
   let found: number | undefined
   eachOwn(root, (node) => {
     if (found !== undefined) return
-    if (node["type"] === "CallExpression" && STATUS_METHODS.has(methodOf(node["callee"]) ?? "")) {
+    if (node["type"] === "CallExpression" && STATUS_METHODS.has(calleeName(node["callee"]) ?? "")) {
       const args = node["arguments"]
       const first = Array.isArray(args) ? args[0] : undefined
       if (isRecord(first) && first["type"] === "Literal" && typeof first["value"] === "number") {
@@ -158,10 +177,43 @@ export interface Outage {
   readonly file: string
   readonly line: number
   readonly handler: string
-  readonly guarded: string
+  /** How the 5xx is reached: a nullish guard, or a catch around a row read. */
+  readonly reached: "guard" | "catch"
+  /** The guarded binding (`row`), or the read (`findById`) a catch wraps. */
+  readonly trigger: string
   readonly code: number
   /** The handler's source, bounded, which is the state the question reads. */
   readonly source: string
+}
+
+/**
+ * The first call in this subtree that reads or decodes a row, or "".
+ *
+ * A DEEP walk, unlike `eachOwn`: the read is often inside a callback the try
+ * hands to a helper -- `profiler.timeStep('Query comments', () => getComments(...))`
+ * -- and skipping nested functions there would see no read at all. Attribution
+ * matters for the 5xx (it must be the handler's), not for the read (any read the
+ * try performs is one the catch will answer for).
+ */
+const rowReadIn = (root: unknown): string => {
+  let method = ""
+  const stack: Array<unknown> = [root]
+  while (stack.length > 0) {
+    const node = stack.pop()
+    if (Array.isArray(node)) {
+      for (const child of node) stack.push(child)
+      continue
+    }
+    if (!isRecord(node)) continue
+    if (method === "" && node["type"] === "CallExpression") {
+      const name = calleeName(node["callee"])
+      if (isLookupMethod(name) || isDecodeMethod(name)) method = name ?? ""
+    }
+    for (const value of Object.values(node)) {
+      if (value !== null && typeof value === "object") stack.push(value)
+    }
+  }
+  return method
 }
 
 /**
@@ -183,25 +235,43 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
     const parsed = parseSync(file.path, file.text)
     if (parsed.errors.length > 0) continue
 
-    const functions: Array<Record<string, unknown>> = []
+    // Each function WITH its parent, so an anonymous handler can be named from
+    // the call it was handed to -- `fastify.decorate('getComments', async ...)` is
+    // `getComments`, and `fastify.get('/api/x', async ...)` names the route.
+    const functions: Array<{
+      readonly node: Record<string, unknown>
+      readonly parent: Record<string, unknown> | undefined
+    }> = []
     const collect = (root: unknown): void => {
-      const stack: Array<unknown> = [root]
+      const stack: Array<readonly [unknown, Record<string, unknown> | undefined]> = [[root, undefined]]
       while (stack.length > 0) {
-        const node = stack.pop()
+        const [node, parent] = stack.pop() as readonly [unknown, Record<string, unknown> | undefined]
         if (Array.isArray(node)) {
-          for (const child of node) stack.push(child)
+          for (const child of node) stack.push([child, parent])
           continue
         }
         if (!isRecord(node)) continue
-        if (FUNCTION_KINDS.has(String(node["type"]))) functions.push(node)
+        if (FUNCTION_KINDS.has(String(node["type"]))) functions.push({ node, parent })
         for (const value of Object.values(node)) {
-          if (value !== null && typeof value === "object") stack.push(value)
+          if (value !== null && typeof value === "object") stack.push([value, node])
         }
       }
     }
     collect(parsed.program)
 
-    for (const handler of functions) {
+    /** A name for an anonymous handler, from the call it was handed to. */
+    const nameFromCaller = (parent: Record<string, unknown> | undefined): string | undefined => {
+      if (!isRecord(parent) || parent["type"] !== "CallExpression") return undefined
+      const args = parent["arguments"]
+      if (Array.isArray(args)) {
+        for (const arg of args) {
+          if (isRecord(arg) && typeof arg["value"] === "string" && arg["value"] !== "") return arg["value"]
+        }
+      }
+      return calleeName(parent["callee"])
+    }
+
+    for (const { node: handler, parent: handlerParent } of functions) {
       const start = handler["start"]
       if (typeof start !== "number") continue
       const body = handler["body"]
@@ -214,33 +284,63 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
         if (id["type"] !== "Identifier" || typeof id["name"] !== "string") return
         let init: unknown = node["init"]
         if (isRecord(init) && init["type"] === "AwaitExpression") init = init["argument"]
-        if (isRecord(init) && init["type"] === "CallExpression" && isLookupMethod(methodOf(init["callee"]))) {
+        if (isRecord(init) && init["type"] === "CallExpression" && isLookupMethod(calleeName(init["callee"]))) {
           lookups.add(id["name"])
         }
       })
-      if (lookups.size === 0) continue
-
+      const line = file.text.slice(0, start).split("\n").length
+      const handlerName =
+        isRecord(handler["id"]) && typeof handler["id"]["name"] === "string"
+          ? handler["id"]["name"]
+          : (nameFromCaller(handlerParent) ?? "handler")
+      const source = file.text.slice(
+        start,
+        Math.min(file.text.length, start + policy.evidence.maxSourceChars),
+      )
       let candidate: Outage | undefined
-      eachOwn(body, (node) => {
-        if (candidate !== undefined || node["type"] !== "IfStatement") return
-        const guarded = guardedVariable(node["test"])
-        if (guarded === undefined || !lookups.has(guarded)) return
-        const code = outageIn(node["consequent"])
-        if (code === undefined) return
-        const line = file.text.slice(0, start).split("\n").length
-        const handlerName =
-          isRecord(handler["id"]) && typeof handler["id"]["name"] === "string"
-            ? handler["id"]["name"]
-            : "handler"
-        candidate = {
-          file: file.path,
-          line,
-          handler: handlerName,
-          guarded,
-          code,
-          source: file.text.slice(start, Math.min(file.text.length, start + policy.evidence.maxSourceChars)),
-        }
-      })
+      // Narrower first: a guard on a lookup's own result.
+      if (lookups.size > 0) {
+        eachOwn(body, (node) => {
+          if (candidate !== undefined || node["type"] !== "IfStatement") return
+          const guarded = guardedVariable(node["test"])
+          if (guarded === undefined || !lookups.has(guarded)) return
+          const code = outageIn(node["consequent"])
+          if (code === undefined) return
+          candidate = {
+            file: file.path,
+            line,
+            handler: handlerName,
+            reached: "guard",
+            trigger: guarded,
+            code,
+            source,
+          }
+        })
+      }
+      // Wider: a catch whose try reads or decodes a row, and whose body answers a
+      // 5xx. This is the shape that amplified the payroll bug -- a null in a row
+      // threw in the decode and the throw became a 500.
+      if (candidate === undefined) {
+        eachOwn(body, (node) => {
+          if (candidate !== undefined || node["type"] !== "TryStatement") return
+          const block = node["block"]
+          const handlerNode = node["handler"]
+          if (!isRecord(handlerNode)) return
+          const read = rowReadIn(block)
+          if (read === "") return
+          const code = outageIn(handlerNode["body"])
+          if (code === undefined) return
+          candidate = {
+            file: file.path,
+            line,
+            handler: handlerName,
+            reached: "catch",
+            trigger: read,
+            code,
+            source,
+          }
+        })
+      }
       if (candidate !== undefined) found.push(candidate)
     }
   }
@@ -257,6 +357,12 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
 
 const labelOf = (outage: Outage): string => outage.handler + " (" + outage.file + ":" + String(outage.line) + ")"
 
+/** How the 5xx is reached, in the reader's terms. */
+const describe = (outage: Outage): string =>
+  outage.reached === "guard"
+    ? "when `" + outage.trigger + "` is empty"
+    : "when its row read (`" + outage.trigger + "`) fails"
+
 const findingFor = (outage: Outage, unverified: string | undefined): Diagnostic =>
   finding({
     ruleId: RULE_ID,
@@ -266,9 +372,9 @@ const findingFor = (outage: Outage, unverified: string | undefined): Diagnostic 
       outage.handler +
       "` answers " +
       String(outage.code) +
-      " when `" +
-      outage.guarded +
-      "` is empty, so a row that is not there reads as a server outage.",
+      " " +
+      describe(outage) +
+      ", so a fact about a row reads as a server outage.",
     help:
       "A lookup that finds nothing is usually a normal outcome: a 404, an empty list, or a 4xx the caller caused. If the absence really is a broken invariant, say so here; otherwise answer the request. " +
       (unverified === undefined
@@ -314,10 +420,15 @@ export const dataErrorAsOutage: PlannedRule = {
     for (const outage of judged) {
       const id = yield* atoms.add({
         handler: outage.handler,
+        reached: outage.reached,
         status: outage.code,
-        guarded: outage.guarded,
+        trigger: outage.trigger,
         source: outage.source,
       })
+      const reading =
+        outage.reached === "guard"
+          ? `It reads a row (the result is bound to \`atoms[${id}].trigger\`) and answers \`atoms[${id}].status\` when that row is empty.`
+          : `It reads or decodes a row (\`atoms[${id}].trigger\`) inside a \`try\`, and answers \`atoms[${id}].status\` in the \`catch\`.`
       planned.push({
         outage,
         plan: {
@@ -328,10 +439,10 @@ export const dataErrorAsOutage: PlannedRule = {
           decisions: {
             verdict: Decision.classify({
               instructions: [
-                `\`atoms[${id}].source\` is an HTTP handler. It reads a row (the result is bound to \`atoms[${id}].guarded\`) and answers \`atoms[${id}].status\` when that row is empty.`,
+                `\`atoms[${id}].source\` is an HTTP handler. ${reading}`,
                 "Is the row's absence a normal outcome, or a broken invariant?",
-                "Answer `row_absence_is_normal` when the request can legitimately name a row that is not there -- a wrong id, a deleted record, an empty result set.",
-                "Answer `row_absence_is_an_error` when an empty row here means data that must exist does not, so a 5xx is honest.",
+                "Answer `row_absence_is_normal` when the request can legitimately name a row that is not there -- a wrong id, a deleted record, an empty result set -- or when the caught failure is the data being absent or undecodable rather than the server being down.",
+                "Answer `row_absence_is_an_error` when an empty row here means data that must exist does not, or when the caught failure is a genuine server fault, so a 5xx is honest.",
                 "Answer `not_applicable` when the branch is not about a row's absence.",
               ].join("\n"),
               criteria: dataErrorVocabulary,

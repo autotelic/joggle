@@ -540,8 +540,8 @@ export const policy = {
    * Fastify, Express or a schema library.
    */
   dataError: {
-    /** Callee-name prefixes that read a row: `findById`, `fetchOne`, `loadRow`. */
-    lookupPrefixes: ["find", "fetch", "load", "lookup", "select", "query"],
+    /** Callee-name prefixes that read a row: `findById`, `fetchOne`, `getCrew`. */
+    lookupPrefixes: ["find", "fetch", "load", "lookup", "get", "select", "query"],
     /** Exact callee names that read one row. */
     lookupNames: ["first", "one", "single", "maybeSingle", "oneOrNone", "findOrFail"],
     /** Handlers judged before the rest are counted and not asked about. */

@@ -519,7 +519,32 @@ a fact, so there is nothing for a model to decide. What it catches is the decode
 that fails the first time real data arrives: the column can hold a null and the
 schema refuses it.
 
-## A 5xx for a row that is not there\n\nThe amplifier the nullability work cannot see: the data is legitimately absent,\nand the endpoint reports a server outage for it. One bad request becomes an\noutage signal — pagers, error budgets, retries against a request that will never\nsucceed.\n\n`joggle/data-error-as-outage` is judged, and the split is the point:\n\n- **Candidate (deterministic):** a handler that reads a row (a call whose name\n  says so — `findById`, `fetchOne`, `loadRow`), guards the result for absence\n  (`!row`, `row == null`), and emits a 5xx inside that guard (`reply.code(500)`,\n  `res.statusCode = 503`). All three are syntax.\n- **Question (Jev):** is the absence a normal outcome or a broken invariant?\n  `row_absence_is_normal` reports; `row_absence_is_an_error` drops. Code decides\n  what to do with the answer, and a deliberate 5xx is pinned in\n  `.joggle/answers.json`.\n\nNothing here knows Fastify, Express or a schema library. A repository that names\nits lookups otherwise teaches the rule by extending `policy.dataError`.\n\n## Not here yet
+## A 5xx for a row that is not there
+
+The amplifier the nullability work cannot see: the data is legitimately absent,
+and the endpoint reports a server outage for it. One bad request becomes an
+outage signal — pagers, error budgets, retries against a request that will never
+succeed.
+
+`joggle/data-error-as-outage` is judged, and the split is the point. Two
+candidate shapes, both syntax:
+
+- **A guard:** the handler reads a row (a call whose name says so — `findById`,
+  `getComments`), guards the result for absence (`!row`, `row == null`), and emits
+  a 5xx inside that guard (`reply.code(500)`, `res.statusCode = 503`).
+- **A catch:** a `try` that reads or decodes a row, whose `catch` emits a 5xx.
+  This is the shape that amplified the payroll bug — a null in a row threw in the
+  decode, and the throw became a 500.
+
+The question (Jev) is the same for both: is the absence a normal outcome or a
+broken invariant? `row_absence_is_normal` reports; `row_absence_is_an_error`
+drops. Code decides what to do with the answer, and a deliberate 5xx is pinned in
+`.joggle/answers.json`.
+
+Nothing here knows Fastify, Express or a schema library. A repository that names
+its lookups otherwise teaches the rule by extending `policy.dataError`.
+
+## Not here yet
 
 The honest list: **no type awareness** (see above -- it is the next layer), no
 LSP, no `--fix`, no emission as an oxlint rule, and no
