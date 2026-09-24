@@ -3,11 +3,11 @@
  *
  * A linter is a registry, and a registry is only half a plugin system. The other
  * half is this file: one entry point exporting everything a rule needs, so an
- * opinion of your own is a module that imports `joggle/plugin` rather than three
+ * opinion of your own is a module that imports `@autotelic/joggle/plugin` rather than three
  * relative paths into a package's internals.
  *
  * That distinction is not cosmetic. `../../../src/rule.ts` is a path a rule
- * author has to guess and a maintainer is free to move; `joggle/plugin` is a
+ * author has to guess and a maintainer is free to move; `@autotelic/joggle/plugin` is a
  * promise. Everything re-exported here is supported, and anything not here is
  * not -- which is also how a rule author knows what they are allowed to rely on.
  *

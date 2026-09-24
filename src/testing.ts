@@ -125,7 +125,7 @@ export const refusingModel = (
       DecisionModel.make({
         decide: () =>
           Effect.fail(
-            decisionError(["joggle/testing", "decide"], new AiError.UnknownError({ description: reason })),
+            decisionError(["@autotelic/joggle/testing", "decide"], new AiError.UnknownError({ description: reason })),
           ),
       }),
     ),

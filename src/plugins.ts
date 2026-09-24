@@ -55,8 +55,8 @@ const EXTENSIONS = [".ts", ".tsx", ".mts", ".js", ".mjs", ".cjs", "/index.ts", "
  * own package name, since Node resolves a package's name from inside it.
  *
  * Converting it to a file URL first, which is what this did, turns
- * `joggle/presets/composition` into a path under the working directory and fails
- * with "cannot find module /repo/joggle/presets/composition".
+ * `@autotelic/joggle/presets/composition` into a path under the working directory and fails
+ * with "cannot find module /repo/@autotelic/joggle/presets/composition".
  */
 const resolve = (
   specifier: string,

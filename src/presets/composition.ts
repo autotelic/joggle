@@ -13,7 +13,7 @@ import type { Rule } from "../rule.ts"
  *
  * So they ship as a preset. A repository opts in:
  *
- *   { "presets": ["joggle/presets/composition"] }
+ *   { "presets": ["@autotelic/joggle/presets/composition"] }
  *
  * and gets the rules AND their severities. It can then override any of it per
  * rule, because a preset sets defaults rather than taking over.

@@ -1,13 +1,33 @@
 {
-  "name": "joggle",
+  "name": "@autotelic/joggle",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "Opinionated cross-file idiom rules for TypeScript — a layer above the linter and the typechecker.",
+  "description": "Cross-file patterns and idioms for TypeScript — the layer above the linter and the typechecker.",
   "license": "MIT",
+  "homepage": "https://github.com/tognmund/mess#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tognmund/mess.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tognmund/mess/issues"
+  },
   "keywords": [
+    "typescript",
+    "linter",
+    "static-analysis",
+    "cross-file",
+    "oxc",
+    "effect",
+    "code-quality",
     "pi-package"
   ],
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "pi": {
     "extensions": [
       "./extensions"
@@ -30,7 +50,8 @@
   "files": [
     "dist",
     "bin",
-    "extensions"
+    "extensions",
+    "JOGGLE.md"
   ],
   "bin": {
     "joggle": "./bin/joggle.js"
@@ -40,6 +61,7 @@
     "joggle:elsewhere": "sh scripts/joggle-elsewhere.sh",
     "build": "tsgo -p tsconfig.build.json",
     "prepack": "pnpm build",
+    "prepublishOnly": "pnpm check",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run",
     "lint": "node scripts/lint-baseline.mjs",
@@ -50,15 +72,15 @@
     "@effect/ai-typesafe": "4.0.0-rc.116",
     "@effect/platform-node": "4.0.0-rc.116",
     "effect": "4.0.0-rc.116",
-    "oxc-parser": "^0.150.0"
+    "oxc-parser": "0.150.0"
   },
   "devDependencies": {
-    "@autotelic/plumb": "^0.6.0",
+    "@autotelic/plumb": "0.6.0",
     "@effect/vitest": "4.0.0-rc.116",
-    "@types/node": "^24.0.0",
+    "@types/node": "24.13.5",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
-    "oxlint": "^1.83.0",
-    "typebox": "^1.3.34",
-    "vitest": "^5.0.1"
+    "oxlint": "1.83.0",
+    "typebox": "1.3.34",
+    "vitest": "5.0.1"
   }
 }

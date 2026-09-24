@@ -1,105 +1,272 @@
-# entropy-machine
+<div align="center">
 
-> "I want to build the entropy reverser — a big sausage machine where you put all programs into it and you turn the handle and a smaller number of programs come out."
->
-> — Joe Armstrong, *The Mess We're In*, 2014
+# joggle
 
-An entropy reduction tool for TypeScript codebases. Finds structural duplication, type collisions, naming drift, and design token repetition — then shows where the entropy lives so you can decide what to collapse.
+**Cross-file patterns and idioms for TypeScript, enforced like a linter.**
 
-## Quick Start
+[![MIT licensed][license-badge]][license-url]
+[![CI][ci-badge]][ci-url]
 
-```bash
-# Clone with submodules
-git clone --recursive <repo-url>
-cd entropy-machine
+</div>
 
-# Build (Go binary is auto-compiled by build.rs)
-cargo build --release
+`tsc` checks one program. `oxlint` checks one file. Neither can tell you that two
+functions in different modules are the same concept, that a name means something
+different here than it does there, or that a module is not shaped like the other
+twelve modules of its kind.
 
-# Run all analyses against your codebase
-./target/release/entropy-machine --all src/
+joggle is the layer above both. It indexes the codebase into facts, generates
+candidates cheaply and deterministically, and then asks narrow typed questions
+about the candidates it cannot decide by looking. Answers come back as
+probabilities, code keeps control of the thresholds, and the output is an
+ordinary diagnostic — so the same tool serves an editor, a pre-commit hook, and
+CI.
 
-# Run individual passes
-./target/release/entropy-machine --ncd src/          # distribution + NCD
-./target/release/entropy-machine --types src/        # type resolution + collisions
-./target/release/entropy-machine --compress src/     # raw source, className, comments
-./target/release/entropy-machine --converge src/     # progressive convergence
-./target/release/entropy-machine --composition src/  # tripartite composition linter
-./target/release/entropy-machine --deep-modules src/ # Ousterhout deep module metrics
-./target/release/entropy-machine --ddd src/          # DDD boundary analysis
+The design rule is one sentence: **be deterministic where you can prove, and
+judge only where you must.**
 
-# Tune sensitivity
-./target/release/entropy-machine --all --ncd-threshold 0.2 src/
+Read [JOGGLE.md](./JOGGLE.md) for the whole design.
+
+## 🔭 Where it sits
+
+| Tool | Unit | Question | Output |
+| --- | --- | --- | --- |
+| `tsc` / `tsgo` | the program | is this well-typed? | diagnostics |
+| `oxlint` | the file and its AST | is this well-formed? | diagnostics |
+| **joggle** | the codebase and its facts | is this the same thing as that? | diagnostics |
+
+A host does not have to care which kind of rule produced a finding. There is no
+separate report, no separate format, and no separate gate.
+
+## ⚡ Quick start
+
+```sh
+# in the project you want to check
+npm install -D @autotelic/joggle
+npx joggle rules                 # what this project enforces
+npx joggle check src             # analyse a directory
 ```
 
-## What It Detects
+Or run it without installing anything:
 
-| Pass | Flag | What It Finds |
-|---|---|---|---|
-| **Distribution** | `--ncd` | Namespace entropy table with ratio per directory. `ui` at 0.43? Template territory. `db` at 0.70 with `<arrow>` repeated 6×? That's real. |
-| **NCD** | `--ncd` | gzip normalized fingerprints pairwise. `handleError` copy-pasted into 4 payment dialogs at NCD=0.064. Raw source body comparison — Armstrong's actual mechanism. |
-| **Type Resolution** | `--types` | Spawns a Go type checker. Structural type identity, same-name collisions, declared-vs-resolved divergence, identity passthrough ratio. `addTodo` returns `void` in the provider but `Todo` in the DB — caught. |
-| **Compression Targets** | `--compress` | Raw source NCD, className string dedup, identifier naming entropy, comment duplication. `"mx-auto w-full max-w-sm"` in 10 files — token candidate. |
-| **Convergence** | `--converge` | Simulate collapse → remap callers → re-detect emergent duplicates. 52 exact matches collapsed → 1 new fuzzy match revealed. |
-| **Entropy Score** | `----ncd` | `unique / total` fingerprints → single 0–1 number. 0.98 for Jig, 0.84 for the composition starter. |
-| **Composition** | `--composition` | Tripartite composition enforcement: dot-notation exports, `{ state, actions, meta }` provider shape, one-file-per-block, prop drilling, missing provider guards. |
-| **Deep Modules** | `--deep-modules` | Ousterhout deep module score (impl_lines / exports), information hiding leaks, temporal coupling, exception sprawl, classitis, general/special-purpose classification, strategic comment density. |
-| **DDD** | `--ddd` | Aggregate root boundary violations, bounded context clustering, ubiquitous language drift, entity vs value object vs domain event classification. |
-
-## Architecture
-
-```
-entropy-machine/
-├── src/
-│   ├── main.rs         # CLI, file processing, analysis dispatch
-│   ├── extract.rs      # AST fingerprint visitor (oxc_ast_visit)
-│   ├── ncd.rs          # Normalized Compression Distance via gzip
-│   ├── graph.rs        # Dependency graph (calls, renders, type refs)
-│   ├── shower.rs       # Distribution table + namespace stats
-│   ├── compress.rs     # Raw source, className, naming, comment analysis
-│   ├── suggest.rs      # Suggestion engine (collapse/extract/missing-type)
-│   ├── types.rs        # tsgolint subprocess integration
-│   ├── composition.rs  # Tripartite composition pattern linter
-│   ├── deep.rs         # Ousterhout deep module metrics
-│   └── ddd.rs          # DDD boundary analysis
-├── tsgolint/           # Git submodule — Go type checker (github.com/oxc-project/tsgolint)
-│   └── typescript-go/  # Nested submodule — Microsoft's TypeScript Go port
-├── patches/
-│   └── 0001-entropy-analysis.patch  # Entropy fingerprinting applied at build time
-├── build.rs            # Auto-builds the Go binary during cargo build
-└── Cargo.toml
+```sh
+npx @autotelic/joggle@latest check --changed
 ```
 
-Each module is composable: `extract` produces normalized fingerprints → `ncd` compresses them → `graph` builds the dependency graph → `shower` visualizes the landscape → `compress` finds non-code repetition → `types` adds structural type identity.
+With no paths, joggle asks `tsgo --listFilesOnly` what the project is, so it
+analyses exactly what the compiler sees rather than whatever is on disk. With
+paths, it walks them itself.
 
-## Requirements
+## 🧪 Try it against your own project
 
-- Rust 1.95+ (oxc crates track recent Rust)
-- Go 1.26+ (for building the type checker)
-- Git (submodules are auto-initialized by build.rs)
+The judged rules need a key; everything else runs without one. A useful first
+session:
 
-The Go type checker is built from [oxc-project/tsgolint](https://github.com/oxc-project/tsgolint) (a fork of typescript-eslint/tsgolint that adds headless mode). An entropy analysis patch is applied on top during `cargo build`. Everything is handled automatically.
+```sh
+# 1. Deterministic pass — no key, no network, a few seconds.
+npx joggle check src
 
-## Keeping tsgolint Up to Date
+# 2. Add the judged pass. The key is read from the environment only.
+TYPESAFE_API_KEY=... npx joggle check src
 
-```bash
-cd entropy-machine/tsgolint
-git fetch origin && git checkout origin/main   # latest oxc-project fork
-cd ../.. && cargo build --release              # rebuilds the Go binary
+# 3. Commit the verdicts so CI never needs the key.
+git add .joggle/answers.json
+
+# 4. From now on, ask only what a change introduced.
+npx joggle check --since origin/main
+npx joggle check --pr            # resolved with the GitHub CLI
 ```
 
-If the entropy patch no longer applies cleanly, regenerate it:
+Three things make this safe to live with:
 
-```bash
-cd entropy-machine/tsgolint
-git checkout -b entropy origin/main
-git am --3way ../patches/0001-entropy-analysis.patch   # re-apply manually
-# resolve any conflicts, then:
-git format-patch -1 --stdout > ../patches/0001-entropy-analysis.patch
+- **The cache is the contract.** A verdict's key is the question, the model, and
+  the evidence, serialised with sorted keys, so the same candidate produces the
+  same key on every machine. Run from the repository root — evidence carries
+  root-relative paths.
+- **A judged run can be done by one person and replayed by anyone.** Commit
+  `.joggle/answers.json`; CI replays it with `--offline` and no secret.
+- **A missing key degrades the gate, it does not disable it.** Judged rules
+  report as skipped; the deterministic rules still run.
+
+To check another checkout without writing into it:
+
+```sh
+npx joggle check --cwd ../other-repo --since origin/main --offline
 ```
 
-To pull in changes from upstream typescript-eslint/tsgolint, watch the [oxc-project fork](https://github.com/oxc-project/tsgolint) — it syncs from upstream periodically.
+## 🧰 What it finds
 
-## Contributing
+The built-in rules. `static` rules are deterministic and always run; `judged`
+rules ask the model about high-recall candidates.
 
-The machine is a single Rust binary that uses oxc for parsing and AST analysis, tsgolint (Go/TypeScript) for type resolution, and rayon for parallelism. All analysis is local — no network calls, no API keys.
+| Rule | Kind | Detects |
+| --- | --- | --- |
+| `layer-direction` | static | a module that imports from a layer above it |
+| `layer-purity` | static | a module that imports what its layer forbids |
+| `import-cycle` | static | a module that imports, directly or indirectly, from itself |
+| `compose-types` | static | a type that repeats every field of another instead of composing it |
+| `field-type-drift` | static | one field name declared with different, incompatible types |
+| `one-concept-one-type` | static | one declared name resolving to different types in different files |
+| `nullability-drift` | static | a column nullable in the database and required in a schema |
+| `object-shape` | static | object literals that share a shape with no type of their own |
+| `name-the-primitive` | static | a group of fields repeated across declarations with no name of its own |
+| `call-pattern` | static | declarations that make the same calls in the same order with different bodies |
+| `duplicate-call-run` | static | a run of calls two declarations share without the whole sequence |
+| `duplicate-implementation` | judged | one declaration written more than once across files |
+| `duplicate-meaning` | judged | near-duplicates where one declaration replaces the other |
+| `reimplemented-primitive` | judged | a function that inlines what an existing declaration already does |
+| `naming-drift` | judged | two spellings of one concept across files |
+| `language-drift` | judged | a domain word the prose uses and the code never names |
+| `module-direction` | judged | a module that depends on one whose role sits above it |
+| `dependency-fit` | judged | a package that depends on something its architecture says it should not |
+| `hoist-to-domain` | judged | business logic at the edge that belongs in a domain package |
+| `shallow-module` | judged | a file with many exports and little implementation behind them |
+| `temporal-coupling` | judged | a function that acquires something it may not release |
+| `name-as-address` | judged | a generic single-word export called from too many files to be searchable |
+| `doc-matches-code` | judged | a JSDoc that makes a claim the implementation contradicts |
+| `rule-judgment` | judged | a rule that decides in code a question only a judgement can answer |
+| `data-error-as-outage` | judged | a 5xx answer to a row that is simply not there |
+
+The **composition preset** (`@autotelic/joggle/presets/composition`) adds rules for one
+starter architecture — dot-notation exports, one file per block, `{ state,
+actions, meta }` providers, and the page that belongs in a bundle. Enable it in
+config; it is not on by default, because a tool that runs somebody's architecture
+by default is a tool the first team with a different one switches off.
+
+### Output formats
+
+Follows oxlint, because oxlint already decided what a linter's output should be.
+
+| Format | For |
+| --- | --- |
+| `text` (default) | terminals and CI logs |
+| `stylish` | reading by hand, colour on a TTY |
+| `unix` | editors and scripts |
+| `json` | another tool, including per-answer confidence |
+| `github` | Actions workflow commands (annotations) |
+
+```sh
+joggle check --format github      # GitHub Actions annotations
+joggle check --max-warnings 0     # warnings fail the build
+joggle check --offline            # replay from the committed verdicts
+joggle check --rule joggle/naming-drift
+```
+
+## 🤖 CI
+
+joggle is built to live in CI. The repository ships a composite action that
+installs joggle, runs it, and attaches findings as annotations.
+
+```yaml
+name: joggle
+on: [pull_request]
+
+jobs:
+  joggle:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: tognmund/mess/.github/actions/joggle@main
+        with:
+          # Omit to run the deterministic rules only; judged rules report as
+          # skipped. Add the secret to judge new candidates.
+          api-key: ${{ secrets.TYPESAFE_API_KEY }}
+          scope: pr
+```
+
+The action does two things well:
+
+- **Replay by default.** With `.joggle/answers.json` committed, the job needs no
+  key and spends no tokens: deterministic rules run, judged rules replay. Set
+  `api-key` only on a job that is allowed to judge and spend.
+- **Scope to the change.** `scope: pr` checks only what the pull request
+  introduced, which is the question a reviewer is actually asking.
+
+Add the key as a repository secret named `TYPESAFE_API_KEY`. A fork's pull
+request does not receive secrets; the job then runs `--offline` and still works.
+
+## 🔑 The key
+
+The key is read from the process environment only, so it never lands in the
+repository or in any config file joggle owns. Locally, use whatever secret
+manager your team already has:
+
+```sh
+doppler run -- joggle check src
+direnv allow                      # or a gitignored .envrc.local
+```
+
+The judged rules send the evidence panel — including source excerpts of the
+declarations being compared — to `api.typesafe.ai`. Deterministic rules and
+`--offline` send nothing. For a codebase you cannot send anywhere, point
+`TYPESAFE_BASE_URL` at a deployment you control, or run the judged pass over
+public and fixture code only and let the committed cache carry the verdicts into
+CI.
+
+## ⚙️ Configuration
+
+A repository configures joggle with `joggle.config.json`:
+
+```json
+{
+  "presets": ["@autotelic/joggle/presets/composition"],
+  "rules": {
+    "joggle/naming-drift": "warn",
+    "joggle/duplicate-meaning": "warn"
+  },
+  "ignore": [
+    { "rule": "joggle/bundle-*", "path": "tests/fixtures/**", "reason": "fixtures are deliberately broken" }
+  ],
+  "architecture": {
+    "layers": [{ "name": "domain", "include": ["src/domain/**"] }]
+  }
+}
+```
+
+A preset's severities and scoping sit under the repository's own, per rule:
+enabling twenty opinions and turning one off should not mean restating the other
+nineteen. `architecture.layers` is what the layering rules enforce; without it
+they have nothing to say.
+
+## 🥧 As a pi extension
+
+The repository is also a [pi](https://pi.dev) package. Install it once and pi
+gains two tools and a command in every repository it works in:
+
+```sh
+pi install /absolute/path/to/joggle
+```
+
+| Name | What it does |
+| --- | --- |
+| `joggle_check` | run a scoped check and return the findings; defaults to the changed scope |
+| `joggle_rules` | list the rules a repository enforces |
+| `/joggle` | run a check from the prompt line |
+
+## ✍️ Contribute
+
+- The design lives in [JOGGLE.md](./JOGGLE.md); the thinking that produced it is
+  in [`docs/`](./docs).
+- Adding a rule is one file and one line in
+  [`src/rules/index.ts`](./src/rules/index.ts).
+- Run `pnpm check` before you push: typecheck, tests, and the lint baseline.
+
+```sh
+pnpm install
+pnpm check      # typecheck + test + lint
+pnpm fix        # apply safe lint fixes
+```
+
+## 📖 License
+
+MIT. joggle is free and open-source software, licensed under the
+[MIT License](./LICENSE).
+
+[license-badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[license-url]: ./LICENSE
+[ci-badge]: https://github.com/tognmund/mess/actions/workflows/joggle.yml/badge.svg
+[ci-url]: https://github.com/tognmund/mess/actions/workflows/joggle.yml

@@ -4,10 +4,10 @@
  * Note the imports. This file reaches the package the way a stranger would -- by
  * name, at a documented entry point -- and not the way the first version did,
  * through three relative paths into `src/`. The difference is what makes a rule
- * an opinion rather than a fork: `joggle/plugin` is supported, and anything not
+ * an opinion rather than a fork: `@autotelic/joggle/plugin` is supported, and anything not
  * re-exported there is not.
  */
-import { Effect, defineRule, outcome, type Rule } from "joggle/plugin"
+import { Effect, defineRule, outcome, type Rule } from "@autotelic/joggle/plugin"
 
 export const rules: ReadonlyArray<Rule> = [
   defineRule({

@@ -136,7 +136,7 @@ export default {
    */
   overrides: [
     {
-      // joggle/plugin exists to re-export a supported surface. A barrel export is
+      // @autotelic/joggle/plugin exists to re-export a supported surface. A barrel export is
       // a smell in an application, where it hides what a module actually owns;
       // here the point IS the aggregate -- one name a rule author imports, and
       // one place to add the next thing to the contract. plumb's own rule cannot
