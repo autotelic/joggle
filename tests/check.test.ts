@@ -36,9 +36,10 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
 
     // A breach withholds every JUDGED rule, because their evidence would cross
     // repositories. The structural rules persist nothing, so they still run.
-    // 11 -> 10 when `reimplemented-primitive` became judged: its candidate is now
-    // a question over the call graph, so a breach withholds it too.
-    expect(report.rules).toBe(10)
+    // 11 -> 10 when `reimplemented-primitive` became judged, -> 11 when
+    // `nullability-drift` was added: the judged rules are withheld, the
+    // deterministic ones still run.
+    expect(report.rules).toBe(11)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/dependency-fit",
@@ -83,10 +84,10 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     )
 
     expect(report.files).toBe(2)
-    // Twelve structural rules plus eleven judged ones. The composition rules are a
-    // preset and are not in this run at all, which is what makes them an opinion
-    // rather than an inheritance.
-    expect(report.rules).toBe(23)
+    // Thirteen structural rules plus eleven judged ones. The composition rules
+    // are a preset and are not in this run at all, which is what makes them an
+    // opinion rather than an inheritance.
+    expect(report.rules).toBe(24)
     expect(report.diagnostics.length).toBe(1)
     // The fixture has no bundles, pages or modals, so the structural rules find
     // nothing and the page rule produces no candidates. A rule with nothing to

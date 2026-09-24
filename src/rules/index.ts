@@ -19,6 +19,7 @@ import { hoistToDomain } from "./hoist-to-domain.ts"
 import { namingDrift } from "./naming-drift.ts"
 import { reimplementedPrimitive } from "./reimplemented-primitive.ts"
 import { oneConceptOneType } from "./one-concept-one-type.ts"
+import { nullabilityDrift } from "./nullability-drift.ts"
 import { Context, Layer } from "effect"
 import type { PlannedRule, Rule } from "../rule.ts"
 
@@ -57,6 +58,7 @@ export const allRules: ReadonlyArray<Rule | PlannedRule> = [
   namingDrift,
   reimplementedPrimitive,
   oneConceptOneType,
+  nullabilityDrift,
 ]
 
 /**

@@ -165,6 +165,39 @@ export const ObjectSite = Schema.Struct({
    * tells a use from a shape that merely shares some keys.
    */
   required: Schema.Array(Schema.String),
+  /**
+   * The keys whose value admits `null`, such as `Schema.NullOr(...)`. Nullability
+   * is a value, not strictness: a schema says whether the column can hold one.
+   */
+  nullable: Schema.Array(Schema.String),
+  /**
+   * A key's mapping to the column it reads, from
+   * `.annotate({ sourceColumn: 'table.column' })`.
+   *
+   * The mapping is explicit because it is not derivable: `PayrollCrewRowSchema`
+   * reads `payroll_crew.shakti_user_id` into a field called `person_id`, and no
+   * name convention turns one into the other. A repository opts in by annotating;
+   * the rule then compares the two nullabilities.
+   */
+  sources: Schema.Record(Schema.String, Schema.String),
+})
+
+/**
+ * One column a migration creates or alters: its table, its name, whether it
+ * admits null.
+ *
+ * A migration is a specification, not an opinion, so this is a fact the checker
+ * reads from the source rather than a judgement. Knex defaults a column to
+ * nullable; `.notNullable()` is what makes it required. `.onDelete('SET NULL')`
+ * is deliberately NOT read as nullability: the column can still be nullable or
+ * not, and the action is about the parent row.
+ */
+export const ColumnFact = Schema.Struct({
+  table: Schema.String,
+  column: Schema.String,
+  nullable: Schema.Boolean,
+  /** The offset of the `table.<type>('<column>')` call, for the line. */
+  start: Schema.Number,
 })
 
 /** One call, where it is, and what it names. */
@@ -188,6 +221,8 @@ export const StructureFacts = Schema.Struct({
   jsx: Schema.Array(Schema.String),
   /** Every object literal: its key names, and where it starts. */
   objects: Schema.Array(ObjectSite),
+  /** Columns a migration creates or alters, with their nullability. */
+  columns: Schema.Array(ColumnFact),
 })
 
 export interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}
@@ -841,7 +876,13 @@ const structureIn = (root: unknown): StructureFacts => {
   const callSites: Array<Schema.Schema.Type<typeof CallSite>> = []
   const jsx = new Set<string>()
   const objects: Array<Schema.Schema.Type<typeof ObjectSite>> = []
-  const declaredObjects = new Map<number, Array<string>>()
+  const columns: Array<Schema.Schema.Type<typeof ColumnFact>> = []
+  interface DeclaredFields {
+    readonly required: Array<string>
+    readonly nullable: Array<string>
+    readonly sources: Record<string, string>
+  }
+  const declaredObjects = new Map<number, DeclaredFields>()
 
   const nameOf = (node: unknown): string | undefined => {
     if (!isRecord(node)) return undefined
@@ -862,23 +903,153 @@ const structureIn = (root: unknown): StructureFacts => {
     return undefined
   }
 
-  // The non-optional keys of a `Schema.Struct` field object: a key whose value is
-  // an `optional`/`optionalKey` call is optional, and the rest are required.
-  const requiredKeysOf = (object: Record<string, unknown>): Array<string> => {
+  /** The method names of a call chain, outermost first: `[annotate, NullOr]`. */
+  const chainOf = (node: unknown): ReadonlyArray<string> => {
+    const methods: Array<string> = []
+    let current: unknown = node
+    for (let guard = 0; guard < 32; guard += 1) {
+      if (!isRecord(current) || current["type"] !== "CallExpression") break
+      const callee = current["callee"]
+      if (!isRecord(callee)) break
+      const property = callee["property"]
+      const method = isRecord(property) && typeof property["name"] === "string" ? property["name"] : undefined
+      if (method !== undefined) methods.push(method)
+      current = callee["object"]
+    }
+    return methods
+  }
+
+  /** The `sourceColumn` an `.annotate({...})` in the chain names, or "". */
+  const sourceColumnOf = (value: unknown): string => {
+    let current: unknown = value
+    for (let guard = 0; guard < 32; guard += 1) {
+      if (!isRecord(current) || current["type"] !== "CallExpression") break
+      const callee = current["callee"]
+      if (!isRecord(callee)) break
+      const property = callee["property"]
+      const method = isRecord(property) && typeof property["name"] === "string" ? property["name"] : undefined
+      if (method === "annotate") {
+        const args = current["arguments"]
+        if (Array.isArray(args)) {
+          for (const arg of args) {
+            if (!isRecord(arg) || arg["type"] !== "ObjectExpression") continue
+            const properties = arg["properties"]
+            if (!Array.isArray(properties)) continue
+            for (const entry of properties) {
+              if (!isRecord(entry)) continue
+              const key = entry["key"]
+              if (!isRecord(key) || key["name"] !== "sourceColumn") continue
+              const field = entry["value"]
+              if (isRecord(field) && typeof field["value"] === "string") return field["value"]
+            }
+          }
+        }
+      }
+      current = callee["object"]
+    }
+    return ""
+  }
+
+  // The non-optional keys of a `Schema.Struct` field object, the keys that admit
+  // null, and the column each field reads.
+  const declaredFieldsOf = (object: Record<string, unknown>): DeclaredFields => {
     const properties = object["properties"]
-    if (!Array.isArray(properties)) return []
     const required: Array<string> = []
+    const nullable: Array<string> = []
+    const sources: Record<string, string> = {}
+    if (!Array.isArray(properties)) return { required, nullable, sources }
     for (const property of properties) {
       if (!isRecord(property)) continue
       const key = property["key"]
       const name = isRecord(key) && typeof key["name"] === "string" ? key["name"] : undefined
       if (name === undefined) continue
       const value = property["value"]
-      const callee =
-        isRecord(value) && value["type"] === "CallExpression" ? nameOf(value["callee"]) : undefined
-      if (callee !== "Schema.optionalKey" && callee !== "Schema.optional") required.push(name)
+      const methods = chainOf(value)
+      if (!methods.includes("optionalKey") && !methods.includes("optional")) required.push(name)
+      if (methods.includes("NullOr")) nullable.push(name)
+      const source = sourceColumnOf(value)
+      if (source !== "") sources[name] = source
     }
-    return required
+    return { required, nullable, sources }
+  }
+
+  // A same-file `const NAME = 'value'`, so `createTable(PAYROLL_CREW, ...)` names
+  // its table even though the table name is not a literal.
+  const constStrings = new Map<string, string>()
+  const collectConsts = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) collectConsts(child)
+      return
+    }
+    if (!isRecord(node)) return
+    if (node["type"] === "VariableDeclarator") {
+      const id = node["id"]
+      const init = node["init"]
+      if (
+        isRecord(id) &&
+        id["type"] === "Identifier" &&
+        typeof id["name"] === "string" &&
+        isRecord(init) &&
+        init["type"] === "Literal" &&
+        typeof init["value"] === "string"
+      ) {
+        constStrings.set(id["name"], init["value"])
+      }
+    }
+    for (const value of Object.values(node)) {
+      if (value !== null && typeof value === "object") collectConsts(value)
+    }
+  }
+  collectConsts(root)
+
+  const tableNameOf = (arg: unknown): string => {
+    if (!isRecord(arg)) return ""
+    if (typeof arg["value"] === "string") return arg["value"]
+    if (arg["type"] === "Identifier" && typeof arg["name"] === "string") return constStrings.get(arg["name"]) ?? ""
+    return ""
+  }
+
+  const COLUMN_TYPES = new Set([
+    "uuid", "string", "text", "integer", "bigInteger", "smallint", "tinyint", "float", "double",
+    "decimal", "boolean", "timestamp", "datetime", "date", "time", "json", "jsonb", "binary",
+    "increments", "bigIncrements", "enu", "specificType",
+  ])
+
+  /** Record the column a `table.<type>('<name>')` chain builds, if it is one. */
+  const addColumn = (table: string, node: unknown): void => {
+    let current: unknown = node
+    const methods: Array<string> = []
+    for (let guard = 0; guard < 32; guard += 1) {
+      if (!isRecord(current) || current["type"] !== "CallExpression") return
+      const callee = current["callee"]
+      if (!isRecord(callee)) return
+      const property = callee["property"]
+      const method = isRecord(property) && typeof property["name"] === "string" ? property["name"] : undefined
+      if (method !== undefined) methods.push(method)
+      const base = callee["object"]
+      if (method !== undefined && COLUMN_TYPES.has(method) && isRecord(base) && base["type"] === "Identifier") {
+        const args = current["arguments"]
+        const first = Array.isArray(args) ? args[0] : undefined
+        const start = current["start"]
+        if (isRecord(first) && typeof first["value"] === "string" && typeof start === "number") {
+          // A primary key is NOT NULL in Postgres even without `.notNullable()`.
+          const nullable = !methods.includes("notNullable") && !methods.includes("primary")
+          columns.push({ table, column: first["value"], nullable, start })
+        }
+        return
+      }
+      current = base
+    }
+  }
+
+  const statementsOf = (fn: unknown): ReadonlyArray<unknown> => {
+    if (!isRecord(fn)) return []
+    const body = fn["body"]
+    if (isRecord(body) && body["type"] === "BlockStatement") {
+      const statements = body["body"]
+      return Array.isArray(statements) ? statements : []
+    }
+    return body === undefined ? [] : [body]
   }
 
   const stack: Array<unknown> = [root]
@@ -914,8 +1085,35 @@ const structureIn = (root: unknown): StructureFacts => {
           if (Array.isArray(args)) {
             for (const arg of args) {
               if (isRecord(arg) && arg["type"] === "ObjectExpression" && typeof arg["start"] === "number") {
-                declaredObjects.set(arg["start"], requiredKeysOf(arg))
+                declaredObjects.set(arg["start"], declaredFieldsOf(arg))
               }
+            }
+          }
+        }
+        // A migration is a specification: `knex.schema.createTable(T, t => {
+        // t.uuid('col').notNullable() })`. Read statically, because the DB is the
+        // other half of the contract and it is not at the keyboard.
+        //
+        // The method comes from the callee's PROPERTY, not `nameOf`: a fluent
+        // chain like `.createTable(A, ...).createTable(B, ...)` has a CallExpression
+        // as its callee's object, which `nameOf` does not follow.
+        const calleeProperty =
+          isRecord(node["callee"]) && isRecord(node["callee"]["property"]) &&
+          typeof node["callee"]["property"]["name"] === "string"
+            ? node["callee"]["property"]["name"]
+            : undefined
+        const last = calleeProperty ?? called?.split(".").at(-1)
+        if (last === "createTable" || last === "alterTable") {
+          const args = node["arguments"]
+          const table = tableNameOf(Array.isArray(args) ? args[0] : undefined)
+          const callback = Array.isArray(args) ? args[1] : undefined
+          if (table !== "") {
+            for (const statement of statementsOf(callback)) {
+              const expression =
+                isRecord(statement) && statement["type"] === "ExpressionStatement"
+                  ? statement["expression"]
+                  : statement
+              addColumn(table, expression)
             }
           }
         }
@@ -934,7 +1132,7 @@ const structureIn = (root: unknown): StructureFacts => {
           expression["type"] === "ObjectExpression" &&
           typeof expression["start"] === "number"
         ) {
-          declaredObjects.set(expression["start"], [])
+          declaredObjects.set(expression["start"], { required: [], nullable: [], sources: {} })
         }
         break
       }
@@ -948,7 +1146,7 @@ const structureIn = (root: unknown): StructureFacts => {
           init["type"] === "ObjectExpression" &&
           typeof init["start"] === "number"
         ) {
-          declaredObjects.set(init["start"], [])
+          declaredObjects.set(init["start"], { required: [], nullable: [], sources: {} })
         }
         break
       }
@@ -970,8 +1168,15 @@ const structureIn = (root: unknown): StructureFacts => {
           }
           const start = node["start"]
           if (typeof start === "number") {
-            const required = declaredObjects.get(start)
-            objects.push({ keys, start, declared: required !== undefined, required: required ?? [] })
+            const declared = declaredObjects.get(start)
+            objects.push({
+              keys,
+              start,
+              declared: declared !== undefined,
+              required: declared?.required ?? [],
+              nullable: declared?.nullable ?? [],
+              sources: declared?.sources ?? {},
+            })
           }
         }
         break
@@ -983,7 +1188,7 @@ const structureIn = (root: unknown): StructureFacts => {
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
-  return { callSites, jsx: [...jsx], objects }
+  return { callSites, jsx: [...jsx], objects, columns }
 }
 
 /** A parse result, whichever language produced it. */

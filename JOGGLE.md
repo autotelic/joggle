@@ -495,6 +495,30 @@ The 4.7s is file reads and hashing — correctness needs content, not mtimes. Wh
 remains after that is parsing every file; an incremental fact cache keyed on
 content hash would remove it. The candidate generation is already scoped.
 
+## One column, two nullabilities
+
+A type whose nullability comes from outside TypeScript: the database.
+
+`joggle/nullability-drift` reads a knex migration statically — `table.uuid('x')`
+is nullable, `.notNullable()` is what makes it required — and compares it with a
+schema field that names the column it reads:
+
+```ts
+export const PayrollCrewRowSchema = Schema.Struct({
+  personId: Schema.NullOr(uuid).annotate({ sourceColumn: 'payroll_crew.shakti_user_id' }),
+})
+```
+
+The mapping is an **annotation**, because it is not derivable: the field is
+`personId`, the column is `shakti_user_id`, and that alias exists only in the SQL.
+A repository opts in by annotating; a field with no `sourceColumn` is not
+compared at all, and the rule's note says so rather than printing a clean zero.
+
+The rule is deterministic — a migration is a specification and `Schema.NullOr` is
+a fact, so there is nothing for a model to decide. What it catches is the decode
+that fails the first time real data arrives: the column can hold a null and the
+schema refuses it.
+
 ## Not here yet
 
 The honest list: **no type awareness** (see above -- it is the next layer), no
