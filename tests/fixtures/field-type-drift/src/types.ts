@@ -54,3 +54,23 @@ export interface DerivedX {
 export interface DerivedY {
   teamRole: RoleB
 }
+
+/**
+ * Nullability is a value, not strictness: a null can be stored in one and not
+ * the other. `undefined` is optionality and stays compatible.
+ */
+export interface NullableA {
+  ownerId: string | null
+}
+
+export interface NullableB {
+  ownerId: string
+}
+
+export interface OptionalA {
+  labelText?: string
+}
+
+export interface OptionalB {
+  labelText: string | undefined
+}

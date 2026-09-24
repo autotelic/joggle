@@ -23,8 +23,23 @@ const RULE_ID = "joggle/field-type-drift"
 // see `canCompose` -- so they are not drift. `string` against `number` is, and
 // that is the finding.
 //
+// NULLABILITY is not strictness. `string` against `string | null` is a value
+// difference, not a wider type: a null can be stored in one and not the other,
+// which is exactly the shape of the bug that produced this note -- a column
+// nullable in the database and required in the contract. `undefined` is
+// optionality (the field may be absent) and stays compatible; `null` is a value
+// and does not.
+//
 // Deterministic, so it needs no model and no key. Whether the two are one concept
 // or two is the reader's call; the finding states the disagreement.
+
+/**
+ * Whether a type admits `null`, which is a value rather than absent.
+ *
+ * `undefined` is deliberately NOT counted: `T | undefined` and `T?` are the same
+ * optionality, and the rule has always treated those as one concept.
+ */
+const admitsNull = (text: string): boolean => /\bnull\b/.test(text)
 
 /**
  * Whether the two declarations could ever be confused for each other.
@@ -278,7 +293,9 @@ export const fieldTypeDrift = defineRule({
           if (isDerivedType(oneType) && isDerivedType(twoType)) continue
           // Resolve before comparing, so `T['k']` and the type it indexes are the
           // same type rather than two spellings of it.
-          if (!canCompose(oneType, twoType)) {
+          // Nullability differs when exactly one side admits `null`: a value
+          // difference, not a wider type.
+          if (admitsNull(oneType) !== admitsNull(twoType) || !canCompose(oneType, twoType)) {
             pair = [one[0], two[0]]
             break
           }

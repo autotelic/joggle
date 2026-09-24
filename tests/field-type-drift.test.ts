@@ -26,6 +26,10 @@ it.effect("resolves an indexed access, and leaves a raw mirror alone", () =>
     expect(fields.some((message) => message.includes("teamRole"))).toBe(false)
     // The genuine disagreement still is.
     expect(fields.some((message) => message.includes("totalScore"))).toBe(true)
+    // Nullability is a value, not strictness.
+    expect(fields.some((message) => message.includes("ownerId"))).toBe(true)
+    // Optionality is not: `T?` and `T | undefined` are one concept.
+    expect(fields.some((message) => message.includes("labelText"))).toBe(false)
   }).pipe(Effect.provide(NodeServices.layer)),
 )
 
