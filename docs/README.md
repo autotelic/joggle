@@ -17,6 +17,7 @@ design notes it rests on.
 | [calibration.md](./calibration.md) | what the questions are worth, and the first real measurement |
 | [types-over-logic.md](./types-over-logic.md) | a rule that pushes toward refining types instead of adding logic |
 | [writing-rules.md](./writing-rules.md) | the plugin surface, the facts, testing, and registration: how to write a rule |
+| [rule-api.md](./rule-api.md) | the rule API read against oxlint's, and what the comparison taught |
 | [joggle-friction.md](./joggle-friction.md) | the friction log from running joggle on real repositories |
 
 ## Reference
