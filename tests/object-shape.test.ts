@@ -1,28 +1,70 @@
 import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
-import { everyFile } from "../src/rule.ts"
 import { objectShape } from "../src/rules/object-shape.ts"
+import { plannedDiagnosticsOf } from "../src/testing.ts"
 import { loadWorkspace } from "../src/workspace.ts"
-import { modelStub, noConfig } from "./support.ts"
+import { choice, modelStub } from "./support.ts"
 
-it.effect("a literal that uses a declared type is not a missing type", () =>
+/**
+ * The deterministic half finds the shape; the judged half decides what it is.
+ *
+ * A repeated key set is a fact. Whether that shape is one concept that deserves a
+ * name, or two concepts that happen to share field names, is the question.
+ */
+const fixture = () => loadWorkspace("tests/fixtures/object-shape", ["."])
+
+const oneConcept = { verdict: choice("one_concept", 0.95) }
+
+it.effect("a repeated shape the model reads as one concept is a finding", () =>
   Effect.gen(function* () {
-    const workspace = yield* loadWorkspace("tests/fixtures/object-shape", ["."])
-    const { diagnostics } = yield* objectShape.run(workspace, everyFile, noConfig)
-    const messages = diagnostics.map((diagnostic) => diagnostic.message)
-    // { x, y } is a use of Point, whose required keys are x and y and whose label
-    // is optional, so the literal is not a shape nobody named.
-    expect(messages.some((message) => message.includes("{ x; y }"))).toBe(false)
-    // { alpha, beta, gamma } has no declared type anywhere.
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(objectShape, workspace)
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message)
+    // { alpha, beta, gamma } appears in other.ts and third.ts and no type names it.
     expect(messages.some((message) => message.includes("{ alpha; beta; gamma }"))).toBe(true)
-    // { x, y, label } is a use of Labelled, whose field set is Base's plus its
-    // own. Resolving `extends` is what keeps composing a type from turning its
-    // own literals into findings.
+    // A literal that uses a declared type is not a missing type: { x; y } is a use
+    // of Point, { label; x; y } is a use of Labelled (Base plus its own field,
+    // resolved across `extends`), and { admin; member; viewer } is named by an
+    // annotation, a `satisfies` and a cast.
+    expect(messages.some((message) => message.includes("{ x; y }"))).toBe(false)
     expect(messages.some((message) => message.includes("{ label; x; y }"))).toBe(false)
-    // { admin, member, viewer } is named by `satisfies Record<Role, number>`, an
-    // annotation, and a cast -- three ways of naming a literal that are not a
-    // declared field set.
     expect(messages.some((message) => message.includes("{ admin; member; viewer }"))).toBe(false)
-  }).pipe(Effect.provide(modelStub({})), Effect.provide(NodeServices.layer)),
+    expect(result.diagnostics.every((entry) => entry.judged)).toBe(true)
+  }).pipe(Effect.provide(modelStub(oneConcept)), Effect.provide(NodeServices.layer)),
+)
+
+it.effect("a shape the model reads as coincidental is dropped, not reported", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(objectShape, workspace)
+    expect(result.diagnostics).toEqual([])
+    expect(result.drops.some((drop) => drop.reason.includes("different concepts"))).toBe(true)
+  }).pipe(
+    Effect.provide(modelStub({ verdict: choice("coincidental", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
+it.effect("a non-decisive answer is flagged, not printed", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(objectShape, workspace)
+    // score above the probability floor, margin below minMargin: uncertain, so it
+    // is recorded rather than shown.
+    expect(result.diagnostics).toEqual([])
+    expect(result.drops.some((drop) => drop.reason.startsWith("flagged:"))).toBe(true)
+  }).pipe(
+    Effect.provide(
+      modelStub({
+        verdict: {
+          type: "choice",
+          choice: "one_concept",
+          probabilities: { one_concept: 0.6, coincidental: 0.4, already_named: 0 },
+          confidence: 0.9,
+        },
+      }),
+    ),
+    Effect.provide(NodeServices.layer),
+  ),
 )

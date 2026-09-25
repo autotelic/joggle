@@ -1,45 +1,51 @@
 import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
+import { lineAt, lineStarts } from "../cascade.ts"
 import { policy } from "../policy.ts"
-import { defineRule, finding, outcome, type Scope } from "../rule.ts"
-import type { Diagnostic } from "../schema.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
+import {
+  budgetNote,
+  finding,
+  inScope,
+  marginOfAnswer,
+  outcome,
+  qualityOf,
+  type DecisionAnswers,
+  type PlannedRule,
+  type Scope,
+} from "../rule.ts"
+import type { Diagnostic, Drop, SourceLocation } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/object-shape"
 
-/**
- * Object literals that share a shape and have no name.
- *
- * The entropy machine called this `object-duplicate` and described the fix as
- * "define a named type or interface, type-annotate all occurrences with it". It is
- * the runtime-value half of what `compose-types` does for declarations: a type
- * that repeats another type is a composition problem, and a literal that repeats
- * five others is a type nobody wrote down.
- *
- * Deterministic and free. Object literals are already collected per file; all this
- * adds is comparing their key sets across files.
- *
- * The key set is sorted before comparison, because `{a, b}` and `{b, a}` are one
- * shape. And a literal has to be in two different files, because two literals one
- * line apart are one author's habit rather than a missing type.
- */
-export const objectShape = defineRule({
+// Object literals that share a shape and have no name.
+//
+// The entropy machine called this `object-duplicate`: "define a named type or
+// interface, type-annotate all occurrences with it". It is the runtime-value half
+// of what `compose-types` does for declarations.
+//
+// What is deterministic is the state. A repeated key set is a fact: object
+// literals are collected per file, the key sets are sorted (because `{a, b}` and
+// `{b, a}` are one shape), and a shape shared by two or more files is a
+// candidate. Whether that shape is ONE CONCEPT that deserves a name, or two
+// concepts that happen to share field names, is not a fact. That is the question,
+// and it used to be answered by the key set alone.
+export const objectShape: PlannedRule = {
   id: RULE_ID,
   severity: "info",
   description: "Object literals that share a shape with no type of their own.",
-  judged: false,
-  run: Effect.fn("joggle/object-shape")(function* (workspace: Workspace, scope: Scope) {
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/object-shape")(function* (workspace: Workspace, scope: Scope) {
     const { minKeys, maxFindings } = policy.objectShape
-    // A shape a declared type already names is not a shape nobody named. This is
-    // the precision half of the rule: every interface and type alias contributes
-    // its field set, and a literal whose keys are exactly that set is skipped.
-    // A shape a declared type already describes is not a shape nobody named.
-    // Every interface and type alias contributes its field set, and a
-    // `Schema.Struct` field object contributes its keys and the non-optional ones.
-    // A declared type's field set is its own fields plus the fields of the types
-    // it composes -- `extends`, `A & B`, `type T = A` -- resolved across files.
-    // Without this, composing a type made the literals that used to match its
-    // full field set look unnamed, so the rule penalised exactly what
-    // compose-types and name-the-primitive recommend.
+
+    // A shape a declared type already names is not a shape nobody named. Every
+    // interface and type alias contributes its field set, plus the fields of the
+    // types it composes (`extends`, `A & B`, `type T = A`), resolved across files;
+    // a `Schema.Struct` field object contributes its keys. Without this, composing
+    // a type turned its own literals into findings.
     const byId = new Map<string, Unit>()
     for (const unit of workspace.units) {
       if (unit.kind !== "interface" && unit.kind !== "type") continue
@@ -82,10 +88,7 @@ export const objectShape = defineRule({
     const groups = new Map<string, Array<{ file: string; start: number }>>()
     for (const file of workspace.files) {
       // A shape nobody names is a real problem in application code and not one in
-      // a test. The loudest findings this rule produced on a real repository were
-      // request options in REST tests and `fast-check` record shapes -- 964 and
-      // 802 literals -- and none of them wanted a type. A test file is where a
-      // fixture is supposed to be repeated.
+      // a test, where a fixture is supposed to be repeated.
       if (policy.testFiles.test(file.path)) continue
       for (const site of file.facts.objects) {
         const keys = [...new Set(site.keys)]
@@ -100,56 +103,182 @@ export const objectShape = defineRule({
 
     const repeated = [...groups.entries()]
       .filter(([, sites]) => new Set(sites.map((site) => site.file)).size >= 2)
+      .filter(([, sites]) => sites.some((site) => scope.changed === undefined || inScope(scope, site.file)))
       .sort((left, right) => right[1].length - left[1].length || left[0].localeCompare(right[0]))
 
     if (repeated.length === 0) {
-      return outcome([], [
-        "no object literal with " +
-          minKeys +
-          " or more keys appears in two or more files",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            "no object literal with " +
+              minKeys +
+              " or more keys appears in two or more files, so there was no shape to name",
+          ]),
+      }
     }
 
-    const findings: Array<Diagnostic> = []
-    for (const [signature, sites] of repeated) {
-      if (findings.length >= maxFindings) break
-      const first = sites[0]
-      if (first === undefined) continue
-      if (scope.changed !== undefined && !sites.some((site) => scope.changed?.has(site.file))) continue
-      const keys = signature.split("\u0000")
-      const files = [...new Set(sites.map((site) => site.file))]
-      findings.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: "info",
-          message:
-            sites.length +
-            " object literal(s) in " +
-            files.length +
-            " file(s) share this shape: { " +
-            keys.join("; ") +
-            " }.",
-          help:
-            "Define a type with these fields and annotate each site with it. A shape nobody named is a shape nobody validates, and the sixth copy is written from memory: " +
-            files.slice(0, policy.evidence.maxListedPaths).join(", ") +
-            (files.length > policy.evidence.maxListedPaths
-              ? " and " + (files.length - policy.evidence.maxListedPaths) + " more"
-              : "") +
-            ".",
-          location: { file: first.file, line: 1, column: 1 },
-          identity: [RULE_ID, signature].join("\u0000"),
-          judged: false,
+    const judged = repeated.slice(0, maxFindings)
+    const overBudget: ReadonlyArray<Drop> = repeated.slice(maxFindings).map(([signature, sites]) => ({
+      ruleId: RULE_ID,
+      subject: sites.length + " literal(s) of { " + signature.split("\u0000").join("; ") + " }",
+      stage: "budget" as const,
+      reason: "past the budget of " + String(maxFindings) + " shapes",
+    }))
+
+    const textOf = new Map(workspace.files.map((file) => [file.path, file.text]))
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(
+      judged,
+      ([signature, sites]) =>
+        Effect.gen(function* () {
+          const keys = signature.split("\u0000")
+          const files = [...new Set(sites.map((site) => site.file))]
+          const first = sites[0]
+          if (first === undefined) return undefined
+          // The state is the shape and a bounded sample of its sites, not every
+          // site's source: unrelated detail costs accuracy, and the shape is what
+          // the question is about.
+          const samples = sites.slice(0, 4).map((site) => {
+            const text = textOf.get(site.file) ?? ""
+            return { file: site.file, source: text.slice(site.start, site.start + 180) }
+          })
+          const id = yield* atoms.add({
+            fields: keys,
+            count: sites.length,
+            files,
+            samples,
+          })
+          const plan: Plan<DecisionAnswers> = {
+            ruleId: RULE_ID,
+            subject: "object shape { " + keys.join("; ") + " }",
+            concerns: files,
+            atoms: [id],
+            decisions: {
+              verdict: Decision.classify({
+                instructions: [
+                  `\`atoms[${id}].fields\` is a set of ${keys.length} field names. It appears as an object literal in ${sites.length} place(s) across ${files.length} file(s): ${files.slice(0, 6).join(", ")}. \`atoms[${id}].samples\` shows a few of them.`,
+                  "Is that set of fields ONE CONCEPT that deserves a name -- a type every site should use -- or is the shared shape a coincidence?",
+                  "Answer `one_concept` when the fields belong together as one thing and every site means the same thing by them.",
+                  "Answer `coincidental` when the sites are different concepts that happen to share field names, so one type would be wrong.",
+                  "Answer `already_named` when some type in the codebase already names this exact shape.",
+                ].join("\n"),
+                criteria: {
+                  one_concept: "The fields are one thing. A named type should replace the literal everywhere.",
+                  coincidental: "Different concepts that share field names. Each site is its own shape.",
+                  already_named: "A declared type already covers this field set.",
+                },
+              }),
+            },
+            read: (answers) => answers,
+          }
+          return { keys, sites, first, id, plan }
         }),
-      )
-    }
+      { concurrency: "unbounded" },
+    )
 
-    return outcome(findings, [
-      repeated.length +
-        " shape(s) repeated across files" +
-        (repeated.length > findings.length
-          ? ", " + (repeated.length - findings.length) + " outside the scope of this run"
-          : "") +
-        "; test files were not searched, where a fixture is supposed to be repeated",
-    ])
+    const present = planned.filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
+
+    return {
+      plans: present.map((entry) => entry.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...overBudget]
+        present.forEach((entry, index) => {
+          const { keys, first } = entry
+          const subject = "object shape { " + keys.join("; ") + " }"
+          const line = lineAt(lineStarts(textOf.get(first.file) ?? ""), first.start)
+          const answer = verdicts[index]
+          const verdict = answer === undefined ? undefined : answer["verdict"]
+          if (verdict === undefined || !("label" in verdict)) {
+            diagnostics.push(findingFor(entry, line, undefined, "no judgement was available"))
+            return
+          }
+          if (verdict.label !== "one_concept") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "declined",
+              reason:
+                verdict.label === "already_named"
+                  ? "a declared type already covers this shape"
+                  : "the sites are different concepts that share field names",
+            })
+            return
+          }
+          const score = verdict.probabilities[verdict.label] ?? 0
+          const quality = qualityOf({
+            score,
+            margin: marginOfAnswer(verdict),
+            confidence: verdict.confidence,
+          })
+          // A judgement the model shrugged across is not a finding. It is
+          // recorded (band: flag), because a linter that prints its own
+          // uncertainty beside its findings stops being read.
+          if (quality.quality !== "act") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "gated",
+              reason:
+                quality.quality === "review"
+                  ? "flagged: " + quality.reason
+                  : quality.reason,
+            })
+            return
+          }
+          diagnostics.push(findingFor(entry, line, verdict.confidence, undefined))
+        })
+        return outcome(
+          diagnostics,
+          budgetNote(
+            "shapes",
+            maxFindings,
+            repeated.length,
+            repeated.slice(maxFindings).map(([signature]) => signature.split("\u0000").join("; ")),
+          ),
+          drops,
+        )
+      },
+    }
   }),
-})
+}
+
+/** The finding for one shape: verified, or the fact with the reason it is not. */
+const findingFor = (
+  entry: {
+    readonly keys: ReadonlyArray<string>
+    readonly sites: ReadonlyArray<{ readonly file: string; readonly start: number }>
+    readonly first: { readonly file: string; readonly start: number }
+  },
+  line: number,
+  confidence: number | undefined,
+  unverifiedReason: string | undefined,
+): Diagnostic => {
+  const files = [...new Set(entry.sites.map((site) => site.file))]
+  const location: SourceLocation = { file: entry.first.file, line, column: 1 }
+  const input: Parameters<typeof finding>[0] = {
+    ruleId: RULE_ID,
+    severity: "info",
+    message:
+      entry.sites.length +
+      " object literal(s) in " +
+      files.length +
+      " file(s) share this shape: { " +
+      entry.keys.join("; ") +
+      " }.",
+    help:
+      "Define a type with these fields and annotate every site with it. A shape nobody named is a shape nobody validates, and the sixth copy is written from memory: " +
+      files.slice(0, policy.evidence.maxListedPaths).join(", ") +
+      (files.length > policy.evidence.maxListedPaths
+        ? " and " + (files.length - policy.evidence.maxListedPaths) + " more"
+        : "") +
+      "." +
+      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
+    location,
+    identity: [RULE_ID, entry.keys.join("\u0000")].join("\u0000"),
+    judged: unverifiedReason === undefined,
+  }
+  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+}
