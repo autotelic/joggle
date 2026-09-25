@@ -5,7 +5,7 @@ import { buildImportGraph, resolveSpecifier } from "../src/imports.ts"
 const known = new Set(["src/types.ts", "src/utils/index.ts", "app/lib/helpers.ts"])
 
 /** Structure facts are irrelevant to import resolution; only the shape matters. */
-const empty = { callSites: [], jsx: [], objects: [], columns: [] }
+const empty = { callSites: [], jsx: [], objects: [], columns: [], stringSites: [], guards: [] }
 
 it.effect("relative specifiers resolve exactly, including index files", () =>
   Effect.gen(function* () {

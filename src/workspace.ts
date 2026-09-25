@@ -208,6 +208,42 @@ export const CallSite = Schema.Struct({
   end: Schema.Number,
 })
 
+/**
+ * A place a string is built from other values: a template literal, or a `+`
+ * with a string literal on one side.
+ *
+ * Structural, not semantic. It says a string is constructed here and which
+ * references it interpolates (`$${row.amount}`, `total + " km"`); it does NOT
+ * say the string is money, a date or a percent. A rule that needs to know what
+ * the string means asks, instead of matching the text for known shapes.
+ */
+export const StringSite = Schema.Struct({
+  start: Schema.Number,
+  end: Schema.Number,
+  /** The references interpolated into it, dotted: `row.amount`, `total`. */
+  refs: Schema.Array(Schema.String),
+})
+
+export interface StringSite extends Schema.Schema.Type<typeof StringSite> {}
+
+/**
+ * An `if` statement, and whether its branch leaves the function.
+ *
+ * The guard's SHAPE is syntax -- a test, the references it names, whether the
+ * branch returns or throws -- so it belongs here rather than in a rule matching
+ * `if (!x)` against the source.
+ */
+export const GuardSite = Schema.Struct({
+  start: Schema.Number,
+  end: Schema.Number,
+  /** The references the test names, dotted. */
+  refs: Schema.Array(Schema.String),
+  /** True when the consequent returns or throws: a guard clause. */
+  exits: Schema.Boolean,
+})
+
+export interface GuardSite extends Schema.Schema.Type<typeof GuardSite> {}
+
 export const StructureFacts = Schema.Struct({
   /**
    * Every call site in the file, in order.
@@ -223,6 +259,10 @@ export const StructureFacts = Schema.Struct({
   objects: Schema.Array(ObjectSite),
   /** Columns a migration creates or alters, with their nullability. */
   columns: Schema.Array(ColumnFact),
+  /** Every place a string is built from other values. */
+  stringSites: Schema.Array(StringSite),
+  /** Every `if` statement, with the references its test names. */
+  guards: Schema.Array(GuardSite),
 })
 
 export interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}
@@ -877,6 +917,8 @@ const structureIn = (root: unknown): StructureFacts => {
   const jsx = new Set<string>()
   const objects: Array<Schema.Schema.Type<typeof ObjectSite>> = []
   const columns: Array<Schema.Schema.Type<typeof ColumnFact>> = []
+  const stringSites: Array<Schema.Schema.Type<typeof StringSite>> = []
+  const guards: Array<Schema.Schema.Type<typeof GuardSite>> = []
   interface DeclaredFields {
     readonly required: Array<string>
     readonly nullable: Array<string>
@@ -901,6 +943,58 @@ const structureIn = (root: unknown): StructureFacts => {
       return object !== undefined && property !== undefined ? object + "." + property : undefined
     }
     return undefined
+  }
+
+  /** Every reference a subtree names, dotted, deduplicated. */
+  const refsIn = (node: unknown): ReadonlyArray<string> => {
+    const found: Array<string> = []
+    const walk = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        for (const child of value) walk(child)
+        return
+      }
+      if (!isRecord(value)) return
+      const type = value["type"]
+      if (type === "Identifier" && typeof value["name"] === "string") {
+        found.push(value["name"])
+        return
+      }
+      if (type === "MemberExpression" || type === "StaticMemberExpression") {
+        const name = nameOf(value)
+        if (name !== undefined) found.push(name)
+        return
+      }
+      for (const key of Object.keys(value)) {
+        if (key === "type" || key === "start" || key === "end") continue
+        walk(value[key])
+      }
+    }
+    walk(node)
+    return [...new Set(found)]
+  }
+
+  /** True when a subtree returns or throws. */
+  const exitsIn = (node: unknown): boolean => {
+    let found = false
+    const walk = (value: unknown): void => {
+      if (found) return
+      if (Array.isArray(value)) {
+        for (const child of value) walk(child)
+        return
+      }
+      if (!isRecord(value)) return
+      const type = value["type"]
+      if (type === "ReturnStatement" || type === "ThrowStatement") {
+        found = true
+        return
+      }
+      for (const key of Object.keys(value)) {
+        if (key === "type" || key === "start" || key === "end") continue
+        walk(value[key])
+      }
+    }
+    walk(node)
+    return found
   }
 
   /** The method names of a call chain, outermost first: `[annotate, NullOr]`. */
@@ -1181,6 +1275,44 @@ const structureIn = (root: unknown): StructureFacts => {
         }
         break
       }
+      case "TemplateLiteral": {
+        const start = node["start"]
+        const end = node["end"]
+        // The walker, not `nameOf`: an interpolation is often a call
+        // (`${amount.toFixed(2)}`), and the reference that matters is inside it.
+        if (typeof start === "number" && typeof end === "number") {
+          stringSites.push({ start, end, refs: refsIn(node) })
+        }
+        break
+      }
+      case "BinaryExpression": {
+        // A `+` with a string literal or a template on one side builds a string.
+        const isString = (value: unknown): boolean =>
+          isRecord(value) &&
+          (value["type"] === "TemplateLiteral" ||
+            (value["type"] === "Literal" && typeof value["value"] === "string"))
+        if (node["operator"] === "+" && (isString(node["left"]) || isString(node["right"]))) {
+          const start = node["start"]
+          const end = node["end"]
+          if (typeof start === "number" && typeof end === "number") {
+            stringSites.push({ start, end, refs: refsIn(node) })
+          }
+        }
+        break
+      }
+      case "IfStatement": {
+        const start = node["start"]
+        const end = node["end"]
+        if (typeof start === "number" && typeof end === "number") {
+          guards.push({
+            start,
+            end,
+            refs: refsIn(node["test"]),
+            exits: exitsIn(node["consequent"]),
+          })
+        }
+        break
+      }
       default:
         break
     }
@@ -1188,7 +1320,7 @@ const structureIn = (root: unknown): StructureFacts => {
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
-  return { callSites, jsx: [...jsx], objects, columns }
+  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards }
 }
 
 /** A parse result, whichever language produced it. */
