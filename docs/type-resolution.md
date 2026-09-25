@@ -358,3 +358,23 @@ for the pairs relatedness keeps.
 - Checker state patch: `_patches/typescript-go/023-checker-effect-links.patch`.
 - Foreign hosts: `etsoxlintrunner/runner.go`, `_patches/tsgolint/001-effect-rules.patch`, `_patches/oxlint/001-effect-plugin.patch`.
 - README for the diagnostic surface and the superset claim: `README.md`, `AGENTS.md`.
+
+## The node-type layer, as built
+
+`src/typefacts.ts` is the smallest form of the own-checker-host route above, and
+it needs no fork: `@typescript/native-preview` -- the `tsgo` binary joggle already
+runs -- exposes `Checker.getTypeAtPosition(file, position)`. One program, a
+lookup per position, and the checker's own printed type.
+
+The join is the point. The declaration trace (`tsgo --generateTrace`) joins a NAME
+to its resolved type, and the doc above records why that is awkward: aliases
+expand, one name is several entries, some names never appear under their own name.
+A node map joins by BYTE OFFSET, which both the checker and the oxc parser read
+from the same file, so it is exact.
+
+It is a REQUEST LIST rather than a whole-project dump, because the output for
+1,870 files would be enormous and a rule only asks about the nodes its candidates
+built. `check.ts` collects the positions in scope, asks once per run under
+`--types`, and puts `RunContext.nodeTypes` on the context. The first rule to read
+it is `joggle/inferred-over-recorded`; the ones in "Rules this unlocks" are now a
+candidate generator plus a question each.

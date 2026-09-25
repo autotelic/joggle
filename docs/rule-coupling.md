@@ -164,23 +164,28 @@ And one is not built on purpose. The gate from PR 1579 (an unused import reachin
 main) is a CI and oxlint job, not a joggle rule: a deterministic predicate belongs
 in the linter or the typechecker, and `require-judged` rejects one here.
 
-## Two the substrate cannot carry yet
+## Both fact layers are in
 
-Two rules are NOT built, and not built on purpose: each needs a fact joggle does
-not extract, and building it now would mean guessing with a pattern -- the fault
-this document audits.
+The last two rules needed facts joggle did not extract. Both layers now exist.
 
-- **`inferred-over-recorded`** (PR 1570). "The mode is inferred from the sums, but
-  the payroll already records it (`use_swa_day_rate`)". The fact is that a
-  COMPUTED value has the same type as a field that already records it, which needs
-  the checker host of `docs/type-resolution.md` -- per-expression resolved types
-  from a patched tsgo, which is a tool outside this repository. Without it the
-  candidate is "a unit that branches on arithmetic", which is everything.
-- **`unbounded-default-read`** (PR 1574). The default payroll-review load has no
-  date window and no limit over a table that grows; measured at 150ms today and
-  linear, seconds at 5x. Needs a data-access fact (a call site with the shape of
-  its predicates, and which of a function's parameters are optional), which is a
-  substrate build rather than a rule.
+**Node types by offset** (`src/typefacts.ts`, `--types`). The checker's type at a
+byte position, from the native-preview API that ships with the `tsgo` binary
+joggle already runs -- no fork. The join is by OFFSET, which both the checker and
+the oxc parser read from the same file, so it is exact; that is the join the
+declaration trace cannot make. `check.ts` collects the positions of the `return`
+arguments in scope (a new `returns` fact), asks once per run, and puts the lookup
+on `RunContext.nodeTypes`.
 
-Both are a candidate generator plus a question once their fact exists. Neither is
-blocked on Jev.
+**Data access** (`CallSite.argumentCount`, `CallSite.argumentKeys`, and
+`StructureFacts.allOptionalFunctions`). Which arguments a call passes, and whether
+the callee's every filter is optional -- the shape of a query whose default path
+is legal and unbounded.
+
+And the rules:
+
+| rule | the facts |
+| --- | --- |
+| `inferred-over-recorded` | the returned expression's type is `boolean`; the unit names a type; that type records a boolean it does not read |
+| `unbounded-default-read` | a call to a function whose every filter is optional; the callee's declaration; the data package its file imports |
+
+Both are a candidate generator plus a question, and neither is blocked on Jev.
