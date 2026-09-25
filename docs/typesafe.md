@@ -144,6 +144,37 @@ A rule that is deterministic, or judged but not batched, stays a `Rule` and runs
 as it always did. The engine runs both kinds in one pass. Converting another rule
 is a rule-local change: build atoms, return `Planned`, and the batching is free.
 
+## Self-consistency, because a Noul had no margin
+
+`verdictOf` gave a Choice a margin from its own distribution and gave a Noul
+nothing: `{ probability, margin: 1, confidence: undefined }`, so a Noul was gated
+by the probability floor alone. The docs' [self-consistency
+cookbook](/cookbooks/consistency_noul_cookbook) is the fix, and the jaggedness
+note says System One is built to be stable across repeats, so the repeats are
+cheap information rather than a coin toss.
+
+`policy.decision.consistency.repeats` (3) is now asked, in the SAME request:
+`answerPlansRaw` adds `name@i~0..k` for a Noul and leaves a Choice alone, because
+a Choice's distribution already carries the signal and repeating it would spend a
+call to learn nothing. `memoize` does the same, because a rule that answers its
+own questions directly (`DecisionModel.decide`) never reaches the plan engine, and
+the reduction cannot live in one of the two paths. `reduceRepeats` reduces the asks to the mean and the share
+that sided with the majority, and `verdictOf` maps the agreement onto the margin
+by its distance from a coin flip -- every ask agreed is 1, an even split is 0. So
+a probability the model reaches by different routes is gated exactly as a Choice
+the model shrugged across.
+
+The reduced answer is what is cached, so a replay carries the agreement rather
+than re-asking. That is why `decisionVersion` was bumped: a cached single-ask
+answer is a different quantity from a mean over asks, and the cheap path would
+otherwise mix the two.
+
+Two consequences worth stating. A request now carries `repeats` times as many
+Noul questions, so the question COUNT grows while the state does not; the
+split-and-retry already isolates a request the provider rejects. And a Choice is
+still asked once, so the extra cost falls only on the primitives that had no
+second signal.
+
 ## Smaller gaps
 
 - **`ask.ts` shows `resolved` without naming it.** The query is the user's, so

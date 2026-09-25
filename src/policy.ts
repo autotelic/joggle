@@ -26,7 +26,7 @@ export const policy = {
    * or evidence change, so verdicts produced by older questions are not replayed
    * against newer ones.
    */
-  decisionVersion: "2026-09-20",
+  decisionVersion: "2026-09-25",
 
   /**
    * The declared analysis version: a FALLBACK and an OVERRIDE, not the gate.
@@ -55,6 +55,18 @@ export const policy = {
 
   decision: {
     baseUrl: "https://api.typesafe.ai",
+    /**
+     * How many times a Noul is asked, in one request.
+     *
+     * A yes/no comes back as one number with no second signal: `verdictOf` gives a
+     * Choice a margin from its distribution and gives a Noul nothing, so a Noul is
+     * gated by the probability floor alone. Asking it again and reading the
+     * AGREEMENT gives it the margin a Choice gets for free -- the self-consistency
+     * cookbook's pattern, and jev is built to be stable across repeats. A Choice
+     * is asked once: its distribution already carries the signal, and repeating it
+     * would spend a call to learn nothing.
+     */
+    consistency: { repeats: 3 },
     /**
      * Characters of shared state one request may carry.
      *

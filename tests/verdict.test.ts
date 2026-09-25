@@ -44,3 +44,14 @@ describe("verdictOf", () => {
     expect(verdictOf(undefined, ["x"])).toBeUndefined()
   })
 })
+
+it("a Noul's agreement becomes its margin", () => {
+  // Every ask agreed: a full margin, as a unanimous Choice would have.
+  expect(verdictOf({ probability: 0.8, consistency: 1 }, [])?.margin).toBe(1)
+  // Two of three: some margin.
+  expect(verdictOf({ probability: 0.8, consistency: 2 / 3 }, [])?.margin).toBeCloseTo(1 / 3, 5)
+  // An even split: no margin at all, so `qualityOf` flags it for review.
+  expect(verdictOf({ probability: 0.8, consistency: 0.5 }, [])?.margin).toBe(0)
+  // Asked once: no signal, so the floor is the only gate.
+  expect(verdictOf({ probability: 0.8 }, [])?.margin).toBe(1)
+})

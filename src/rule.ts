@@ -351,6 +351,18 @@ export const declineNames: ReadonlyArray<string> = [decline.noIssue, decline.not
 export const declined = (choice: string | undefined): boolean =>
   choice === decline.noIssue || choice === decline.notApplicable
 
+/**
+ * How consistently the model gave a Noul's answer, across the repeats.
+ *
+ * The share of asks that agreed with the majority. Read by `verdictOf` as a
+ * Noul's margin, so a probability the model reaches by different routes is gated
+ * exactly as a Choice the model shrugged across. Absent when the question was
+ * asked once, or for a Choice, whose distribution is its own signal.
+ */
+export interface Consistency {
+  readonly consistency?: number | undefined
+}
+
 /** The answers a DecisionModel returns, keyed by decision name. */
 export type DecisionAnswers = Readonly<Record<string, Decision.Answer<Decision.Any>>>
 

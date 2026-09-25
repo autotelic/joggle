@@ -138,7 +138,10 @@ export const refusingModel = (
  * (`verdict@3`), because two plans ask the same names. A test names the
  * decision, so the suffix is stripped before the lookup.
  */
-const localName = (key: string): string => key.replace(/@\d+$/, "")
+// A request name back to the decision's own name. The engine disambiguates a
+// decision by the plan that asked it (`name@3`), and a Noul asked `repeats` times
+// adds the ask (`name@3~1`), so both suffixes come off.
+const localName = (key: string): string => key.replace(/~\d+$/, "").replace(/@\d+$/, "")
 
 /**
  * A DecisionModel that answers from a table of answers.

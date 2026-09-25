@@ -1,4 +1,5 @@
 import type { Decision } from "effect/unstable/ai"
+import type { Consistency } from "./rule.ts"
 
 /**
  * One number per answer: the probability the rule is violated.
@@ -36,17 +37,23 @@ const clamp01 = (value: number): number => Math.min(1, Math.max(0, value))
  *   probability -- an unreadable answer, which every caller reports unverified.
  */
 export const verdictOf = (
-  answer: Decision.Answer<Decision.Any> | undefined,
+  answer: (Decision.Answer<Decision.Any> & Consistency) | undefined,
   violating: ReadonlyArray<string>,
 ): Verdict | undefined => {
   if (answer === undefined) return undefined
 
   // A Noul answers with a probability, and the violation is "yes".
   if ("probability" in answer) {
+    // A Noul asked more than once carries the AGREEMENT across its asks, and that
+    // is its margin: one yes/no has no distribution, so without the repeats the
+    // probability floor was its only gate (docs/typesafe.md, self-consistency).
+    // The agreement maps onto the margin's range by its distance from a coin
+    // flip: every ask agreed is 1, an even split is 0.
+    const agreement = answer.consistency === undefined ? undefined : clamp01(answer.consistency)
     return {
       label: undefined,
       probability: clamp01(answer.probability),
-      margin: 1,
+      margin: agreement === undefined ? 1 : 2 * agreement - 1,
       confidence: undefined,
     }
   }

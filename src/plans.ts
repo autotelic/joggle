@@ -5,7 +5,7 @@ import { Atoms } from "./atoms.ts"
 import { canonical } from "./canonical.ts"
 import { policy } from "./policy.ts"
 import { shortHash } from "./state.ts"
-import type { DecisionAnswers } from "./rule.ts"
+import type { Consistency, DecisionAnswers } from "./rule.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Vocabulary                                                                  */
@@ -85,14 +85,65 @@ export const StoredAnswer = Schema.Union([
     probabilities: Schema.Record(Schema.String, Schema.Number),
     confidence: Schema.optionalKey(Schema.Number),
   }),
-  Schema.Struct({ kind: Schema.Literal("Probability"), probability: Schema.Number }),
+  Schema.Struct({
+    kind: Schema.Literal("Probability"),
+    probability: Schema.Number,
+    consistency: Schema.optionalKey(Schema.Number),
+  }),
 ])
 
 export type StoredAnswer = Schema.Schema.Type<typeof StoredAnswer>
 
+/**
+ * The agreement carried alongside an answer, when a Noul was asked more than
+ * once.
+ *
+ * `Decision.Answer` does not model it because it is OUR reduction, not the
+ * provider's answer: `answerPlansRaw` attaches it, `storedOf` persists it, and
+ * `verdictOf` reads it as a Noul's margin.
+ */
+export const consistencyOf = (answer: Decision.Answer<Decision.Any> & Consistency): number | undefined =>
+  answer.consistency
+
+/** An answer with its consistency attached, when it has one. */
+export const withConsistency = <A extends Decision.Answer<Decision.Any>>(
+  answer: A,
+  consistency: number | undefined,
+): A => {
+  if (consistency === undefined) return answer
+  // SAFETY: the extra field is our own reduction over the repeats, read back only
+  // through `consistencyOf` and persisted by `storedOf`; every caller that treats
+  // the value as a `Decision.Answer` ignores it.
+  return { ...answer, consistency } as A
+}
+
+/**
+ * Reduce a Noul's repeated asks to one answer and its agreement.
+ *
+ * The mean is the answer; the agreement is the share that sided with the
+ * majority, 1 when every ask agreed and 0.5 at a coin flip. A separate function
+ * so the arithmetic is testable without a model.
+ *
+ * @param values - one probability per ask, in request order.
+ * @returns the mean and the agreement, or undefined when there are none.
+ */
+export const reduceRepeats = (
+  values: ReadonlyArray<number>,
+): { readonly probability: number; readonly consistency: number } | undefined => {
+  if (values.length === 0) return undefined
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length
+  const yes = values.filter((value) => value >= 0.5).length / values.length
+  return { probability: mean, consistency: Math.max(yes, 1 - yes) }
+}
+
 /** The stored form of an answer, for the cache file. */
 export const storedOf = (answer: Decision.Answer<Decision.Any>): StoredAnswer => {
-  if ("probability" in answer) return { kind: "Probability", probability: answer.probability }
+  if ("probability" in answer) {
+    const consistency = consistencyOf(answer)
+    return consistency === undefined
+      ? { kind: "Probability", probability: answer.probability }
+      : { kind: "Probability", probability: answer.probability, consistency }
+  }
   if ("rating" in answer) {
     const rate = {
       kind: "Rate" as const,
@@ -112,7 +163,9 @@ export const storedOf = (answer: Decision.Answer<Decision.Any>): StoredAnswer =>
 
 /** The answer back from its stored form. */
 export const answerOf = (stored: StoredAnswer): Decision.Answer<Decision.Any> => {
-  if (stored.kind === "Probability") return { probability: stored.probability }
+  if (stored.kind === "Probability") {
+    return withConsistency({ probability: stored.probability }, stored.consistency)
+  }
   if (stored.kind === "Rate") {
     const rate = {
       rating: stored.rating,
@@ -227,7 +280,7 @@ export const memoize = (
           if (Option.isSome(stored)) {
             const valid = yield* revalidate(decision, stored.value)
             if (Option.isSome(valid)) {
-              answers[name] = valid.value
+              answers[name] = withConsistency(valid.value, consistencyOf(stored.value))
               continue
             }
           }
@@ -235,14 +288,40 @@ export const memoize = (
         }
         let usage = new DecisionModel.DecisionUsage({})
         if (Object.keys(missing).length > 0) {
+          // A Noul asked `repeats` times, in the same request and for the same
+          // reason as `answerPlansRaw`: one yes/no has no margin. A rule that
+          // answers its own questions directly (`DecisionModel.decide`) passes
+          // through here, so the reduction cannot live only in the plan engine.
+          const repeats = policy.decision.consistency.repeats
+          const requested: Record<string, Decision.Any> = {}
+          const asked = new Map<string, ReadonlyArray<string>>()
+          for (const [name, decision] of Object.entries(missing)) {
+            const names =
+              decision._tag === "Probability"
+                ? Array.from({ length: repeats }, (_, index) => name + "~" + String(index))
+                : [name]
+            for (const one of names) requested[one] = decision
+            asked.set(name, names)
+          }
           const response = yield* inner.decide(
-            Decision.make({ input: definition.input, decisions: missing }),
+            Decision.make({ input: definition.input, decisions: requested }),
             options,
           )
           usage = response.usage
           for (const name of Object.keys(missing)) {
-            const answer = response.answers[name]
-            if (answer === undefined) continue
+            const names = asked.get(name) ?? [name]
+            const gathered = names
+              .map((one) => response.answers[one])
+              .filter((answer): answer is Decision.Answer<Decision.Any> => answer !== undefined)
+            const first = gathered[0]
+            if (first === undefined) continue
+            let answer: Decision.Answer<Decision.Any> = first
+            if (missing[name]?._tag === "Probability") {
+              const values = gathered.flatMap((one) => ("probability" in one ? [one.probability] : []))
+              const reduced = reduceRepeats(values)
+              if (reduced === undefined) continue
+              answer = withConsistency({ probability: reduced.probability }, reduced.consistency)
+            }
             answers[name] = answer
             const key = keys.get(name)
             if (key !== undefined) yield* cache.put(key, answer)
@@ -376,7 +455,7 @@ export const answerPlansRaw = (
       if (Option.isSome(stored)) {
         const valid = yield* revalidate(entry.decision, stored.value)
         if (Option.isSome(valid)) {
-          answers.set(key, valid.value)
+          answers.set(key, withConsistency(valid.value, consistencyOf(stored.value)))
           continue
         }
       }
@@ -387,19 +466,39 @@ export const answerPlansRaw = (
       const ids = [...new Set(pending.flatMap((entry) => distinct.get(entry.key)?.atoms ?? []))]
       const state = yield* atoms.values(ids)
       const decisions: Record<string, Decision.Any> = {}
-      const names = new Map<string, string>()
+      const names = new Map<string, ReadonlyArray<string>>()
+      // A Noul is asked `repeats` times, in the SAME request: one yes/no carries
+      // no margin, so the agreement across asks is the second signal a Choice
+      // gets from its own distribution. A Choice is asked once.
+      const repeats = policy.decision.consistency.repeats
       for (const entry of pending) {
         const found = distinct.get(entry.key)
         if (found === undefined) continue
-        decisions[found.requestName] = found.decision
-        names.set(entry.key, found.requestName)
+        const requestNames =
+          found.decision._tag === "Probability"
+            ? Array.from({ length: repeats }, (_, index) => found.requestName + "~" + String(index))
+            : [found.requestName]
+        for (const name of requestNames) decisions[name] = found.decision
+        names.set(entry.key, requestNames)
       }
       const definition = Decision.make({ input: Schema.Json, decisions })
       const decided = yield* DecisionModel.decide(definition, { input: { atoms: state } })
       for (const entry of pending) {
-        const requestName = names.get(entry.key)
-        const answer = requestName === undefined ? undefined : decided.answers[requestName]
-        if (answer !== undefined) answers.set(entry.key, answer)
+        const requestNames = names.get(entry.key)
+        if (requestNames === undefined) continue
+        const decision = distinct.get(entry.key)?.decision
+        const gathered = requestNames
+          .map((name) => decided.answers[name])
+          .filter((answer): answer is Decision.Answer<Decision.Any> => answer !== undefined)
+        if (decision?._tag === "Probability") {
+          const values = gathered.flatMap((answer) => ("probability" in answer ? [answer.probability] : []))
+          const reduced = reduceRepeats(values)
+          if (reduced === undefined) continue
+          answers.set(entry.key, withConsistency({ probability: reduced.probability }, reduced.consistency))
+          continue
+        }
+        const first = gathered[0]
+        if (first !== undefined) answers.set(entry.key, first)
       }
       for (const entry of pending) {
         const answer = answers.get(entry.key)
