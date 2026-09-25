@@ -1,10 +1,15 @@
 # Calibration and the measurements
 
-Two measurements of the rules, both after every one of them became a Jev rule:
-what the questions are worth (`joggle calibrate`), and what the whole rule set
-reports on a real repository (`joggle check`). Both run against the sibling
-`shakti-v2` checkout, with the key, and with `--cache-dir` so nothing is written
-into that repository.
+Two measurements of the rules: what the questions are worth (`joggle calibrate`),
+and what the whole rule set reports on a real repository (`joggle check`). Both run
+against the sibling `shakti-v2` checkout, with the key, and with `--cache-dir` so
+nothing is written into that repository.
+
+**This is a chronological record, and the numbers are the numbers at the round they
+were taken.** The rounds below are in order, and a later round's "now" supersedes an
+earlier one. For where it actually stands, read the last note first: the most recent
+full measurement predates the type layers, the self-consistency change and the seven
+rules added from the PR reviews, so it is a floor rather than a current count.
 
 ## Calibration, band-aware
 
@@ -201,14 +206,43 @@ losing a candidate to one is what this session kept having to design against.
 
 The report is now **653 problems = 181 warnings + 472 notices**.
 
+## Where it stands now, and what is not measured
+
+The last full number above (653 problems) is a **floor, not a current count**, and
+the next round of work moved past it:
+
+- **Seven rules were added from the PR reviews** (`single-path`,
+  `unaccounted-drop`, `generic-carries-a-caller`, `schema-excludes-domain-value`,
+  `meaning-switched-by-flag`, `unbounded-default-read`, `inferred-over-recorded`).
+  None of them has been measured on shakti-v2, so the report is larger than 653 and
+  by an unknown amount.
+- **`--types` now resolves two kinds of type**, the declaration trace and the
+  checker's type at a node's offset, so `types-over-logic` and the type-aware rules
+  have candidates they did not have when it was last measured.
+- **Every Noul is asked three times and its agreement is its margin**, and
+  `decisionVersion` was bumped for it, so the cached answers are cold: a
+  re-measurement re-asks rather than replays.
+- **The coupling audit rebuilt seven rules and removed two** (`single-path` and
+  `unaccounted-drop` first came out, then came back on facts), which changed what
+  several questions are asked and how many candidates each produces.
+
+So the honest statement is: the tuning rounds below are real measurements of the
+rules as they were at each round, and a full re-measurement is owed before any
+volume claim is made about the current set.
+
 ## What is left
 
-- **`duplicate-implementation` is the loudest rule** (47 warnings) and
-  `compose-types` is second (43). Both are real defects after their boundary
-  tuning; the next lever is the generator -- the pair whose two copies differ by
-  one field is not the same finding as the nine-copy shape, which is the same
-  lesson `object-shape` just learned.
-- **`hoist-to-domain`** (37 warnings) has never been calibrated per decision; its
-  `duty`/`home` split is the obvious next probe.
-- The judge is now trustworthy across the board: every rule calibrates, and no
-  candidate is lost to a malformed distribution.
+- **The re-measurement**, which is the first thing owed. `joggle calibrate` per
+  rule, then one `joggle check` across shakti-v2, with the expectation that the
+  Noul margin changes the band counts: the loud Nouls (`duplicate-implementation`'s
+  `redundant` was 189 acted of 206) should split across act and review instead of
+  acting on every yes.
+- **`doc-matches-code` is the one broad question left.** Its verdict hides three
+  judgements (`stale_reference`, `wrong_contract`, `wrong_behavior`) behind one
+  probability, which the TypeSafe guide calls the most important thing not to do.
+  It wants 2-3 atomic questions composed in code.
+- **A relevance Noul for the budget-trimmed rules.** `hoist-to-domain` left 493 of
+  1093 declarations unjudged; a cheap first-pass Noul would spend the budget on the
+  right end of the list.
+- **`hoist-to-domain` has never been calibrated per decision**; its `duty`/`home`
+  split is the obvious probe.

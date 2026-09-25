@@ -3,7 +3,13 @@
 > Where joggle's own switch statements are the classifier, and where TypeSafe
 > should be.
 
-This is the question behind a round of work that added three static rules
+**This is the note that started the migration it describes.** It is kept as the
+reasoning, not as the current state: the line it drew held, the migration is done,
+and the specifics that have changed since are marked inline. The current rules are
+in [rule-coupling.md](./rule-coupling.md), which audits every rule against the same
+question rather than proposing the moves.
+
+This was the question behind a round of work that added three static rules
 (`reimplemented-primitive`, `field-type-drift`, `object-shape`), three judged
 ones (`naming-drift`, `language-drift`, `one-concept-one-type`), and a type
 layer. Going granular is only right in one of two regimes, and the line between
@@ -24,8 +30,8 @@ The concrete count today:
 | --- | --- | --- |
 | `roleRank` in `roles.ts` | six roles hand-ranked `0..3`, so "which layer may import which" | a `Question` over a module and its role -- the ordering is a taste, not a derivation |
 | `prescriptionFor` in `cluster-verdict.ts` | a table over `(role, relationship)` | one more `Decision.classify` whose options ARE the prescriptions |
-| `field-type-drift` | `minWords >= 2` and `canCompose` string rules | "do these two declarations describe the same thing?" |
-| `reimplemented-primitive` | "the leaf inputs match", computed via `inputKey` | "is this body a call to that one?": the Noul the old judge already ran, over a resolved graph |
+| `field-type-drift` | `minWords >= 2` and `canCompose` string rules | "do these two declarations describe the same thing?" -- **done, and then further**: both were deleted, and the rule now collects one fact (a field declared two ways) and asks |
+| `reimplemented-primitive` | "the leaf inputs match", computed via `inputKey` | "is this body a call to that one?": the Noul the old judge already ran, over a resolved graph -- **done**: `inputKey` is gone, and the pairing key is the resolved callee, a fact |
 | `object-shape` | suppressed when keys are a subset of any declared type | "is this shape a declared type or an unnamed one?" |
 | `policy.ask.minTokens` / `maxCandidates` | a keyword filter standing in for relevance | `ask` already does this with Nouls per candidate |
 
@@ -111,7 +117,8 @@ compiler fact in the state, not a judgement the code made. See
   The right fix is upstream: a *resolved call graph* is the state, and the
   resurrection is a question asked once over it -- the same Noul the deleted
   `same_behavior` used, but with call sites in the state, which is what that
-  question was missing.
+  question was missing. **Done**: `inputKey` was deleted outright rather than
+  demoted to evidence, because "the same inputs" is the question.
 - `object-shape` and `field-type-drift` are in the same place: pure Regime 1
   wearing a Regime 2 costume. Deterministic and free, so they stay as a cheap
   first pass; their over-reported cases are the judgement, not the rule.
@@ -133,8 +140,9 @@ All four are done.
    reports a disagreement; neither decides first.
 4. **Resurrection is judged.** `reimplemented-primitive` became a `PlannedRule`:
    the call graph generates pairs (high recall), and a question over both graphs
-   decides whether they are the same operation. `inputKey` is now evidence in the
-   state rather than the verdict.
+   decides whether they are the same operation. `inputKey` was then deleted, not
+   demoted: the pairing key is the resolved callee, and what each call reads is
+   evidence the question sees.
 
 ## What this cost
 
@@ -170,9 +178,26 @@ incompatible pairs to 74 findings and silenced every case in the feedback.
 `docs/type-resolution.md` keeps the measurement, the question that failed, and
 the routes that remain (a checker host for the value sets, config for the rest).
 
-So the rule keeps its frozen text resolver as the least bad instrument. The
-remaining Regime 1 rules -- `object-shape`, `compose-types`,
-`name-the-primitive` -- should likewise keep their deterministic pass as high
-recall candidate generation, and should be asked for a question only when the
-state a question needs is actually present.
+So the rule kept a frozen text resolver as the least bad instrument. **That
+resolver was later deleted too**: the rule now collects one fact (a field name
+whose declared annotation differs between two declarations that can reach each
+other) and asks the model whether the difference is drift, which is the question it
+was already asking. The remaining Regime 1 rules -- `object-shape`,
+`compose-types`, `name-the-primitive` -- keep their deterministic pass as high
+recall candidate generation and ask for a question only when the state a question
+needs is present.
+
+## Afterwards
+
+Read this note with [rule-coupling.md](./rule-coupling.md), which is the same test
+applied to the finished rule set rather than to a plan. Two things it settled that
+this note could not see:
+
+- **Every rule ended up judged.** The "deterministic half" here became candidate
+  generation inside a judged rule, never a rule of its own: a check that is not a
+  question is a linter's job, and a meta-rule now rejects one.
+- **Two vocabularies stayed, declared.** `temporal-coupling`'s operation pairs and
+  `data-error-as-outage`'s framework method names are knowledge about resource APIs
+  and about HTTP, not facts derivable from the code, so they live in policy with a
+  stated reason rather than hiding in a rule.
 
