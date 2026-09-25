@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
 import {
   blocksIn,
   findBundles,
@@ -7,61 +8,165 @@ import {
   unexportedBlocks,
   type Bundle,
 } from "../bundles.ts"
-import { bundleNote, defineRule, finding, inScope, outcome, type Scope } from "../rule.ts"
-import type { Diagnostic, Severity } from "../schema.ts"
+import { Atoms } from "../atoms.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
+import {
+  bundleNote,
+  finding,
+  inScope,
+  marginOfAnswer,
+  outcome,
+  qualityOf,
+  type DecisionAnswers,
+  type PlannedRule,
+  type Scope,
+} from "../rule.ts"
+import type { Diagnostic, Drop, Severity } from "../schema.ts"
 import type { Workspace } from "../workspace.ts"
 
-/**
- * The composition pattern's PRODUCER rules: is a bundle well formed?
- *
- * These four are provable from structure alone -- a call, an element name, the
- * keys of an object literal, the files in a directory -- so they run with no
- * model, no tokens and no budget, and they can be exhaustive. Shakti has 21
- * bundles; checking all of them costs milliseconds.
- *
- * They are separate rules rather than one because the units and the severities
- * differ: an index promising a block no file declares is a defect, while a
- * bundle whose context value carries an extra key is a nit. Collapsing them into
- * one question would hide six judgments behind one answer.
- */
+// The composition pattern's PRODUCER rules: is a bundle well formed?
+//
+// The problems are provable from structure alone -- a call, an element name, the
+// keys of an object literal, the files in a directory. What is a JUDGEMENT is
+// whether a bundle that departs from the pattern is a defect or a deliberate,
+// acceptable variation. These used to be decided by the rule; now they are asked.
+//
+// Four rules rather than one, because the units and the severities differ and
+// collapsing them would hide several judgments behind one answer.
 
 interface Spec {
   readonly id: string
   readonly severity: Severity
   readonly description: string
-  /** What is wrong with this bundle, if anything. */
   readonly problems: (bundle: Bundle) => ReadonlyArray<string>
-  /** How to describe the bundle in the message. */
   readonly subject: (bundle: Bundle) => string
 }
 
-const ruleFor = (spec: Spec) =>
-  defineRule({
-    id: spec.id,
-    severity: spec.severity,
-    description: spec.description,
-    judged: false,
-    run: Effect.fn(`joggle/${spec.id}`)(function* (workspace: Workspace, scope: Scope) {
-      const bundles = findBundles(workspace).filter((bundle) => inScope(scope, bundle.dir))
-      const diagnostics: Array<Diagnostic> = []
-      for (const bundle of bundles) {
-        const problems = spec.problems(bundle)
-        if (problems.length === 0) continue
-        diagnostics.push(
-          finding({
-            ruleId: spec.id,
-            severity: spec.severity,
-            message: `${spec.subject(bundle)}: ${problems.length} problem(s) with the composition pattern.`,
-            help: problems.join("; "),
-            location: { file: bundle.indexFile?.path ?? bundle.dir, line: 1, column: 1 },
-            identity: [spec.id, bundle.dir].join("\u0000"),
-            judged: false,
-          }),
-        )
+const ruleFor = (spec: Spec): PlannedRule => ({
+  id: spec.id,
+  severity: spec.severity,
+  description: spec.description,
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn(`joggle/${spec.id}`)(function* (workspace: Workspace, scope: Scope) {
+    const bundles = findBundles(workspace).filter((bundle) => inScope(scope, bundle.dir))
+    const candidates = bundles
+      .map((bundle) => ({ bundle, problems: spec.problems(bundle) }))
+      .filter((candidate) => candidate.problems.length > 0)
+
+    if (candidates.length === 0) {
+      return {
+        plans: [],
+        read: () => outcome([], bundleNote(bundles.length, 0)),
       }
-      return outcome(diagnostics, bundleNote(bundles.length, diagnostics.length))
-    }),
-  })
+    }
+
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(candidates, (candidate) =>
+      Effect.gen(function* () {
+        const { bundle, problems } = candidate
+        const id = yield* atoms.add({
+          bundle: bundle.name,
+          dir: bundle.dir,
+          index: bundle.indexFile?.path ?? null,
+          problems,
+        })
+        const plan: Plan<DecisionAnswers> = {
+          ruleId: spec.id,
+          subject: spec.subject(bundle),
+          concerns: [bundle.dir],
+          atoms: [id],
+          decisions: {
+            verdict: Decision.classify({
+              instructions: [
+                `\`atoms[${id}].bundle\` is a composition bundle at \`atoms[${id}].dir\`. It breaks the pattern in ${problems.length} way(s): ${problems.join("; ")}.`,
+                "Is that departure a defect, or a deliberate variation this repository can live with?",
+                "Answer `violation` when the bundle breaks the pattern and should be brought back into line.",
+                "Answer `acceptable` when the departure is deliberate and fine.",
+                "Answer `different_pattern` when this directory is not following the composition pattern at all.",
+              ].join("\n"),
+              criteria: {
+                violation: "A real defect. Bring the bundle back into line.",
+                acceptable: "A deliberate variation. Nothing to change.",
+                different_pattern: "This is not a composition bundle.",
+              },
+            }),
+          },
+          read: (answers) => answers,
+        }
+        return { candidate, id, plan }
+      }),
+      { concurrency: "unbounded" },
+    )
+
+    return {
+      plans: planned.map((value) => value.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = []
+        planned.forEach((value, index) => {
+          const { bundle, problems } = value.candidate
+          const subject = spec.subject(bundle)
+          const answer = verdicts[index]
+          const verdict = answer === undefined ? undefined : answer["verdict"]
+          if (verdict === undefined || !("label" in verdict)) {
+            diagnostics.push(findingFor(spec, bundle, problems, undefined, "no judgement was available"))
+            return
+          }
+          if (verdict.label !== "violation") {
+            drops.push({
+              ruleId: spec.id,
+              subject,
+              stage: "declined",
+              reason:
+                verdict.label === "acceptable"
+                  ? "a deliberate variation"
+                  : "not following the composition pattern",
+            })
+            return
+          }
+          const score = verdict.probabilities[verdict.label] ?? 0
+          const quality = qualityOf({
+            score,
+            margin: marginOfAnswer(verdict),
+            confidence: verdict.confidence,
+          })
+          if (quality.quality !== "act") {
+            drops.push({
+              ruleId: spec.id,
+              subject,
+              stage: "gated",
+              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+            })
+            return
+          }
+          diagnostics.push(findingFor(spec, bundle, problems, verdict.confidence, undefined))
+        })
+        return outcome(diagnostics, bundleNote(bundles.length, diagnostics.length), drops)
+      },
+    }
+  }),
+})
+
+const findingFor = (
+  spec: Spec,
+  bundle: Bundle,
+  problems: ReadonlyArray<string>,
+  confidence: number | undefined,
+  unverifiedReason: string | undefined,
+): Diagnostic => {
+  const input: Parameters<typeof finding>[0] = {
+    ruleId: spec.id,
+    severity: spec.severity,
+    message: `${spec.subject(bundle)}: ${problems.length} problem(s) with the composition pattern.`,
+    help: problems.join("; ") + (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
+    location: { file: bundle.indexFile?.path ?? bundle.dir, line: 1, column: 1 },
+    identity: [spec.id, bundle.dir].join("\u0000"),
+    judged: unverifiedReason === undefined,
+  }
+  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+}
 
 const blockFiles = (bundle: Bundle): ReadonlyArray<string> =>
   bundle.blocks.map((file) => file.path)
@@ -160,4 +265,9 @@ export const contextHook = ruleFor({
   },
 })
 
-export const bundleRules = [dotNotationExport, tripartiteValue, oneFilePerBlock, contextHook]
+export const bundleRules: ReadonlyArray<PlannedRule> = [
+  dotNotationExport,
+  tripartiteValue,
+  oneFilePerBlock,
+  contextHook,
+]

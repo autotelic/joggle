@@ -1,7 +1,7 @@
 import { pageNeedsComposition } from "../rules/page-needs-composition.ts"
 import { bundleRules } from "../rules/bundle-conformance.ts"
 import type { JoggleConfig } from "../config.ts"
-import type { Rule } from "../rule.ts"
+import type { PlannedRule, Rule } from "../rule.ts"
 
 /**
  * The composition pattern, as an opinion rather than a default.
@@ -18,11 +18,12 @@ import type { Rule } from "../rule.ts"
  * and gets the rules AND their severities. It can then override any of it per
  * rule, because a preset sets defaults rather than taking over.
  *
- * The four bundle checks are structural and free, so enabling this preset costs
- * no tokens. The page rule is the only judged one, and it triggers on evidence --
- * local state and inline markup -- rather than on a file being under `routes/`.
+ * Every rule is judged now: the bundle checks find the departure from the
+ * pattern, and Jev decides whether it is a defect. The page rule triggers on
+ * evidence -- local state and inline markup -- rather than on a file being under
+ * `routes/`.
  */
-export const rules: ReadonlyArray<Rule> = [...bundleRules, pageNeedsComposition]
+export const rules: ReadonlyArray<Rule | PlannedRule> = [...bundleRules, pageNeedsComposition]
 
 export const config: JoggleConfig = {
   rules: {

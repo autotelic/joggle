@@ -6,14 +6,20 @@ import { bundleRules } from "../src/rules/bundle-conformance.ts"
 import { loadWorkspace } from "../src/workspace.ts"
 import { modelStub, noConfig } from "./support.ts"
 
+/** The model reads every departure as a violation, so the findings are the rule's. */
+const violationAnswer = {
+  verdict: { _tag: "Classify", label: "violation", probabilities: { violation: 0.95 }, confidence: 0.9 },
+}
+
 /** Run every producer rule over one fixture directory, keyed by rule id. */
 const runAll = (root: string) =>
   Effect.gen(function* () {
     const workspace = yield* loadWorkspace(root, ["."])
     const byRule = new Map<string, ReadonlyArray<string>>()
     for (const rule of bundleRules) {
-      const { diagnostics } = yield* rule.run(workspace, everyFile, noConfig)
-      byRule.set(rule.id, diagnostics.map((entry) => entry.help ?? entry.message))
+      const planned = yield* rule.plan(workspace, everyFile, noConfig)
+      const result = planned.read(planned.plans.map(() => violationAnswer))
+      byRule.set(rule.id, result.diagnostics.map((entry) => entry.help ?? entry.message))
     }
     return byRule
   }).pipe(Effect.provide(NodeServices.layer), Effect.provide(modelStub({})))
