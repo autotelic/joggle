@@ -408,6 +408,7 @@ export const dataErrorAsOutage: PlannedRule = {
           subject: labelOf(outage),
           concerns: [outage.file],
           atoms: [id],
+          violations: { about_a_row: [] },
           decisions: {
             about_a_row: Decision.probability({
               instructions: aboutInstructions.join("\n"),

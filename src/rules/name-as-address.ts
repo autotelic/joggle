@@ -141,6 +141,7 @@ export const nameAsAddress: PlannedRule = {
           subject: candidate.unit.file + "#" + candidate.unit.name,
           concerns: [candidate.unit.file],
           atoms: [id],
+          violations: { fails_as_address: [] },
           decisions: nameReview(id),
           read: (answers) => answers,
         },

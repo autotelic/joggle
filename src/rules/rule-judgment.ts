@@ -188,6 +188,7 @@ export const ruleJudgment: PlannedRule = {
           subject: candidate.id,
           concerns: [candidate.file.path],
           atoms: [id],
+          violations: { decides_in_code: [] },
           decisions: ruleReview(id),
           read: (answers) => answers,
         },

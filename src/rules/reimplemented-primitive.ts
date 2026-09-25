@@ -216,6 +216,7 @@ export const reimplementedPrimitive: PlannedRule = {
             subject: pair.unit.name + " (" + pair.unit.file + ")",
             concerns: [pair.unit.file, pair.helper.file],
             atoms: [id],
+            violations: { same: ["same_operation"] },
             decisions: {
               same: Decision.classify({
                 instructions: [

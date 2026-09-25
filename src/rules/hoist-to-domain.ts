@@ -8,6 +8,7 @@ import {
   budgetNote,
   declined,
   marginOfAnswer,
+  qualityOf,
   outcome,
   type DecisionAnswers,
   type PlannedRule,
@@ -258,6 +259,7 @@ export const hoistToDomain: PlannedRule = {
           subject: label(unit),
           concerns: [unit.file],
           atoms: [id],
+          violations: { duty: ["domain_logic"] },
           decisions: hoistReview(id),
           read: (answers) => answers,
         },
@@ -296,14 +298,19 @@ export const hoistToDomain: PlannedRule = {
       // A Choice that barely won is not a decision. The duplicate rules have had
       // this gate since it was shown to withhold 11 clusters of unrelated `db*`
       // functions; these two rules were built without it, which is how one of them
-      // produced 199 findings on a single repository.
-      const margin = marginOfAnswer(duty)
-      if (margin < policy.decision.gates.minMargin) {
+      // produced 199 findings on a single repository. The shared gate, so the
+      // reasoning sits in one place.
+      const quality = qualityOf({
+        score: duty.probabilities["domain_logic"] ?? duty.confidence ?? 1,
+        margin: marginOfAnswer(duty),
+        confidence: duty.confidence,
+      })
+      if (quality.quality !== "act") {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
           stage: "gated" as const,
-          reason: "the choice was not decisive (margin " + margin.toFixed(2) + ")",
+          reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
         })
         return
       }

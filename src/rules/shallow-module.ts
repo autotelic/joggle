@@ -125,6 +125,7 @@ export const shallowModule: PlannedRule = {
           subject: file.path,
           concerns: [file.path],
           atoms: [id],
+          violations: { grab_bag: [] },
           decisions: moduleReview(id),
           // The answer map IS this plan's result: one verdict per decision.
           read: (answers) => answers,

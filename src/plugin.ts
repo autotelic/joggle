@@ -29,6 +29,9 @@ export * from "./rule.ts"
 /* Reporting: the message registry, and naming a subject instead of a location. */
 export * from "./reporting.ts"
 
+/* The fence: the authorship rules a rule module must keep. */
+export * from "./meta.ts"
+
 /* The shapes a rule produces and reads. */
 export * from "./schema.ts"
 

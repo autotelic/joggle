@@ -172,6 +172,7 @@ export const languageDrift: PlannedRule = {
           subject: candidate.file.path,
           concerns: [candidate.file.path],
           atoms: [id],
+          violations: { concept: candidate.words },
           decisions: languageReview(id, candidate.words),
           read: (answers) => answers,
         },

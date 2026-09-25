@@ -139,6 +139,7 @@ export const temporalCoupling: PlannedRule = {
           subject: label(candidate),
           concerns: [candidate.unit.file],
           atoms: [id],
+          violations: { verdict: ["resource_needs_release"] },
           decisions: temporalReview(id),
           read: (answers) => answers,
         },

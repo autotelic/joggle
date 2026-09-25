@@ -192,6 +192,9 @@ const dependencyReview = (id: string) => ({
   }),
 })
 
+// meta-allow: flag-not-print -- the finding is the FACT (an undeclared import),
+// which is true whatever the model says; the judgement only qualifies it, so
+// there is no judged finding to withhold.
 export const dependencyFit: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
@@ -279,6 +282,7 @@ export const dependencyFit: PlannedRule = {
           subject: label(dependency),
           concerns: dependency.examples,
           atoms: [id],
+          violations: { fit: ["violates"] },
           decisions: dependencyReview(id),
           read: (answers) => answers,
         },

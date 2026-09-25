@@ -193,3 +193,21 @@ A `preset` is the same thing packaged to share with others:
   a linter that prints its own uncertainty beside its findings stops being read.
 - **State is bounded.** Put the panel a reviewer needs in the atom, and no more:
   unrelated detail costs accuracy.
+
+## The fence
+
+Those four lines are not advice. `@autotelic/joggle/plugin` exports `metaFindings`,
+the authorship rules every rule module here must keep, and a test enforces them:
+
+- `require-violations` -- a planned rule declares the labels that mean it is
+  violated, or calibration cannot reduce its question.
+- `require-test` -- a test names the rule or a symbol it exports.
+- `bounded-atoms` -- no atom carries a whole file; a bounded sample instead.
+- `flag-not-print` -- a judged rule reads a judgement's quality with `qualityOf`.
+
+A rule can opt out of one with `meta-allow: <rule>` and a stated reason. The
+opt-out is explicit and greppable, the way a recorded decision is: an author can
+make the exception, but not hide it. Two rules do, each with its reason in the
+source -- `dependency-fit`, whose finding is a fact the model only qualifies, and
+`module-direction`, whose role classification has no per-module quality to gate
+on.
