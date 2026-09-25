@@ -3,11 +3,11 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
   declined,
   finding,
-  marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -192,18 +192,19 @@ export const languageDrift: PlannedRule = {
         return
       }
       const concept = answer["concept"]
-      if (concept === undefined || !("label" in concept)) {
+      const verdict = verdictOf(concept, candidate.words)
+      if (verdict === undefined) {
         drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "unreadable", reason: "the response did not contain a verdict" })
         return
       }
-      if (declined(concept.label)) {
+      if (verdict.label === "none" || declined(verdict.label)) {
         drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "declined", reason: "none of the words names a concept" })
         return
       }
       const quality = qualityOf({
-        score: concept.probabilities[concept.label] ?? concept.confidence ?? 1,
-        margin: marginOfAnswer(concept),
-        confidence: concept.confidence,
+        score: verdict.probability,
+        margin: verdict.margin,
+        confidence: verdict.confidence,
       })
       // This rule asks a model to guess whether an English word in a comment is
       // a domain concept, and it is the noisiest one it has. A confident answer
@@ -219,13 +220,13 @@ export const languageDrift: PlannedRule = {
         finding({
           ruleId: RULE_ID,
           severity: "warn",
-          message: "The prose says \"" + concept.label + "\", and no declaration, path or import uses the word.",
+          message: "The prose says \"" + verdict.label + "\", and no declaration, path or import uses the word.",
           help:
             "Either the code is named for something else, or the prose describes a concept the code has not named. The first is drift; the second is a missing name.",
           location: { file: candidate.file.path, line: 1, column: 1 },
-          identity: [RULE_ID, concept.label].join("\u0000"),
-          confidence: concept.confidence ?? 1,
-          score: concept.probabilities[concept.label] ?? 0,
+          identity: [RULE_ID, verdict.label].join("\u0000"),
+          confidence: verdict.confidence ?? 1,
+          score: verdict.probability,
           judged: true,
         }),
       )

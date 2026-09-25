@@ -3,11 +3,11 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
   declined,
   finding,
-  marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -155,8 +155,8 @@ export const docMatchesCode: PlannedRule = {
         })
         return
       }
-      const verdict = answer["verdict"]
-      if (verdict === undefined || !("label" in verdict)) {
+      const verdict = verdictOf(answer["verdict"], ["stale_reference", "wrong_contract", "wrong_behavior"])
+      if (verdict === undefined) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
@@ -165,7 +165,7 @@ export const docMatchesCode: PlannedRule = {
         })
         return
       }
-      if (declined(verdict.label)) {
+      if (verdict.label === "no_issue" || declined(verdict.label)) {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
@@ -174,9 +174,7 @@ export const docMatchesCode: PlannedRule = {
         })
         return
       }
-      const margin = marginOfAnswer(verdict)
-      const chosen = Object.entries(verdict.probabilities).find(([label]) => label === verdict.label)?.[1] ?? 0
-      const quality = qualityOf({ score: chosen, margin, confidence: verdict.confidence })
+      const quality = qualityOf({ score: verdict.probability, margin: verdict.margin, confidence: verdict.confidence })
       if (quality.quality === "drop") {
         drops.push({
           ruleId: RULE_ID,
@@ -190,12 +188,12 @@ export const docMatchesCode: PlannedRule = {
         finding({
           ruleId: RULE_ID,
           severity: quality.quality === "review" ? "info" : "warn",
-          message: label(unit) + " has a doc block that contradicts the code: " + verdict.label.replace(/_/g, " ") + ".",
+          message: label(unit) + " has a doc block that contradicts the code: " + (verdict.label ?? "unreadable").replace(/_/g, " ") + ".",
           help: "Fix the doc to match the code, or the code to match the doc. The doc is the one artefact no checker reads, so it is the one that drifts.",
           location: unit.location,
           identity: [RULE_ID, unit.file, unit.name].join("\u0000"),
           confidence: verdict.confidence ?? 1,
-          score: chosen,
+          score: verdict.probability,
           judged: true,
         }),
       )
