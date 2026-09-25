@@ -34,12 +34,11 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     expect(boundary?.severity).toBe("error")
     expect(boundary?.message).toContain("outside the project root")
 
-    // A breach withholds every JUDGED rule, because their evidence would cross
-    // repositories. The structural rules persist nothing, so they still run --
-    // and there is one now: `unused-import`, deterministic, needing no key and no
-    // trace, so a breach reports it and skips only the judged rules.
-    expect(report.rules).toBe(1)
-    expect(report.skipped.some((skip) => skip.ruleId === "joggle/unused-import")).toBe(false)
+    // A breach withholds every rule, because every rule is judged and a judged
+    // rule's evidence would cross repositories. That is the fence: joggle is the
+    // judged layer, and a rule that is not judged is a linter job (src/meta.ts,
+    // `require-judged`).
+    expect(report.rules).toBe(0)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/call-pattern",
@@ -102,7 +101,7 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
     // Twelve structural rules plus fourteen judged ones. The composition rules
     // are a preset and are not in this run at all, which is what makes them an
     // opinion rather than an inheritance.
-    expect(report.rules).toBe(29)
+    expect(report.rules).toBe(28)
     expect(report.diagnostics.length).toBe(1)
     // The fixture has no bundles, pages or modals, so the structural rules find
     // nothing and the page rule produces no candidates. A rule with nothing to

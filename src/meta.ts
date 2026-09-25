@@ -183,6 +183,16 @@ export const metaFindings = (input: {
     if (!namesThisRule(rule)) {
       push("require-test", "no test names this rule or any symbol it exports")
     }
+    // joggle is the JUDGED layer: the cross-file questions a linter and a
+    // typechecker cannot answer. A rule that is not judged is one of those tools'
+    // jobs -- `unused-import` belongs in oxlint, a type error in tsc -- and a
+    // deterministic rule in joggle is a candidate generator that forgot to ask.
+    if (!rule.judged) {
+      push(
+        "require-judged",
+        "a rule that is not judged is a linter or typechecker job, not a joggle question",
+      )
+    }
     if (!rule.judged) continue
     // A judged rule that builds plans must declare what violates it, or
     // calibration cannot reduce its question. A rule that answers its own

@@ -10,40 +10,23 @@ The engine owns traversal, caching, batching and the report. A rule says what to
 look for and what to ask; it never walks the AST by hand or makes its own API
 call.
 
-## The two kinds of rule
+## joggle is the judged layer
 
-**Deterministic.** A predicate over facts. No model, no key, no cost.
+A linter checks one file; a typechecker checks one program. joggle asks the
+cross-file questions neither can: are these two declarations one thing, does this
+name mean the same here as there, is this the primitive that already exists.
 
-```ts
-import { Effect, defineRule, finding, outcome } from "@autotelic/joggle/plugin"
+Every rule is therefore a JUDGED rule: a candidate the deterministic index
+produces, and a question Jev answers. `defineRule` with `judged: false` still
+exists in the type, and it is a smell -- `unused-import` belongs in oxlint, a type
+error belongs in tsc. If a deterministic predicate can decide it, that is where it
+goes, and joggle does not need a rule for it. The `require-judged` meta-rule
+rejects one.
 
-export const noTodoComments = defineRule({
-  id: "acme/no-todo-comments",
-  severity: "warn",
-  description: "A TODO left in the source.",
-  judged: false,
-  run: Effect.fn("acme/no-todo-comments")(function* (workspace, scope) {
-    const diagnostics = []
-    for (const file of workspace.files) {
-      if (scope.changed !== undefined && !inScope(scope, file.path)) continue
-      if (!file.text.includes("TODO")) continue
-      diagnostics.push(
-        finding({
-          ruleId: "acme/no-todo-comments",
-          severity: "warn",
-          message: file.path + " has a TODO.",
-          location: { file: file.path, line: 1, column: 1 },
-          judged: false,
-        }),
-      )
-    }
-    return outcome(diagnostics)
-  }),
-})
-```
+The deterministic half of a judged rule is its candidate generation (`find`),
+which is code and free. The verdict is the model's.
 
-**Judged.** The verdict is a question. The candidate is a fact; the answer is the
-model's.
+## A judged rule
 
 ```ts
 import { Decision, Effect, Atoms, verdictOf, qualityOf, outcome, finding } from "@autotelic/joggle/plugin"
@@ -141,17 +124,14 @@ model, so a rule is tested the way it runs.
 ```ts
 import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
-import { diagnosticsOf, plannedDiagnosticsOf, answeringModel } from "@autotelic/joggle/testing"
+import { plannedDiagnosticsOf, answeringModel } from "@autotelic/joggle/testing"
 import { loadWorkspace } from "@autotelic/joggle/plugin"
 
 const workspace = await Effect.runPromise(
   loadWorkspace("tests/fixtures/acme", ["."]).pipe(Effect.provide(NodeServices.layer)),
 )
 
-// Deterministic: just run it.
-const found = await Effect.runPromise(diagnosticsOf(rule, workspace))
-
-// Judged: answer the questions yourself.
+// Answer the questions yourself.
 const outcome = await Effect.runPromise(
   plannedDiagnosticsOf(rule, workspace).pipe(
     Effect.provide(answeringModel({ verdict: { type: "choice", choice: "generic", probabilities: { generic: 0.9 }, confidence: 0.9 } })),
@@ -201,9 +181,11 @@ A `preset` is the same thing packaged to share with others:
 
 ## The fence
 
-Those four lines are not advice. `@autotelic/joggle/plugin` exports `metaFindings`,
+Those lines are not advice. `@autotelic/joggle/plugin` exports `metaFindings`,
 the authorship rules every rule module here must keep, and a test enforces them:
 
+- `require-judged` -- every rule is judged. A deterministic rule is a linter or
+  typechecker job, not a joggle question.
 - `require-violations` -- a planned rule declares the labels that mean it is
   violated, or calibration cannot reduce its question.
 - `require-test` -- a test names the rule or a symbol it exports.
