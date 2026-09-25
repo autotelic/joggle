@@ -1,0 +1,195 @@
+# Writing a rule
+
+joggle is a registry, and a registry is only half a plugin system. The other half
+is `@autotelic/joggle/plugin`: one entry point exporting everything a rule needs,
+so an opinion of your own is a module that imports the package rather than three
+relative paths into it. Everything re-exported there is supported; anything not
+there is not.
+
+The engine owns traversal, caching, batching and the report. A rule says what to
+look for and what to ask; it never walks the AST by hand or makes its own API
+call.
+
+## The two kinds of rule
+
+**Deterministic.** A predicate over facts. No model, no key, no cost.
+
+```ts
+import { Effect, defineRule, finding, outcome } from "@autotelic/joggle/plugin"
+
+export const noTodoComments = defineRule({
+  id: "acme/no-todo-comments",
+  severity: "warn",
+  description: "A TODO left in the source.",
+  judged: false,
+  run: Effect.fn("acme/no-todo-comments")(function* (workspace, scope) {
+    const diagnostics = []
+    for (const file of workspace.files) {
+      if (scope.changed !== undefined && !inScope(scope, file.path)) continue
+      if (!file.text.includes("TODO")) continue
+      diagnostics.push(
+        finding({
+          ruleId: "acme/no-todo-comments",
+          severity: "warn",
+          message: file.path + " has a TODO.",
+          location: { file: file.path, line: 1, column: 1 },
+          judged: false,
+        }),
+      )
+    }
+    return outcome(diagnostics)
+  }),
+})
+```
+
+**Judged.** The verdict is a question. The candidate is a fact; the answer is the
+model's.
+
+```ts
+import { Decision, Effect, Atoms, verdictOf, qualityOf, outcome, finding } from "@autotelic/joggle/plugin"
+
+export const genericName: PlannedRule = {
+  id: "acme/generic-name",
+  severity: "info",
+  description: "A generic single-word export.",
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("acme/generic-name")(function* (workspace, scope) {
+    const atoms = yield* Atoms
+    const planned = []
+    for (const unit of workspace.units) {
+      if (!unit.exported) continue
+      if (scope.changed !== undefined && !inScope(scope, unit.file)) continue
+      const id = yield* atoms.add({ name: unit.name, file: unit.file })
+      planned.push({
+        ruleId: "acme/generic-name",
+        subject: unit.name,
+        concerns: [unit.file],
+        atoms: [id],
+        // The same declaration the read uses, so calibration can reduce it too.
+        violations: { verdict: ["generic"] },
+        decisions: {
+          verdict: Decision.classify({
+            instructions: "Is `atoms[" + id + "].name` a generic single word?",
+            criteria: { generic: "One word with no owner.", specific: "A named thing." },
+          }),
+        },
+        read: (answers) => answers,
+      })
+    }
+    return {
+      plans: planned,
+      read: (answers) => {
+        const verdicts = verdictsOf(answers)
+        const diagnostics = []
+        planned.forEach((entry, index) => {
+          const verdict = verdictOf(verdicts[index]?.verdict, ["generic"])
+          if (verdict === undefined || verdict.label !== "generic") return
+          const quality = qualityOf({
+            score: verdict.probability,
+            margin: verdict.margin,
+            confidence: verdict.confidence,
+          })
+          if (quality.quality !== "act") return // flagged, not printed
+          diagnostics.push(
+            finding({
+              ruleId: "acme/generic-name",
+              severity: "info",
+              message: entry.subject + " is a generic name.",
+              location: { file: entry.concerns[0], line: 1, column: 1 },
+              judged: true,
+            }),
+          )
+        })
+        return outcome(diagnostics)
+      },
+    }
+  }),
+}
+```
+
+## The facts a rule reads
+
+`Workspace` is the index. Load it with `loadWorkspace(root, paths)`.
+
+| Field | What it is |
+| --- | --- |
+| `workspace.files` | every parsed `SourceFile`, with `path` and `text` |
+| `workspace.units` | functions, interfaces, type aliases, classes, variables |
+| `workspace.imports` | the import graph: `edges`, `importersOfName`, cycles, layers |
+| `workspace.manifests` | the `package.json` of each directory |
+| `workspace.types` | the tsgo type trace (needs `--types`) |
+
+A `SourceFile.facts` carries what the parser found:
+
+| Fact | What it is |
+| --- | --- |
+| `callSites` | every call, with its span and dotted callee name |
+| `jsx` | every JSX element name |
+| `objects` | every object literal: keys, span, whether it is a declaration |
+| `columns` | columns a knex migration creates, with their nullability |
+
+A `Unit` is one declaration: `kind`, `name`, `file`, `location`, `exported`,
+`text`, `tokens`, `typeRefs`, `calls` (resolved to `file#name`), `fields`,
+`fieldTypes`, `composed`, `shapeHash`, `callSignature`, `typed`, `test`.
+
+## Test it
+
+`@autotelic/joggle/testing` runs a rule against a fixture, with or without a
+model, so a rule is tested the way it runs.
+
+```ts
+import { Effect } from "effect"
+import { NodeServices } from "@effect/platform-node"
+import { diagnosticsOf, plannedDiagnosticsOf, answeringModel } from "@autotelic/joggle/testing"
+import { loadWorkspace } from "@autotelic/joggle/plugin"
+
+const workspace = await Effect.runPromise(
+  loadWorkspace("tests/fixtures/acme", ["."]).pipe(Effect.provide(NodeServices.layer)),
+)
+
+// Deterministic: just run it.
+const found = await Effect.runPromise(diagnosticsOf(rule, workspace))
+
+// Judged: answer the questions yourself.
+const outcome = await Effect.runPromise(
+  plannedDiagnosticsOf(rule, workspace).pipe(
+    Effect.provide(answeringModel({ verdict: { type: "choice", choice: "generic", probabilities: { generic: 0.9 }, confidence: 0.9 } })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+```
+
+## Register it
+
+A repository adds its rules in `joggle.config.json`:
+
+```json
+{
+  "plugins": ["./tools/joggle/generic-name.ts"]
+}
+```
+
+A plugin module exports `rules`, and optionally `config` to set severities:
+
+```ts
+export const rules = [genericName]
+export const config = { rules: { "acme/generic-name": "warn" } }
+```
+
+A `preset` is the same thing packaged to share with others:
+`"presets": ["@autotelic/joggle/presets/composition"]`.
+
+## The discipline the API is shaped by
+
+- **Deterministic where you can prove, and judge only where you must.** The
+  candidate filter is code and free; the verdict is a question.
+- **Declare the violation.** `violations` on the plan names the labels that mean
+  the rule is violated; `verdictOf` reduces any answer (a Choice's mass on them, a
+  Noul's probability) to one number the gate and the report read. Calibration uses
+  the same declaration.
+- **Flag, do not print, when unsure.** `qualityOf` gives `act`, `review` or
+  `drop`; a finding is `act`. A non-decisive answer is recorded as a drop, because
+  a linter that prints its own uncertainty beside its findings stops being read.
+- **State is bounded.** Put the panel a reviewer needs in the atom, and no more:
+  unrelated detail costs accuracy.

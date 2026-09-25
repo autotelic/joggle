@@ -54,6 +54,9 @@ export { Decision, DecisionModel } from "effect/unstable/ai"
 export * from "./atoms.ts"
 export * from "./plans.ts"
 
+/* The one reduction from an answer to P(violated), and the verdict it yields. */
+export * from "./verdict.ts"
+
 /* Deciding, and the vocabulary decisions are made in. */
 export * from "./policy.ts"
 export * from "./vocabulary.ts"
