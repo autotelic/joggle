@@ -185,7 +185,7 @@ And the rules:
 
 | rule | the facts |
 | --- | --- |
-| `inferred-over-recorded` | the returned expression's type is `boolean`; the unit names a type; that type records a boolean it does not read |
+| `inferred-over-recorded` | a comparison (an AST operator, a language construct) and a return; the unit names a type; that type records a boolean it does not read |
 | `unbounded-default-read` | a call to a function whose every filter is optional; the callee's declaration; the data package its file imports |
 
 Both are a candidate generator plus a question, and neither is blocked on Jev.

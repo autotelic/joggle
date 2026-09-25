@@ -375,6 +375,21 @@ from the same file, so it is exact.
 It is a REQUEST LIST rather than a whole-project dump, because the output for
 1,870 files would be enormous and a rule only asks about the nodes its candidates
 built. `check.ts` collects the positions in scope, asks once per run under
-`--types`, and puts `RunContext.nodeTypes` on the context. The first rule to read
-it is `joggle/inferred-over-recorded`; the ones in "Rules this unlocks" are now a
-candidate generator plus a question each.
+`--types`, and puts `RunContext.nodeTypes` on the context.
+
+**What it answers, and what it does not.** `getTypeAtPosition` resolves the TOKEN
+at a position -- hover, in effect -- so a binary expression's offset answers its
+LEFT OPERAND (`payroll`, not the comparison that gives it a boolean). It answers
+an IDENTIFIER's type, exactly, which is what `declared-resolved-drift` and
+`opaque-primitive` need. It does NOT answer an expression's type. The declaration
+trace does not either, for this purpose: it carries interfaces and aliases, not
+function signatures.
+
+To get expression types the next step is the native AST, not the position API:
+`Program.getSourceFile` gives the checker's own tree, and
+`Checker.getTypeAtLocation(returnStatement.expression)` is the exact answer --
+`inferred-over-recorded` reads a comparison from the AST today for that reason.
+
+Two rules now read types: `types-over-logic` reads `workspace.types` (a guard's
+declared type), and the ones in "Rules this unlocks" are a candidate generator
+plus a question each.
