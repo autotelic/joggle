@@ -18,6 +18,9 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/call-pattern"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["same_orchestration"] } as const
+
 // Two declarations that make the same calls in the same order.
 //
 // The one thing a body-shape comparison cannot see. `duplicate-implementation`
@@ -116,6 +119,7 @@ export const callPattern: PlannedRule = {
           subject: units.map((unit) => unit.name).join(", ") + " (" + calls.length + " calls)",
           concerns: [...new Set(units.map((unit) => unit.file))],
           atoms: [id],
+          violations: VIOLATIONS,
           decisions: {
             verdict: Decision.classify({
               instructions: [
@@ -153,7 +157,7 @@ export const callPattern: PlannedRule = {
           const { units } = value
           const subject = units.map((unit) => unit.name).join(", ")
           const answer = verdicts[index]
-          const verdict = verdictOf(answer?.["verdict"], ["same_orchestration"])
+          const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
             diagnostics.push(findingFor(value, undefined, "no judgement was available"))
             return

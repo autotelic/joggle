@@ -19,6 +19,9 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/duplicate-call-run"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["shared_helper"] } as const
+
 // A run of calls one declaration shares with another, without sharing the whole
 // sequence.
 //
@@ -167,6 +170,7 @@ export const duplicateCallRun: PlannedRule = {
           subject: run.left.name + " / " + run.right.name,
           concerns: [run.left.file, run.right.file],
           atoms: [id],
+          violations: VIOLATIONS,
           decisions: {
             verdict: Decision.classify({
               instructions: [
@@ -201,7 +205,7 @@ export const duplicateCallRun: PlannedRule = {
           const { run } = value
           const subject = run.left.name + " / " + run.right.name
           const answer = verdicts[index]
-          const verdict = verdictOf(answer?.["verdict"], ["shared_helper"])
+          const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
             diagnostics.push(findingFor(value, undefined, "no judgement was available"))
             return

@@ -139,6 +139,7 @@ export const layerDirection: PlannedRule = {
           subject: violation.from + " -> " + violation.to,
           concerns: [violation.from],
           atoms: [id],
+          violations: { verdict: ["upward"] },
           decisions: {
             verdict: Decision.classify({
               instructions: [
@@ -247,6 +248,7 @@ export const importCycle: PlannedRule = {
           subject: cycle.files.join(" -> "),
           concerns: [...cycle.files],
           atoms: [id],
+          violations: { verdict: ["cycle"] },
           decisions: {
             verdict: Decision.classify({
               instructions: [
@@ -365,6 +367,7 @@ export const layerPurity: PlannedRule = {
           subject: violation.from + " -> " + violation.specifier,
           concerns: [violation.from],
           atoms: [id],
+          violations: { verdict: ["forbidden"] },
           decisions: {
             verdict: Decision.classify({
               instructions: [

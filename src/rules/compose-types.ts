@@ -17,6 +17,9 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/compose-types"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["composes", "same_name_drift"] } as const
+
 // A type that lists every field of another type.
 //
 // "Composed of smaller canonical things" is a principle until it becomes a set
@@ -140,6 +143,7 @@ export const composeTypes: PlannedRule = {
           subject: whole.name + " (lists " + part.name + ")",
           concerns: [whole.file, part.file],
           atoms: [id],
+          violations: VIOLATIONS,
           decisions: {
             verdict: Decision.classify({
               instructions: [
@@ -179,7 +183,7 @@ export const composeTypes: PlannedRule = {
           const { whole, part } = value.candidate
           const subject = whole.name + " (lists " + part.name + ")"
           const answer = verdicts[index]
-          const verdict = verdictOf(answer?.["verdict"], ["composes", "same_name_drift"])
+          const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
             diagnostics.push(findingFor(value.candidate, undefined, "no judgement was available", undefined))
             return

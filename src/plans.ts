@@ -40,6 +40,14 @@ export interface Plan<A> {
   /** The atoms every decision in this plan references. */
   readonly atoms: ReadonlyArray<string>
   readonly decisions: Record<string, Decision.Any>
+  /**
+   * Per decision, the labels that mean "this rule is violated".
+   *
+   * The same declaration the read uses via `verdictOf`, made data so calibration
+   * can reduce an answer without re-deriving the rule's intent. A Noul needs no
+   * entry: its probability is already the violation.
+   */
+  readonly violations?: Readonly<Record<string, ReadonlyArray<string>>> | undefined
   readonly read: (answers: DecisionAnswers) => A | undefined
 }
 

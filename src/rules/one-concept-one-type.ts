@@ -20,6 +20,9 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/one-concept-one-type"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["one_concept", "two_concepts"] } as const
+
 // One declared name, resolving to different types in different files.
 //
 // Text cannot see this. `User` in the API and `User` in the UI read identically
@@ -114,6 +117,7 @@ export const oneConceptOneType: PlannedRule = {
           subject: candidate.name,
           concerns: [...new Set(candidate.entries.map((entry) => entry.unit.file))],
           atoms: [id],
+          violations: VIOLATIONS,
           decisions: {
             verdict: Decision.classify({
               instructions: [
@@ -147,7 +151,7 @@ export const oneConceptOneType: PlannedRule = {
           const { candidate } = value
           const subject = candidate.name
           const answer = verdicts[index]
-          const verdict = verdictOf(answer?.["verdict"], ["one_concept", "two_concepts"])
+          const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
             diagnostics.push(findingFor(candidate, undefined, "no judgement was available"))
             return

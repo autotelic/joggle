@@ -20,6 +20,9 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/object-shape"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["one_concept"] } as const
+
 // Object literals that share a shape and have no name.
 //
 // The entropy machine called this `object-duplicate`: "define a named type or
@@ -154,6 +157,7 @@ export const objectShape: PlannedRule = {
             subject: "object shape { " + keys.join("; ") + " }",
             concerns: files,
             atoms: [id],
+          violations: VIOLATIONS,
             decisions: {
               verdict: Decision.classify({
                 instructions: [
@@ -190,7 +194,7 @@ export const objectShape: PlannedRule = {
           const subject = "object shape { " + keys.join("; ") + " }"
           const line = lineAt(lineStarts(textOf.get(first.file) ?? ""), first.start)
           const answer = verdicts[index]
-          const verdict = verdictOf(answer?.["verdict"], ["one_concept"])
+          const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
             diagnostics.push(findingFor(entry, line, undefined, "no judgement was available"))
             return

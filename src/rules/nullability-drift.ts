@@ -17,6 +17,9 @@ import type { Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/nullability-drift"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["drift"] } as const
+
 // One column, two nullabilities.
 //
 // `field-type-drift` compares two TypeScript declarations. This compares a type
@@ -123,6 +126,7 @@ export const nullabilityDrift: PlannedRule = {
           subject: candidate.source + " / " + candidate.field,
           concerns: [candidate.schema.file, candidate.column.file],
           atoms: [id],
+          violations: VIOLATIONS,
           decisions: {
             verdict: Decision.classify({
               instructions: [
@@ -156,7 +160,7 @@ export const nullabilityDrift: PlannedRule = {
           const { candidate } = value
           const subject = candidate.source + " / " + candidate.field
           const answer = verdicts[index]
-          const verdict = verdictOf(answer?.["verdict"], ["drift"])
+          const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
             diagnostics.push(findingFor(candidate, undefined, "no judgement was available"))
             return

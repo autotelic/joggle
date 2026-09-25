@@ -19,6 +19,9 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/doc-matches-code"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["stale_reference", "wrong_contract", "wrong_behavior"] } as const
+
 /**
  * A JSDoc that makes a claim the implementation contradicts.
  *
@@ -124,6 +127,7 @@ export const docMatchesCode: PlannedRule = {
           subject: label(unit),
           concerns: [unit.file],
           atoms: [id],
+          violations: VIOLATIONS,
           decisions: docReview(id),
           read: (answers) => answers,
         },
@@ -155,7 +159,7 @@ export const docMatchesCode: PlannedRule = {
         })
         return
       }
-      const verdict = verdictOf(answer["verdict"], ["stale_reference", "wrong_contract", "wrong_behavior"])
+      const verdict = verdictOf(answer["verdict"], VIOLATIONS.verdict)
       if (verdict === undefined) {
         drops.push({
           ruleId: RULE_ID,

@@ -18,6 +18,9 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/name-the-primitive"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["one_thing"] } as const
+
 // A group of fields that always appears together and has no name.
 //
 // `compose-types` finds a type that repeats a NAMED type; this finds the shape
@@ -160,6 +163,7 @@ export const nameThePrimitive: PlannedRule = {
             subject: "field group { " + entry.fields.join(", ") + " }",
             concerns: [...new Set(entry.units.map((unit) => unit.file))],
             atoms: [id],
+          violations: VIOLATIONS,
             decisions: {
               verdict: Decision.classify({
                 instructions: [
@@ -195,7 +199,7 @@ export const nameThePrimitive: PlannedRule = {
           const { entry } = value
           const subject = "field group { " + entry.fields.join(", ") + " }"
           const answer = verdicts[index]
-          const verdict = verdictOf(answer?.["verdict"], ["one_thing"])
+          const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
             diagnostics.push(findingFor(value, undefined, "no judgement was available"))
             return

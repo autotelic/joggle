@@ -24,6 +24,9 @@ import {
 import type { Diagnostic, Drop, Severity } from "../schema.ts"
 import type { Workspace } from "../workspace.ts"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["violation"] } as const
+
 // The composition pattern's PRODUCER rules: is a bundle well formed?
 //
 // The problems are provable from structure alone -- a call, an element name, the
@@ -76,6 +79,7 @@ const ruleFor = (spec: Spec): PlannedRule => ({
           subject: spec.subject(bundle),
           concerns: [bundle.dir],
           atoms: [id],
+          violations: VIOLATIONS,
           decisions: {
             verdict: Decision.classify({
               instructions: [
@@ -109,7 +113,7 @@ const ruleFor = (spec: Spec): PlannedRule => ({
           const { bundle, problems } = value.candidate
           const subject = spec.subject(bundle)
           const answer = verdicts[index]
-          const verdict = verdictOf(answer?.["verdict"], ["violation"])
+          const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
             diagnostics.push(findingFor(spec, bundle, problems, undefined, "no judgement was available"))
             return

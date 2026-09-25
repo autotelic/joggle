@@ -19,6 +19,9 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/field-type-drift"
 
+/** Which labels mean this rule is violated -- the read and the calibration share it. */
+const VIOLATIONS = { verdict: ["drift", "two_concepts"] } as const
+
 // One field name declared with two incompatible types.
 //
 // A field name is a promise about meaning. When `projectId` is a `string` in one
@@ -293,6 +296,7 @@ export const fieldTypeDrift: PlannedRule = {
           subject: group.unit + " (" + group.file + ":" + String(group.line) + ")",
           concerns: [...new Set(group.drifts.flatMap((drift) => [drift.left.file, drift.right.file]))],
           atoms: [id],
+          violations: VIOLATIONS,
           decisions: {
             verdict: Decision.classify({
               instructions: [
@@ -326,7 +330,7 @@ export const fieldTypeDrift: PlannedRule = {
           const { group } = value
           const subject = group.unit + " (" + group.file + ":" + String(group.line) + ")"
           const answer = verdicts[index]
-          const verdict = verdictOf(answer?.["verdict"], ["drift", "two_concepts"])
+          const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
             diagnostics.push(findingFor(group, undefined, "no judgement was available"))
             return
