@@ -50,6 +50,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       "joggle/duplicate-implementation",
       "joggle/duplicate-meaning",
       "joggle/field-type-drift",
+      "joggle/generic-carries-a-caller",
       "joggle/hoist-to-domain",
       "joggle/import-cycle",
       "joggle/language-drift",
