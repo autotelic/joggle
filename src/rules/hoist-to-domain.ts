@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter } from "../reporting.ts"
 import {
   budgetNote,
   declined,
-  finding,
   marginOfAnswer,
   outcome,
   type DecisionAnswers,
@@ -155,11 +155,18 @@ export const hoistToDomain: PlannedRule = {
   description: "Business logic at the edge that belongs in a domain package.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    rule_at_the_edge:
+      "{{name}} in {{file}} is a rule about the business, living in {{home}}.",
+    rule_at_the_edge_help:
+      "Move it into the domain package and import it from here. Business rules at the edge get re-implemented by the next caller, and the two copies then disagree. If this is deliberately local, pin the decision in the config so the question is not asked again.",
+  }),
   plan: Effect.fn("joggle/hoist-to-domain")(function* (
     workspace: Workspace,
     scope: Scope,
     context,
   ) {
+    const report = reporter(hoistToDomain, locator(workspace))
     const all = candidatesIn(workspace, scope)
     // Declared before its first use, not after: a generator's body is one scope and
     // the type checker cannot see the temporal dead zone that produced
@@ -313,23 +320,16 @@ export const hoistToDomain: PlannedRule = {
         return
       }
       diagnostics.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: "warn",
-          message:
-            unit.name +
-            " in " +
-            unit.file +
-            " is a rule about the business, living in " +
-            home.label.replace(/_/g, " ") +
-            ".",
-          help:
-            "Move it into the domain package and import it from here. Business rules at the edge get re-implemented by the next caller, and the two copies then disagree. If this is deliberately local, pin the decision in the config so the question is not asked again.",
-          location: unit.location,
-          identity: [RULE_ID, unit.file, unit.name].join("\u0000"),
-          confidence: duty.confidence ?? 1,
-          judged: true,
-        }),
+        report({
+                  at: unit,
+                  messageId: "rule_at_the_edge",
+                  data: { name: unit.name, file: unit.file, home: (home.label ?? "").replace(/_/g, " ") },
+                  helpId: "rule_at_the_edge_help",
+                  identity: [RULE_ID, unit.file, unit.name].join("\u0000"),
+                  confidence: duty.confidence ?? 1,
+                  judged: true,
+                  severity: "warn",
+                }),
       )
         })
 

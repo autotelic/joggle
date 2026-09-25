@@ -1,7 +1,8 @@
 import { Effect } from "effect"
+import { locator, messages, reporter } from "../reporting.ts"
 import { layersFrom } from "../architecture.ts"
 import { classifyModules, moduleOf, modulesOf } from "../roles.ts"
-import { defineRule, finding, inGraphScope, outcome, type Scope } from "../rule.ts"
+import { defineRule, inGraphScope, outcome, type Scope } from "../rule.ts"
 import type { Diagnostic } from "../schema.ts"
 import type { Workspace } from "../workspace.ts"
 
@@ -35,11 +36,18 @@ export const moduleDirection = defineRule({
   severity: "warn",
   description: "A module depends on a module whose role sits above it.",
   judged: true,
+  messages: messages({
+    upward_module:
+      "A {{from}} module imports a {{to}} module: {{fromModule}} -> {{toModule}}.",
+    upward_module_help:
+      "The roles are ordered {{order}}, and {{from}} sits below {{to}}. That order was inferred from what the two modules are, not from a declared layering -- write one in joggle.config.json if this repository disagrees, and this rule will step aside.",
+  }),
   run: Effect.fn("joggle/module-direction")(function* (
     workspace: Workspace,
     scope: Scope,
     context,
   ) {
+    const report = reporter(moduleDirection, locator(workspace))
     const declared = layersFrom(context.config)
     if (declared.length > 0) {
       return outcome([], [
@@ -85,33 +93,21 @@ export const moduleDirection = defineRule({
       if (seen.has(key)) continue
       seen.add(key)
       diagnostics.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: "warn",
-          message:
-            "A " +
-            from +
-            " module imports a " +
-            to +
-            " module: " +
-            moduleKey(edge.from, workspace) +
-            " -> " +
-            moduleKey(edge.to, workspace) +
-            ".",
-          help:
-            "The roles are ordered " +
-            order(classified.ranks) +
-            ", and " +
-            from +
-            " sits below " +
-            to +
-            ". That order was inferred from what the two modules are, not from a declared layering -- write one in joggle.config.json if this repository disagrees, and this rule will step aside.",
-          location: { file: edge.from, line: 1, column: 1 },
-          identity: [RULE_ID, from, to].join("\u0000"),
-          // The roles came from the model, so this finding does too. Saying
-          // otherwise hides the model call from every downstream count.
-          judged: true,
-        }),
+        report({
+                  at: { file: edge.from, start: 0 },
+                  messageId: "upward_module",
+                  data: {
+                    from,
+                    to,
+                    fromModule: moduleKey(edge.from, workspace),
+                    toModule: moduleKey(edge.to, workspace),
+                    order: order(classified.ranks),
+                  },
+                  helpId: "upward_module_help",
+                  identity: [RULE_ID, from, to].join("\u0000"),
+                  judged: true,
+                  severity: "warn",
+                }),
       )
     }
 

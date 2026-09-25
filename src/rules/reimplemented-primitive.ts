@@ -4,8 +4,8 @@ import { Atoms } from "../atoms.ts"
 import { lineAt, lineStarts } from "../cascade.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import {
-  finding,
   inScope,
   marginOfAnswer,
   outcome,
@@ -104,10 +104,17 @@ export const reimplementedPrimitive: PlannedRule = {
   judged: true,
   onUnavailable: "report",
   operations: ["replace"],
+  messages: messages({
+    inlined_helper:
+      "{{name}} inlines what `{{helper}}` already does: {{count}} call(s) in the same order.",
+    inlined_helper_help:
+      "Call `{{helper}}` in {{helperFile}} instead of repeating its body. The calls are {{calls}}.{{unverified}}",
+  }),
   plan: Effect.fn("joggle/reimplemented-primitive")(function* (
     workspace: Workspace,
     scope: Scope,
   ) {
+    const report = reporter(reimplementedPrimitive, locator(workspace))
     const { minCalls, maxPairs } = policy.reimplementedPrimitive
 
     const fileOf = new Map(workspace.files.map((file) => [file.path, file]))
@@ -249,7 +256,7 @@ export const reimplementedPrimitive: PlannedRule = {
             // No judgement: report the fact unverified. A high-recall candidate
             // with no verdict is still a candidate a reader may want.
             diagnostics.push(
-              findingFor(pair, workspace, "no judgement was available", "no judgement was available"),
+              findingFor(report, pair, workspace, "no judgement was available", "no judgement was available"),
             )
             return
           }
@@ -273,6 +280,7 @@ export const reimplementedPrimitive: PlannedRule = {
           }
           diagnostics.push(
             findingFor(
+              report,
               pair,
               workspace,
               quality.quality === "act" ? undefined : quality.reason,
@@ -322,6 +330,7 @@ const callGraphEvidence = (unit: Unit, workspace: Workspace): Schema.Json => {
 
 /** The finding for one candidate: verified, or the fact with the reason it is not. */
 const findingFor = (
+  report: Report,
   pair: { readonly unit: Unit; readonly helper: Unit; readonly start: number; readonly length: number },
   workspace: Workspace,
   unverifiedReason: string | undefined,
@@ -354,28 +363,24 @@ const findingFor = (
   }
 
   const verified = unverifiedReason === undefined
-  return finding({
-    ruleId: RULE_ID,
-    severity: "info",
-    message:
-      unit.name +
-      " inlines what `" +
-      helper.name +
-      "` already does: " +
-      length +
-      " call(s) in the same order.",
-    help:
-      "Call `" +
-      helper.name +
-      "` in " +
-      helper.file +
-      " instead of repeating its body. The calls are " +
-      unit.calls.slice(start, start + length).map(stripFile).join(" -> ") +
-      "." +
-      (verified ? "" : " Not verified: " + (unverifiedReason ?? fallbackReason) + "."),
-    location: unit.location,
+  return report({
+    at: unit,
+    messageId: "inlined_helper",
+    data: {
+      name: unit.name,
+      helper: helper.name,
+      helperFile: helper.file,
+      count: length,
+      calls: unit.calls
+        .slice(start, start + length)
+        .map(stripFile)
+        .join(" -> "),
+      unverified: verified ? "" : " Not verified: " + (unverifiedReason ?? fallbackReason) + ".",
+    },
+    helpId: "inlined_helper_help",
     identity: [RULE_ID, unit.file, unit.name, helper.file, helper.name].join("\u0000"),
     judged: verified,
+    severity: "info",
     repair: {
       operation: "replace",
       keep: helper.location,

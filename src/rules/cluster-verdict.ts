@@ -6,12 +6,12 @@ import { isUnreachable } from "../decision.ts"
 import { cascadeOf } from "../cascade.ts"
 import { derivedOperation, describeOperation, permitted, settle } from "../operation.ts"
 import { answerPlans, PlanAnswers, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { policy } from "../policy.ts"
 import { canImport, sharedLayerFor, type Layer } from "../architecture.ts"
 import {
   declined,
   everyFile,
-  finding,
   marginOfAnswer,
   qualityOf,
   type DecisionAnswers,
@@ -533,8 +533,25 @@ const memberList = (units: ReadonlyArray<Unit>): string => {
 const identityOf = (ruleId: string, cluster: Cluster, keep: Unit): string =>
   [ruleId, keep.name, ...[...new Set(cluster.members.map((m) => m.file))].sort()].join("\u0000")
 
+/** Every cluster rule reports through these. */
+const CLUSTER_MESSAGES = messages({
+  unverified: "{{subject}}.",
+  unverified_help:
+    "Keep `{{keep}}` ({{keepAt}}) and import it elsewhere. Not verified: {{reason}}.{{shape}} Duplicates: {{duplicates}}.",
+  duplicate: "{{subject}} — keep `{{keep}}` in {{keepAt}}{{extra}}.",
+  duplicate_help: "{{prescription}}{{shape}} {{dependents}}.{{review}}",
+})
+
+/** Bind a cluster rule's messages to a workspace's locator. */
+export const clusterReporter = (rule: ClusterRule, workspace: Workspace): Report =>
+  reporter(
+    { id: rule.ruleId, severity: rule.severity, judged: true, messages: CLUSTER_MESSAGES },
+    locator(workspace),
+  )
+
 /** No judgement available: report the fact, say so, and never guess a canonical. */
 export const unverifiedFinding = (
+  report: Report,
   rule: ClusterRule,
   cluster: Cluster,
   reason = "no judgement was available",
@@ -543,14 +560,21 @@ export const unverifiedFinding = (
   const drops = cluster.members.slice(1)
   const first = drops[0]
   if (keep === undefined || first === undefined) return undefined
-  return finding({
-    ruleId: rule.ruleId,
-    severity: rule.severity,
-    message: `${rule.subject(cluster)}.`,
-    help: `Keep \`${keep.name}\` (${keep.file}:${keep.location.line}) and import it elsewhere. Not verified: ${reason}.${shapeOnlyNote(cluster)} Duplicates: ${memberList(drops)}.`,
-    location: first.location,
+  return report({
+    at: first,
+    messageId: "unverified",
+    data: {
+      subject: rule.subject(cluster),
+      keep: keep.name,
+      keepAt: keep.file + ":" + keep.location.line,
+      reason,
+      shape: shapeOnlyNote(cluster),
+      duplicates: memberList(drops),
+    },
+    helpId: "unverified_help",
     identity: identityOf(rule.ruleId, cluster, keep),
     judged: false,
+    severity: rule.severity,
   })
 }
 
@@ -643,8 +667,9 @@ export const findingFor = (
   layers: ReadonlyArray<Layer>,
 ): Result => {
   const imports = workspace.imports
+  const report = clusterReporter(rule, workspace)
   if (verdict === undefined) {
-    const fallback = rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster) : undefined
+    const fallback = rule.onUnavailable === "report" ? unverifiedFinding(report, rule, cluster) : undefined
     return fallback === undefined
       ? { drop: dropOf(rule, cluster, "unreadable", "no judgement available") }
       : { diagnostic: fallback }
@@ -665,7 +690,7 @@ export const findingFor = (
   })
   if (quality.quality === "drop") {
     const fallback =
-      rule.onUnavailable === "report" ? unverifiedFinding(rule, cluster, quality.reason) : undefined
+      rule.onUnavailable === "report" ? unverifiedFinding(report, rule, cluster, quality.reason) : undefined
     return fallback === undefined
       ? { drop: dropOf(rule, cluster, "gated", quality.reason) }
       : { diagnostic: fallback }
@@ -702,19 +727,28 @@ export const findingFor = (
           settled: verdict.settled,
         }
   return {
-    diagnostic: finding({
-      ruleId: rule.ruleId,
-      severity: review ? "info" : rule.severity,
-      message: `${rule.subject(cluster)} — keep \`${keep.name}\` in ${keep.file}:${keep.location.line}${extra}.`,
-      // The model's answer when there is one, the declared layers when there are
-      // not. A repository that configures nothing still gets advice.
-      help: `${verdict.prescription ?? prescription(layers, cluster, keep, drops)}${shapeOnlyNote(cluster)} ${dependents(imports, keep)}.${review ? " For review: " + quality.reason + "." : ""}`,
-      location: first.location,
+    diagnostic: report({
+      at: first,
+      messageId: "duplicate",
+      data: {
+        subject: rule.subject(cluster),
+        keep: keep.name,
+        keepAt: keep.file + ":" + keep.location.line,
+        extra,
+        // The model's answer when there is one, the declared layers when there
+        // are not. A repository that configures nothing still gets advice.
+        prescription: verdict.prescription ?? prescription(layers, cluster, keep, drops),
+        shape: shapeOnlyNote(cluster),
+        dependents: dependents(imports, keep),
+        review: review ? " For review: " + quality.reason + "." : "",
+      },
+      helpId: "duplicate_help",
       identity: identityOf(rule.ruleId, cluster, keep),
       confidence: verdict.confidence,
       score: verdict.score,
       judged: true,
       repair,
+      severity: review ? "info" : rule.severity,
     }),
   }
 }

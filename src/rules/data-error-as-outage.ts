@@ -4,10 +4,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import {
   budgetNote,
   declined,
-  finding,
   marginOfAnswer,
   outcome,
   qualityOf,
@@ -303,26 +303,23 @@ const describe = (outage: Outage): string =>
     ? "when `" + outage.trigger + "` is empty"
     : "when reading the row fails"
 
-const findingFor = (outage: Outage, unverified: string | undefined): Diagnostic =>
-  finding({
-    ruleId: RULE_ID,
-    severity: "warn",
-    message:
-      "`" +
-      outage.handler +
-      "` answers " +
-      String(outage.code) +
-      " " +
-      describe(outage) +
-      ", so a missing row reads as a server outage.",
-    help:
-      "A lookup that finds nothing is usually a normal outcome: a 404, an empty list, or a 4xx the caller caused. If the absence really is a broken invariant, say so here; otherwise answer the request. " +
-      (unverified === undefined
-        ? "Pin a deliberate 5xx in .joggle/answers.json so the question is not asked again."
-        : "Not verified: " + unverified + "."),
-    location: { file: outage.file, line: outage.line, column: 1 },
+const findingFor = (report: Report, outage: Outage, unverified: string | undefined): Diagnostic =>
+  report({
+    at: { file: outage.file, line: outage.line, column: 1 },
+    messageId: "outage",
+    data: {
+      handler: outage.handler,
+      code: outage.code,
+      describe: describe(outage),
+      closing:
+        unverified === undefined
+          ? "Pin a deliberate 5xx in .joggle/answers.json so the question is not asked again."
+          : "Not verified: " + unverified + ".",
+    },
+    helpId: "outage_help",
     identity: [RULE_ID, outage.file, outage.handler, String(outage.code)].join("\u0000"),
     judged: unverified === undefined,
+    severity: "warn",
   })
 
 export const dataErrorAsOutage: PlannedRule = {
@@ -331,7 +328,14 @@ export const dataErrorAsOutage: PlannedRule = {
   description: "A 5xx answer to a row that is simply not there.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    outage:
+      "`{{handler}}` answers {{code}} {{describe}}, so a missing row reads as a server outage.",
+    outage_help:
+      "A lookup that finds nothing is usually a normal outcome: a 404, an empty list, or a 4xx the caller caused. If the absence really is a broken invariant, say so here; otherwise answer the request. {{closing}}",
+  }),
   plan: Effect.fn("joggle/data-error-as-outage")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(dataErrorAsOutage, locator(workspace))
     const all = candidatesIn(workspace, scope)
     if (all.length === 0) {
       return {
@@ -444,7 +448,7 @@ export const dataErrorAsOutage: PlannedRule = {
             // ordinary error handler has one, so reporting it unverified would
             // be the noise the verification exists to remove.
             if (outage.reached === "guard") {
-              diagnostics.push(findingFor(outage, "no judgement was available"))
+              diagnostics.push(findingFor(report, outage, "no judgement was available"))
             } else {
               drops.push({
                 ruleId: RULE_ID,
@@ -495,7 +499,7 @@ export const dataErrorAsOutage: PlannedRule = {
             return
           }
           diagnostics.push(
-            findingFor(outage, quality.quality === "act" ? undefined : quality.reason),
+            findingFor(report, outage, quality.quality === "act" ? undefined : quality.reason),
           )
         })
         return outcome(

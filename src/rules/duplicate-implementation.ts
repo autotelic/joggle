@@ -2,7 +2,14 @@ import { Effect } from "effect"
 import { policy } from "../policy.ts"
 import { makeCluster, type Cluster } from "../cluster.ts"
 import { budgetNote, inScope, outcome, type PlannedRule, type Scope } from "../rule.ts"
-import { collapseQuestionnaire, planClusters, readClusters, unverifiedFinding, type ClusterRule } from "./cluster-verdict.ts"
+import {
+  clusterReporter,
+  collapseQuestionnaire,
+  planClusters,
+  readClusters,
+  unverifiedFinding,
+  type ClusterRule,
+} from "./cluster-verdict.ts"
 import { layersFrom } from "../architecture.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
@@ -78,9 +85,10 @@ export const duplicateImplementation: PlannedRule = {
     const phase = yield* planClusters(spec, clusters.slice(0, budget), scope, workspace)
     const layers = layersFrom(context.config)
     // Over budget: the fact is still reported, unjudged and labelled as such.
+    const report = clusterReporter(spec, workspace)
     const overflow = clusters
       .slice(budget)
-      .map((cluster) => unverifiedFinding(spec, cluster))
+      .map((cluster) => unverifiedFinding(report, spec, cluster))
       .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
     const notes = [
       ...budgetNote("clusters", budget, clusters.length, largestOf(clusters.slice(budget))),

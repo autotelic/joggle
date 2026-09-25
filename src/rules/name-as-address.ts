@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter } from "../reporting.ts"
 import {
   budgetNote,
   declined,
-  finding,
   marginOfAnswer,
   outcome,
   qualityOf,
@@ -75,7 +75,14 @@ export const nameAsAddress: PlannedRule = {
   description: "A generic single-word export called from too many files to be searchable.",
   judged: true,
   onUnavailable: "propagate",
+  messages: messages({
+    common_name:
+      "`{{name}}` is called from {{count}} files, and it is a {{kind}} rather than an address.",
+    common_name_help:
+      "A name is how this declaration is found: it is the address, not a summary. Rename it to say what it is for -- `{{name}}` gives a reader and an agent nothing to narrow by, while a name of two or three specific words makes every future search cheaper.{{review}}",
+  }),
   plan: Effect.fn("joggle/name-as-address")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(nameAsAddress, locator(workspace))
     const { minFiles, maxFiles, maxCallers } = policy.nameAsAddress
     const exported = workspace.units.filter((unit) => unit.exported)
 
@@ -201,28 +208,22 @@ export const nameAsAddress: PlannedRule = {
       }
       const review = quality.quality === "review"
       diagnostics.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: review ? "info" : "warn",
-          message:
-            "`" +
-            candidate.unit.name +
-            "` is called from " +
-            candidate.callers.length +
-            " files, and it is a " +
-            address.label.replace(/_/g, " ") +
-            " rather than an address.",
-          help:
-            "A name is how this declaration is found: it is the address, not a summary. Rename it to say what it is for -- \`" +
-            candidate.unit.name +
-            "\` gives a reader and an agent nothing to narrow by, while a name of two or three specific words makes every future search cheaper." +
-            (review ? " For review: " + quality.reason + "." : ""),
-          location: candidate.unit.location,
-          identity: [RULE_ID, candidate.unit.file, candidate.unit.name].join("\u0000"),
-          confidence: address.confidence ?? 1,
-          score: fails.probability,
-          judged: true,
-        }),
+        report({
+                  at: candidate.unit,
+                  messageId: "common_name",
+                  data: {
+                    name: candidate.unit.name,
+                    count: candidate.callers.length,
+                    kind: (address.label ?? "").replace(/_/g, " "),
+                    review: review ? " For review: " + quality.reason + "." : "",
+                  },
+                  helpId: "common_name_help",
+                  identity: [RULE_ID, candidate.unit.file, candidate.unit.name].join("\u0000"),
+                  confidence: address.confidence ?? 1,
+                  score: fails.probability,
+                  judged: true,
+                  severity: review ? "info" : "warn",
+                }),
       )
         })
 

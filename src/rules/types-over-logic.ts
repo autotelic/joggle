@@ -3,9 +3,9 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import {
   budgetNote,
-  finding,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -86,7 +86,14 @@ export const typesOverLogic: PlannedRule = {
   description: "A runtime guard on a value whose type should carry the guarantee.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    guard_not_type:
+      "{{name}} guards `{{value}}` (`{{declared}}`) with `{{check}}`, a check a type could carry.",
+    guard_not_type_help:
+      "Parse the value once at the boundary into a narrower type -- a branded id, a validated schema type, a non-nullable type -- and every guard like this one disappears. If the check is genuinely the boundary, pin that decision so it is not asked again.{{unverified}}",
+  }),
   plan: Effect.fn("joggle/types-over-logic")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(typesOverLogic, locator(workspace))
     const candidates: Array<{ unit: Unit; guard: Guard; declared: string }> = []
     for (const unit of workspace.units) {
       if (unit.kind !== "function") continue
@@ -169,7 +176,7 @@ export const typesOverLogic: PlannedRule = {
           const subject = unit.name + " (" + unit.file + ")"
           const verdict = verdictOf(verdicts[index]?.["verdict"], ["type_should_carry_it"])
           if (verdict === undefined) {
-            diagnostics.push(findingFor(value.candidate, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, value.candidate, undefined, "no judgement was available"))
             return
           }
           if (verdict.label !== "type_should_carry_it") {
@@ -198,7 +205,7 @@ export const typesOverLogic: PlannedRule = {
             })
             return
           }
-          diagnostics.push(findingFor(value.candidate, verdict.confidence, undefined))
+          diagnostics.push(findingFor(report, value.candidate, verdict.confidence, undefined))
         })
         return outcome(
           diagnostics,
@@ -211,28 +218,24 @@ export const typesOverLogic: PlannedRule = {
 }
 
 const findingFor = (
+  report: Report,
   candidate: { readonly unit: Unit; readonly guard: Guard; readonly declared: string },
   confidence: number | undefined,
   unverifiedReason: string | undefined,
-): Diagnostic => {
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: RULE_ID,
-    severity: "info",
-    message:
-      candidate.unit.name +
-      " guards `" +
-      candidate.guard.value +
-      "` (`" +
-      candidate.declared +
-      "`) with `" +
-      candidate.guard.check +
-      "`, a check a type could carry.",
-    help:
-      "Parse the value once at the boundary into a narrower type -- a branded id, a validated schema type, a non-nullable type -- and every guard like this one disappears. If the check is genuinely the boundary, pin that decision so it is not asked again." +
-      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location: candidate.unit.location,
+): Diagnostic =>
+  report({
+    at: candidate.unit,
+    messageId: "guard_not_type",
+    data: {
+      name: candidate.unit.name,
+      value: candidate.guard.value,
+      declared: candidate.declared,
+      check: candidate.guard.check,
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: "guard_not_type_help",
     identity: [RULE_ID, candidate.unit.file, candidate.unit.name, candidate.guard.value].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
-}
+    severity: "info",
+    confidence,
+  })

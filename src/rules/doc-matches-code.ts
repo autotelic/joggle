@@ -3,11 +3,11 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
   declined,
-  finding,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -89,10 +89,16 @@ export const docMatchesCode: PlannedRule = {
   description: "A JSDoc that makes a claim the implementation contradicts.",
   judged: true,
   onUnavailable: "propagate",
+  messages: messages({
+    doc_contradicts: "{{where}} has a doc block that contradicts the code: {{contradiction}}.",
+    doc_contradicts_help:
+      "Fix the doc to match the code, or the code to match the doc. The doc is the one artefact no checker reads, so it is the one that drifts.",
+  }),
   plan: Effect.fn("joggle/doc-matches-code")(function* (
     workspace: Workspace,
     scope: Scope,
   ) {
+    const report = reporter(docMatchesCode, locator(workspace))
     const candidates = candidatesIn(workspace, scope)
     if (candidates.length === 0) {
       return {
@@ -189,17 +195,17 @@ export const docMatchesCode: PlannedRule = {
         return
       }
       diagnostics.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: quality.quality === "review" ? "info" : "warn",
-          message: label(unit) + " has a doc block that contradicts the code: " + (verdict.label ?? "unreadable").replace(/_/g, " ") + ".",
-          help: "Fix the doc to match the code, or the code to match the doc. The doc is the one artefact no checker reads, so it is the one that drifts.",
-          location: unit.location,
-          identity: [RULE_ID, unit.file, unit.name].join("\u0000"),
-          confidence: verdict.confidence ?? 1,
-          score: verdict.probability,
-          judged: true,
-        }),
+        report({
+                  at: unit,
+                  messageId: "doc_contradicts",
+                  data: { where: label(unit), contradiction: (verdict.label ?? "unreadable").replace(/_/g, " ") },
+                  helpId: "doc_contradicts_help",
+                  identity: [RULE_ID, unit.file, unit.name].join("\u0000"),
+                  confidence: verdict.confidence ?? 1,
+                  score: verdict.probability,
+                  judged: true,
+                  severity: quality.quality === "review" ? "info" : "warn",
+                }),
       )
         })
 
