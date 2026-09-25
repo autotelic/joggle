@@ -148,35 +148,39 @@ With those two, a rule's deterministic half is exactly what the design rule says
    the runtime sibling -- it finds this category in a repository's rules; this
    finds it in joggle's own.
 
-## What the substrate cannot carry yet
+## The review rules: built, and not
 
-Four rules from the same reviews are NOT built, and they are not built on purpose.
-Each needs a fact joggle does not extract, and building it now would mean guessing
-with a pattern -- the fault this document audits. Recorded so the next round starts
-from the fact, not the rule.
+Five of the eight rules from the reviews are built, each on facts:
 
-- **`schema-excludes-domain-value`** (PR 1572). `thetaStandardError` is declared
-  `Schema.Finite` while the domain returns `Infinity` on purpose, so with the encode
-  wrapped in `Effect.orDie` an unidentifiable planter is a 500. Needs a **schema
-  field fact**: the `Schema` constructor chain of each `Schema.Struct` field
-  (`Finite`, `Number`, `NullOr(...)`), which the index records today only as
-  `nullable` and `sources`. The rule is then "a schema field whose constructor
-  rejects a value the producer yields".
+| rule | the two facts |
+| --- | --- |
+| `single-path` | an AST string site; the call graph |
+| `unaccounted-drop` | a `continue`; an exported boundary |
+| `generic-carries-a-caller` | a string literal or JSX text; the files that call or render the unit |
+| `schema-excludes-domain-value` | a `Schema.Struct` field's constructor chain; a domain field of the same name |
+| `meaning-switched-by-flag` | a `boolean` field; a guard whose test names it |
+
+And one is not built on purpose. The gate from PR 1579 (an unused import reaching
+main) is a CI and oxlint job, not a joggle rule: a deterministic predicate belongs
+in the linter or the typechecker, and `require-judged` rejects one here.
+
+## Two the substrate cannot carry yet
+
+Two rules are NOT built, and not built on purpose: each needs a fact joggle does
+not extract, and building it now would mean guessing with a pattern -- the fault
+this document audits.
+
 - **`inferred-over-recorded`** (PR 1570). "The mode is inferred from the sums, but
-  the payroll already records it (`use_swa_day_rate`)". Needs **per-expression
-  resolved types** (the checker host of `docs/type-resolution.md`): the fact is
-  that a computed value has the same type as a field that already records it.
-  Without it the candidate is "a unit that branches on arithmetic", which is
-  everything.
-- **`meaning-switched-by-flag`** (PRs 1570, 1568). `total_pay` is one sum for
-  SWA day-rate payrolls and another for the rest, switched by
-  `use_swa_day_rate`. Needs the **row type layer**: the flag and the value on the
-  same row type, and the branch that ties them. The boolean is a fact today
-  (`fieldTypes`); the tie between the flag and the value is not.
+  the payroll already records it (`use_swa_day_rate`)". The fact is that a
+  COMPUTED value has the same type as a field that already records it, which needs
+  the checker host of `docs/type-resolution.md` -- per-expression resolved types
+  from a patched tsgo, which is a tool outside this repository. Without it the
+  candidate is "a unit that branches on arithmetic", which is everything.
 - **`unbounded-default-read`** (PR 1574). The default payroll-review load has no
-  date window and no limit over a table that grows. Needs a **data-access fact**:
-  a call site to a query builder with the shape of its predicates, so "every
-  filter is optional and absent" is a fact rather than a read of the source.
+  date window and no limit over a table that grows; measured at 150ms today and
+  linear, seconds at 5x. Needs a data-access fact (a call site with the shape of
+  its predicates, and which of a function's parameters are optional), which is a
+  substrate build rather than a rule.
 
-Each is a candidate generator plus a question once its fact exists. None is
+Both are a candidate generator plus a question once their fact exists. Neither is
 blocked on Jev.
