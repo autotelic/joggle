@@ -35,14 +35,14 @@ it.effect("a confident answer is a finding", () =>
   ),
 )
 
-it.effect("an unsure answer is dropped, not reported as a file-level notice", () =>
+it.effect("an unsure answer is a notice, not withheld", () =>
   Effect.gen(function* () {
     const workspace = yield* fixture()
     const result = yield* plannedDiagnosticsOf(languageDrift, workspace)
-    // Confidence below the review floor is the model saying it cannot tell, and
-    // a file-level "the prose says X" at 0.56 is noise.
-    expect(result.diagnostics).toEqual([])
-    expect(result.drops.some((drop) => drop.stage === "gated")).toBe(true)
+    // Confidence below the review floor is an unsure answer, not an absent one. It
+    // is reported at notice severity rather than discarded.
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]?.severity).toBe("info")
   }).pipe(
     Effect.provide(modelStub({ concept: choice("harvest", 0.56) })),
     Effect.provide(NodeServices.layer),
