@@ -4,9 +4,9 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter } from "../reporting.ts"
 import {
   budgetNote,
-  finding,
   inGraphScope,
   marginOfAnswer,
   outcome,
@@ -200,11 +200,18 @@ export const dependencyFit: PlannedRule = {
   // The finding is a fact -- an undeclared import -- and the rule reads the
   // absence of a judgement itself, so the engine must call it rather than skip it.
   onUnavailable: "report",
+  messages: messages({
+    undeclared_dependency:
+      "{{path}} imports {{specifier}} in {{count}} file(s) but does not declare it.",
+    undeclared_dependency_help:
+      "Add {{package}} to the package's manifest: an undeclared import resolves only because something else hoisted it into the tree. {{qualifier}}",
+  }),
   plan: Effect.fn("joggle/dependency-fit")(function* (
     workspace: Workspace,
     scope: Scope,
     context,
   ) {
+    const report = reporter(dependencyFit, locator(workspace))
     const { dependencies: all, declared } = dependenciesIn(workspace)
     // A scoped run asks about the CHANGE, and the change to a dependency is an
     // IMPORT: the candidate is in scope when one of the files that imports it
@@ -322,33 +329,29 @@ export const dependencyFit: PlannedRule = {
       // and fails on a clean install.
       const misplaced = verdict.label === "violates"
       diagnostics.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: "warn",
-          message:
-            dependency.path +
-            " imports " +
-            dependency.specifier +
-            " in " +
-            dependency.count +
-            " file(s) but does not declare it.",
-          help:
-            "Add " +
-            packageNameOf(dependency.specifier) +
-            " to the package's manifest: an undeclared import resolves only because something else hoisted it into the tree. " +
-            (misplaced && decisive
-              ? "It also does not appear to fit what this package is for, so consider removing it instead."
-              : "The dependency itself fits what this package does."),
-          location: { file: dependency.examples[0] ?? dependency.path, line: 1, column: 1 },
-          identity: [
-            RULE_ID,
-            misplaced ? "misplaced" : "undeclared",
-            dependency.path,
-            dependency.specifier,
-          ].join("\u0000"),
-          confidence: verdict.confidence ?? 1,
-          judged: false,
-        }),
+        report({
+                  at: { file: dependency.examples[0] ?? dependency.path, start: 0 },
+                  messageId: "undeclared_dependency",
+                  data: {
+                    path: dependency.path,
+                    specifier: dependency.specifier,
+                    count: dependency.count,
+                    package: packageNameOf(dependency.specifier),
+                    qualifier:
+                      misplaced && decisive
+                        ? "It also does not appear to fit what this package is for, so consider removing it instead."
+                        : "The dependency itself fits what this package does.",
+                  },
+                  helpId: "undeclared_dependency_help",
+                  identity: [
+                    RULE_ID,
+                    misplaced ? "misplaced" : "undeclared",
+                    dependency.path,
+                    dependency.specifier,
+                  ].join("\u0000"),
+                  confidence: verdict.confidence ?? 1,
+                  judged: false,
+                }),
       )
         })
 

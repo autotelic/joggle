@@ -1,10 +1,10 @@
 import { Effect, Option, Schema } from "effect"
 import { Decision, DecisionModel } from "effect/unstable/ai"
 import { policy } from "../policy.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import {
   declined,
   defineRule,
-  finding,
   inScope,
   marginOfAnswer,
   outcome,
@@ -113,7 +113,7 @@ const PageRole = Decision.make({
   decisions: { role: pageDecisions.role },
 })
 
-const findingFor = (page: Page, answers: DecisionAnswers): Result => {
+const findingFor = (report: Report, page: Page, answers: DecisionAnswers): Result => {
   const dropOf = (stage: DropStage, reason: string): Result => ({
     drop: { ruleId: RULE_ID, subject: page.file.path, stage, reason },
   })
@@ -140,19 +140,25 @@ const findingFor = (page: Page, answers: DecisionAnswers): Result => {
   const gap = answers["primary_gap"]
   const missing = gaps(page)
   return {
-    diagnostic: finding({
-    ruleId: RULE_ID,
-    severity: review ? "info" : "warn",
-    message: `${page.file.path} carries ${page.localState} useState call(s) and ${page.inlineElements} inline element(s) that may belong in a composition bundle.`,
-    help:
-      missing.length === 0
-        ? "See the composition pattern guide: a provider owns `{ state, actions, meta }` and blocks are exported by dot notation."
-        : `Gaps: ${missing.join("; ")}.${gap === undefined || !("label" in gap) || declined(gap.label) ? "" : ` Start with: ${gap.label.replace(/_/g, " ")}.`}`,
-    location: { file: page.file.path, line: 1, column: 1 },
-    identity: [RULE_ID, page.file.path].join("\u0000"),
-    confidence,
-    score: probability ?? confidence,
-    judged: true,
+    diagnostic: report({
+      at: page.file,
+      messageId: "state_pressure",
+      data: {
+        file: page.file.path,
+        state: page.localState,
+        inline: page.inlineElements,
+        gaps: missing.join("; "),
+        start:
+          gap === undefined || !("label" in gap) || declined(gap.label)
+            ? ""
+            : ` Start with: ${gap.label.replace(/_/g, " ")}.`,
+      },
+      helpId: missing.length === 0 ? "state_pressure_help_none" : "state_pressure_help_gaps",
+      identity: [RULE_ID, page.file.path].join("\u0000"),
+      confidence,
+      score: probability ?? confidence,
+      judged: true,
+      severity: review ? "info" : "warn",
     }),
   }
 }
@@ -162,7 +168,15 @@ export const pageNeedsComposition = defineRule({
   severity: "warn",
   description: "Pages whose own state and markup belong in a composition bundle.",
   judged: true,
+  messages: messages({
+    state_pressure:
+      "{{file}} carries {{state}} useState call(s) and {{inline}} inline element(s) that may belong in a composition bundle.",
+    state_pressure_help_none:
+      "See the composition pattern guide: a provider owns `{ state, actions, meta }` and blocks are exported by dot notation.",
+    state_pressure_help_gaps: "Gaps: {{gaps}}.{{start}}",
+  }),
   run: Effect.fn("joggle/page-needs-composition")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(pageNeedsComposition, locator(workspace))
     const pages = candidatesIn(workspace).filter((page) => inScope(scope, page.file.path))
     if (pages.length === 0) {
       return outcome([], [
@@ -282,7 +296,7 @@ export const pageNeedsComposition = defineRule({
         })
         return
       }
-      const decided = findingFor(page, result.value)
+      const decided = findingFor(report, page, result.value)
       if (decided.diagnostic !== undefined) diagnostics.push(decided.diagnostic)
       if (decided.drop !== undefined) drops.push(decided.drop)
     })

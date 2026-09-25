@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter } from "../reporting.ts"
 import {
   budgetNote,
   declined,
-  finding,
   marginOfAnswer,
   outcome,
   qualityOf,
@@ -151,7 +151,14 @@ export const ruleJudgment: PlannedRule = {
   description: "A rule that decides in code a question only a judgement can answer.",
   judged: true,
   onUnavailable: "propagate",
+  messages: messages({
+    code_decides:
+      "{{id}} decides in code what only a judgement can decide: {{kind}}.",
+    code_decides_help:
+      "Code should find the candidate; the model should make the call. Keep the structural filter and ask a Decision for the verdict.{{review}}",
+  }),
   plan: Effect.fn("joggle/rule-judgment")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(ruleJudgment, locator(workspace))
     const candidates = candidatesIn(workspace, scope)
     if (candidates.length === 0) {
       return {
@@ -243,23 +250,21 @@ export const ruleJudgment: PlannedRule = {
       }
       const review = quality.quality === "review"
       diagnostics.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: review ? "info" : "warn",
-          message:
-            candidate.id +
-            " decides in code what only a judgement can decide: " +
-            kind.label.replace(/_/g, " ") +
-            ".",
-          help:
-            "Code should find the candidate; the model should make the call. Keep the structural filter and ask a Decision for the verdict." +
-            (review ? " For review: " + quality.reason + "." : ""),
-          location: { file: candidate.file.path, line: 1, column: 1 },
-          identity: [RULE_ID, candidate.id].join("\u0000"),
-          confidence: kind.confidence ?? 1,
-          score: decides.probability,
-          judged: true,
-        }),
+        report({
+                  at: candidate.file,
+                  messageId: "code_decides",
+                  data: {
+                    id: candidate.id,
+                    kind: kind.label.replace(/_/g, " "),
+                    review: review ? " For review: " + quality.reason + "." : "",
+                  },
+                  helpId: "code_decides_help",
+                  identity: [RULE_ID, candidate.id].join("\u0000"),
+                  confidence: kind.confidence ?? 1,
+                  score: decides.probability,
+                  judged: true,
+                  severity: review ? "info" : "warn",
+                }),
       )
         })
 

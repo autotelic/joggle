@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
-  finding,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -14,7 +14,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import { canCompose } from "./compose-types.ts"
-import type { Diagnostic, Drop, SourceLocation } from "../schema.ts"
+import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/field-type-drift"
@@ -176,7 +176,16 @@ export const fieldTypeDrift: PlannedRule = {
   description: "One field name declared with different, incompatible types.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    two_types: "{{unit}} has a field declared with two incompatible types.",
+    single_drift:
+      "`{{field}}` is `{{leftType}}` in {{leftUnit}} and `{{rightType}}` in {{rightUnit}}.",
+    many_drifts:
+      "{{count}} field(s) of {{unit}} disagree with another declaration: {{fields}}.",
+    drift_help: "{{lead}}{{where}}.{{unverified}}",
+  }),
   plan: Effect.fn("joggle/field-type-drift")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(fieldTypeDrift, locator(workspace))
     const byField = new Map<string, Map<string, Array<Declaration>>>()
     for (const unit of workspace.units) {
       if (unit.kind !== "interface" && unit.kind !== "type") continue
@@ -332,7 +341,7 @@ export const fieldTypeDrift: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(group, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, group, undefined, "no judgement was available"))
             return
           }
           if (verdict.label !== "drift" && verdict.label !== "two_concepts") {
@@ -359,7 +368,7 @@ export const fieldTypeDrift: PlannedRule = {
             return
           }
           const renamed = verdict.label === "two_concepts"
-          diagnostics.push(findingFor(group, verdict.confidence, undefined, renamed))
+          diagnostics.push(findingFor(report, group, verdict.confidence, undefined, renamed))
         })
         return outcome(
           diagnostics,
@@ -388,6 +397,7 @@ export const fieldTypeDrift: PlannedRule = {
 }
 
 const findingFor = (
+  report: Report,
   group: { readonly file: string; readonly line: number; readonly unit: string; readonly drifts: ReadonlyArray<Drift> },
   confidence: number | undefined,
   unverifiedReason: string | undefined,
@@ -395,37 +405,13 @@ const findingFor = (
 ): Diagnostic => {
   const first = group.drifts[0]
   if (first === undefined) {
-    return finding({
-      ruleId: RULE_ID,
-      severity: "warn",
-      message: group.unit + " has a field declared with two incompatible types.",
-      location: { file: group.file, line: group.line, column: 1 },
+    return report({
+      at: { file: group.file, line: group.line, column: 1 },
+      messageId: "two_types",
+      data: { unit: group.unit },
       judged: false,
     })
   }
-  const message =
-    group.drifts.length === 1
-      ? "`" +
-        first.field +
-        "` is `" +
-        first.left.type +
-        "` in " +
-        first.left.unit +
-        " and `" +
-        first.right.type +
-        "` in " +
-        first.right.unit +
-        "."
-      : group.drifts.length +
-        " field(s) of " +
-        group.unit +
-        " disagree with another declaration: " +
-        group.drifts
-          .slice(0, 3)
-          .map((drift) => "`" + drift.field + "` (`" + drift.left.type + "` vs `" + drift.right.type + "`)")
-          .join(", ") +
-        (group.drifts.length > 3 ? ", and " + String(group.drifts.length - 3) + " more" : "") +
-        "."
   const where = group.drifts
     .map(
       (drift) =>
@@ -440,19 +426,31 @@ const findingFor = (
         String(drift.right.line),
     )
     .join("; ")
-  const location: SourceLocation = { file: group.file, line: group.line, column: 1 }
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: RULE_ID,
-    severity: "warn",
-    message,
-    help:
-      (renamed
+  const listed =
+    group.drifts
+      .slice(0, 3)
+      .map((drift) => "`" + drift.field + "` (`" + drift.left.type + "` vs `" + drift.right.type + "`)")
+      .join(", ") +
+    (group.drifts.length > 3 ? ", and " + String(group.drifts.length - 3) + " more" : "")
+  return report({
+    at: { file: group.file, line: group.line, column: 1 },
+    messageId: group.drifts.length === 1 ? "single_drift" : "many_drifts",
+    data: {
+      unit: group.unit,
+      count: group.drifts.length,
+      fields: listed,
+      field: first.field,
+      leftType: first.left.type,
+      leftUnit: first.left.unit,
+      rightType: first.right.type,
+      rightUnit: first.right.unit,
+      lead: renamed
         ? "One name, two different things. Rename one of them so each field name means one thing. "
-        : "One field name, two incompatible types. If they are one concept, share one declaration of it; if they are two concepts, give them two names. ") +
-      where +
-      "." +
-      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location,
+        : "One field name, two incompatible types. If they are one concept, share one declaration of it; if they are two concepts, give them two names. ",
+      where,
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: "drift_help",
     identity: [
       RULE_ID,
       group.file,
@@ -460,6 +458,6 @@ const findingFor = (
       ...group.drifts.map((drift) => drift.field).sort((left, right) => left.localeCompare(right)),
     ].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+    confidence,
+  })
 }

@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter } from "../reporting.ts"
 import {
   budgetNote,
   declined,
-  finding,
   marginOfAnswer,
   outcome,
   qualityOf,
@@ -101,7 +101,14 @@ export const temporalCoupling: PlannedRule = {
   description: "A function that acquires something it may not release.",
   judged: true,
   onUnavailable: "propagate",
+  messages: messages({
+    unpaired_operations:
+      "{{name}} calls {{present}}() without {{missing}}() in the same scope.",
+    unpaired_operations_help:
+      "If {{present}} throws, {{missing}} never runs. Put them in a try/finally, or make one helper own both halves.{{review}}",
+  }),
   plan: Effect.fn("joggle/temporal-coupling")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(temporalCoupling, locator(workspace))
     const candidates = candidatesIn(workspace, scope)
     if (candidates.length === 0) {
       return {
@@ -196,29 +203,22 @@ export const temporalCoupling: PlannedRule = {
       }
       const review = quality.quality === "review"
       diagnostics.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: review ? "info" : "warn",
-          message:
-            candidate.unit.name +
-            " calls " +
-            candidate.present +
-            "() without " +
-            candidate.missing +
-            "() in the same scope.",
-          help:
-            "If " +
-            candidate.present +
-            " throws, " +
-            candidate.missing +
-            " never runs. Put them in a try/finally, or make one helper own both halves." +
-            (review ? " For review: " + quality.reason + "." : ""),
-          location: candidate.unit.location,
-          identity: [RULE_ID, candidate.unit.file, candidate.unit.name, candidate.present].join("\u0000"),
-          confidence,
-          score: probability ?? confidence,
-          judged: true,
-        }),
+        report({
+                  at: candidate.unit,
+                  messageId: "unpaired_operations",
+                  data: {
+                    name: candidate.unit.name,
+                    present: candidate.present,
+                    missing: candidate.missing,
+                    review: review ? " For review: " + quality.reason + "." : "",
+                  },
+                  helpId: "unpaired_operations_help",
+                  identity: [RULE_ID, candidate.unit.file, candidate.unit.name, candidate.present].join("\u0000"),
+                  confidence,
+                  score: probability ?? confidence,
+                  judged: true,
+                  severity: review ? "info" : "warn",
+                }),
       )
         })
 

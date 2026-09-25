@@ -10,10 +10,10 @@ import {
 } from "../bundles.ts"
 import { Atoms } from "../atoms.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
   bundleNote,
-  finding,
   inScope,
   outcome,
   qualityOf,
@@ -26,6 +26,12 @@ import type { Workspace } from "../workspace.ts"
 
 /** Which labels mean this rule is violated -- the read and the calibration share it. */
 const VIOLATIONS = { verdict: ["violation"] } as const
+
+/** Every composition-pattern rule reports through these. */
+const BUNDLE_MESSAGES = messages({
+  pattern_problem: "{{subject}}: {{count}} problem(s) with the composition pattern.",
+  pattern_problem_help: "{{problems}}{{unverified}}",
+})
 
 // The composition pattern's PRODUCER rules: is a bundle well formed?
 //
@@ -51,7 +57,12 @@ const ruleFor = (spec: Spec): PlannedRule => ({
   description: spec.description,
   judged: true,
   onUnavailable: "report",
+  messages: BUNDLE_MESSAGES,
   plan: Effect.fn(`joggle/${spec.id}`)(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(
+      { id: spec.id, severity: spec.severity, judged: true, messages: BUNDLE_MESSAGES },
+      locator(workspace),
+    )
     const bundles = findBundles(workspace).filter((bundle) => inScope(scope, bundle.dir))
     const candidates = bundles
       .map((bundle) => ({ bundle, problems: spec.problems(bundle) }))
@@ -115,7 +126,7 @@ const ruleFor = (spec: Spec): PlannedRule => ({
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(spec, bundle, problems, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, spec, bundle, problems, undefined, "no judgement was available"))
             return
           }
           if (verdict.label !== "violation") {
@@ -144,7 +155,7 @@ const ruleFor = (spec: Spec): PlannedRule => ({
             })
             return
           }
-          diagnostics.push(findingFor(spec, bundle, problems, verdict.confidence, undefined))
+          diagnostics.push(findingFor(report, spec, bundle, problems, verdict.confidence, undefined))
         })
         return outcome(diagnostics, bundleNote(bundles.length, diagnostics.length), drops)
       },
@@ -153,23 +164,27 @@ const ruleFor = (spec: Spec): PlannedRule => ({
 })
 
 const findingFor = (
+  report: Report,
   spec: Spec,
   bundle: Bundle,
   problems: ReadonlyArray<string>,
   confidence: number | undefined,
   unverifiedReason: string | undefined,
-): Diagnostic => {
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: spec.id,
-    severity: spec.severity,
-    message: `${spec.subject(bundle)}: ${problems.length} problem(s) with the composition pattern.`,
-    help: problems.join("; ") + (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location: { file: bundle.indexFile?.path ?? bundle.dir, line: 1, column: 1 },
+): Diagnostic =>
+  report({
+    at: bundle.indexFile ?? { file: bundle.dir, start: 0 },
+    messageId: "pattern_problem",
+    data: {
+      subject: spec.subject(bundle),
+      count: problems.length,
+      problems: problems.join("; "),
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: "pattern_problem_help",
     identity: [spec.id, bundle.dir].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
-}
+    confidence,
+  })
 
 const blockFiles = (bundle: Bundle): ReadonlyArray<string> =>
   bundle.blocks.map((file) => file.path)

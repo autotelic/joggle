@@ -3,9 +3,9 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
-  finding,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -64,7 +64,18 @@ export const composeTypes: PlannedRule = {
   description: "A type that repeats every field of another type instead of composing it.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    same_name_drift:
+      "{{name}} is declared in two places and they differ by {{count}} field(s): {{fields}}.",
+    same_name_drift_help:
+      "{{name}} is declared at {{wholeAt}} and at {{partAt}} with different fields, so any code that moves between the two is relying on which one it imported.{{unverified}}",
+    composes_shared_fields:
+      "{{name}} lists all {{partFields}} field(s) of {{part}} and adds {{count}}.",
+    composes_shared_fields_help:
+      "Declare it as {{name}} = {{part}} & { {{fields}} } so the shared part stays canonical and cannot drift from {{part}} ({{partAt}}).{{unverified}}",
+  }),
   plan: Effect.fn("joggle/compose-types")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(composeTypes, locator(workspace))
     const all = workspace.units.filter(isTypeUnit)
     if (all.length === 0) {
       return {
@@ -191,7 +202,7 @@ export const composeTypes: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(value.candidate, undefined, "no judgement was available", undefined))
+            diagnostics.push(findingFor(report, value.candidate, undefined, "no judgement was available", undefined))
             return
           }
           // The compose case is ADVICE, recorded rather than printed. On a real
@@ -235,7 +246,7 @@ export const composeTypes: PlannedRule = {
             })
             return
           }
-          diagnostics.push(findingFor(value.candidate, verdict.confidence, undefined, "same_name_drift"))
+          diagnostics.push(findingFor(report, value.candidate, verdict.confidence, undefined, "same_name_drift"))
         })
         return outcome(diagnostics, [], drops)
       },
@@ -244,6 +255,7 @@ export const composeTypes: PlannedRule = {
 }
 
 const findingFor = (
+  report: Report,
   candidate: { readonly whole: Unit; readonly part: Unit; readonly added: ReadonlyArray<string> },
   confidence: number | undefined,
   unverifiedReason: string | undefined,
@@ -251,52 +263,23 @@ const findingFor = (
 ): Diagnostic => {
   const { whole, part, added } = candidate
   const drifted = label === "same_name_drift" || (label === undefined && whole.name === part.name)
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: RULE_ID,
-    severity: drifted ? "warn" : "info",
-    message: drifted
-      ? whole.name +
-        " is declared in two places and they differ by " +
-        added.length +
-        " field(s): " +
-        added.join(", ") +
-        "."
-      : whole.name +
-        " lists all " +
-        part.fields.length +
-        " field(s) of " +
-        part.name +
-        " and adds " +
-        added.length +
-        ".",
-    help: (drifted
-      ? whole.name +
-        " is declared at " +
-        whole.file +
-        ":" +
-        whole.location.line +
-        " and at " +
-        part.file +
-        ":" +
-        part.location.line +
-        " with different fields, so any code that moves between the two is relying on which one it imported."
-      : "Declare it as " +
-        whole.name +
-        " = " +
-        part.name +
-        " & { " +
-        added.join("; ") +
-        " } so the shared part stays canonical and cannot drift from " +
-        part.name +
-        " (" +
-        part.file +
-        ":" +
-        part.location.line +
-        ").") +
-      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location: whole.location,
+  return report({
+    at: whole,
+    messageId: drifted ? "same_name_drift" : "composes_shared_fields",
+    data: {
+      name: whole.name,
+      part: part.name,
+      count: added.length,
+      fields: added.join(drifted ? ", " : "; "),
+      partFields: part.fields.length,
+      wholeAt: whole.file + ":" + whole.location.line,
+      partAt: part.file + ":" + part.location.line,
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: drifted ? "same_name_drift_help" : "composes_shared_fields_help",
     identity: [RULE_ID, whole.file, whole.name, part.name, drifted ? "drift" : "compose"].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+    confidence,
+    severity: drifted ? "warn" : "info",
+  })
 }

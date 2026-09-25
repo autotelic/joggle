@@ -3,11 +3,11 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
   declined,
-  finding,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -138,7 +138,14 @@ export const languageDrift: PlannedRule = {
   description: "A domain word the prose uses and the code never names.",
   judged: true,
   onUnavailable: "propagate",
+  messages: messages({
+    prose_word_not_named:
+      'The prose says "{{word}}", and no declaration, path or import uses the word.',
+    prose_word_not_named_help:
+      "Either the code is named for something else, or the prose describes a concept the code has not named. The first is drift; the second is a missing name.",
+  }),
   plan: Effect.fn("joggle/language-drift")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(languageDrift, locator(workspace))
     const candidates = candidatesIn(workspace, scope)
     if (candidates.length === 0) {
       return {
@@ -217,18 +224,17 @@ export const languageDrift: PlannedRule = {
         return
       }
       diagnostics.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: "warn",
-          message: "The prose says \"" + verdict.label + "\", and no declaration, path or import uses the word.",
-          help:
-            "Either the code is named for something else, or the prose describes a concept the code has not named. The first is drift; the second is a missing name.",
-          location: { file: candidate.file.path, line: 1, column: 1 },
-          identity: [RULE_ID, verdict.label].join("\u0000"),
-          confidence: verdict.confidence ?? 1,
-          score: verdict.probability,
-          judged: true,
-        }),
+        report({
+                  at: candidate.file,
+                  messageId: "prose_word_not_named",
+                  data: { word: verdict.label ?? "" },
+                  helpId: "prose_word_not_named_help",
+                  identity: [RULE_ID, verdict.label].join("\u0000"),
+                  confidence: verdict.confidence ?? 1,
+                  score: verdict.probability,
+                  judged: true,
+                  severity: "warn",
+                }),
       )
         })
 

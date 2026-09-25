@@ -3,9 +3,9 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { lineAt, lineStarts } from "../cascade.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
-  finding,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -42,7 +42,14 @@ export const nullabilityDrift: PlannedRule = {
   description: "A column nullable in the database and required in a schema, or the reverse.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    nullable_mismatch:
+      "`{{source}}` is {{columnState}} in the migration and `{{field}}` is {{schemaState}} in the schema, so the database can hold a value the schema rejects{{tail}}.",
+    nullable_mismatch_help:
+      "The column is declared at {{columnAt}}. Make the schema agree with the migration (or the migration with the schema), or, if a null here is data rather than drift, say what the adapter does with it and pin the decision.{{unverified}}",
+  }),
   plan: Effect.fn("joggle/nullability-drift")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(nullabilityDrift, locator(workspace))
     // Every column a migration declares, by `table.column`. Later migrations win:
     // they are timestamp-named, so path order is chronological order.
     const columns = new Map<string, { nullable: boolean; file: string; line: number }>()
@@ -162,7 +169,7 @@ export const nullabilityDrift: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(candidate, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, candidate, undefined, "no judgement was available"))
             return
           }
           if (verdict.label !== "drift") {
@@ -191,7 +198,7 @@ export const nullabilityDrift: PlannedRule = {
             })
             return
           }
-          diagnostics.push(findingFor(candidate, verdict.confidence, undefined))
+          diagnostics.push(findingFor(report, candidate, verdict.confidence, undefined))
         })
         return outcome(diagnostics, [
           annotated +
@@ -207,6 +214,7 @@ export const nullabilityDrift: PlannedRule = {
 }
 
 const findingFor = (
+  report: Report,
   candidate: {
     readonly source: string
     readonly field: string
@@ -216,32 +224,21 @@ const findingFor = (
   },
   confidence: number | undefined,
   unverifiedReason: string | undefined,
-): Diagnostic => {
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: RULE_ID,
-    severity: "warn",
-    message:
-      "`" +
-      candidate.source +
-      "` is " +
-      (candidate.column.nullable ? "nullable" : "required") +
-      " in the migration and `" +
-      candidate.field +
-      "` is " +
-      (candidate.schemaNullable ? "nullable" : "required") +
-      " in the schema, so the database can hold a value the schema rejects" +
-      (candidate.column.nullable ? "" : ", or the schema accepts one the database cannot") +
-      ".",
-    help:
-      "The column is declared at " +
-      candidate.column.file +
-      ":" +
-      String(candidate.column.line) +
-      ". Make the schema agree with the migration (or the migration with the schema), or, if a null here is data rather than drift, say what the adapter does with it and pin the decision." +
-      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location: { file: candidate.schema.file, line: candidate.schema.line, column: 1 },
+): Diagnostic =>
+  report({
+    at: { file: candidate.schema.file, line: candidate.schema.line, column: 1 },
+    messageId: "nullable_mismatch",
+    data: {
+      source: candidate.source,
+      field: candidate.field,
+      columnState: candidate.column.nullable ? "nullable" : "required",
+      schemaState: candidate.schemaNullable ? "nullable" : "required",
+      tail: candidate.column.nullable ? "" : ", or the schema accepts one the database cannot",
+      columnAt: candidate.column.file + ":" + String(candidate.column.line),
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: "nullable_mismatch_help",
     identity: [RULE_ID, candidate.source, candidate.field].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
-}
+    confidence,
+  })

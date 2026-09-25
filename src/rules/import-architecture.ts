@@ -9,9 +9,9 @@ import {
 } from "../architecture.ts"
 import { Atoms } from "../atoms.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Span } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
-  finding,
   inGraphScope,
   outcome,
   qualityOf,
@@ -28,23 +28,34 @@ const LAYER_RULE = "joggle/layer-direction"
 const CYCLE_RULE = "joggle/import-cycle"
 const PURITY_RULE = "joggle/layer-purity"
 
+/** Every architecture rule reports through these. */
+const ARCHITECTURE_MESSAGES = messages({
+  upward_import:
+    "{{from}} imports {{to}}, which sits in {{toLayer}} -- a layer above {{fromLayer}}.",
+  upward_import_help:
+    "joggle.config.json declares the layers bottom-up, so {{fromLayer}} may not depend on {{toLayer}}. Move the shared piece down, or invert the dependency by passing it in.",
+  import_cycle: "Import cycle: {{files}}.",
+  import_cycle_help:
+    "Break the loop by moving the shared piece below both modules, or by passing the dependency in.",
+  forbidden_import: "{{from}} imports {{specifier}}, which the {{layer}} layer forbids.",
+  forbidden_import_help:
+    "The {{layer}} layer declares {{pattern}} forbidden in joggle.config.json, so nothing inside it may reach for {{specifier}}. Take what this needs as an argument, or move the file out of the layer.",
+})
+
 /**
- * The line an import statement sits on.
+ * Where an import statement sits, as an offset the engine turns into a location.
  *
  * The import graph carries specifiers but not positions, and a finding with no
  * position is a finding a reader has to go looking for.
  */
-const lineOf = (files: ReadonlyMap<string, SourceFile>, edge: ImportEdge): { line: number; column: number } => {
+const spanOf = (files: ReadonlyMap<string, SourceFile>, edge: ImportEdge): Span => {
   const file = files.get(edge.from)
-  if (file === undefined) return { line: 1, column: 1 }
+  if (file === undefined) return { file: edge.from, start: 0 }
   for (const quote of ['"', "'"]) {
-    const needle = quote + edge.specifier + quote
-    const index = file.text.indexOf(needle)
-    if (index === -1) continue
-    const before = file.text.slice(0, index)
-    return { line: before.split("\n").length, column: index - before.lastIndexOf("\n") }
+    const index = file.text.indexOf(quote + edge.specifier + quote)
+    if (index !== -1) return { file: edge.from, start: index }
   }
-  return { line: 1, column: 1 }
+  return { file: edge.from, start: 0 }
 }
 
 const filesByPath = (workspace: Workspace): ReadonlyMap<string, SourceFile> =>
@@ -96,6 +107,7 @@ export const layerDirection: PlannedRule = {
   description: "A module imports from a layer that sits above it.",
   judged: true,
   onUnavailable: "report",
+  messages: ARCHITECTURE_MESSAGES,
   plan: Effect.fn("joggle/layer-direction")(function* (
     workspace: Workspace,
     scope: Scope,
@@ -115,6 +127,7 @@ export const layerDirection: PlannedRule = {
     const all = directionViolations(workspace.imports, layers)
     const violations =
       scope.changed === undefined ? all : all.filter((violation) => inGraphScope(scope, violation.from))
+    const report = reporter(layerDirection, locator(workspace))
     const files = filesByPath(workspace)
     const edgeAt = new Map(workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.to, edge]))
 
@@ -188,16 +201,22 @@ export const layerDirection: PlannedRule = {
           }
           const verdict = verdicts[index]?.["verdict"]
           const confidence = verdict !== undefined && "confidence" in verdict ? verdict.confidence : undefined
-          const input: Parameters<typeof finding>[0] = {
-            ruleId: LAYER_RULE,
-            severity: "warn",
-            message: violation.from + " imports " + violation.to + ", which sits in " + violation.toLayer + " -- a layer above " + violation.fromLayer + ".",
-            help: "joggle.config.json declares the layers bottom-up, so " + violation.fromLayer + " may not depend on " + violation.toLayer + ". Move the shared piece down, or invert the dependency by passing it in.",
-            location: { file: violation.from, ...lineOf(files, edge) },
+          diagnostics.push(
+          report({
+            at: spanOf(files, edge),
+            messageId: "upward_import",
+            data: {
+              from: violation.from,
+              to: violation.to,
+              toLayer: violation.toLayer,
+              fromLayer: violation.fromLayer,
+            },
+            helpId: "upward_import_help",
             identity: [LAYER_RULE, violation.from, violation.to].join("\u0000"),
             judged: true,
-          }
-          diagnostics.push(confidence === undefined ? finding(input) : finding({ ...input, confidence }))
+            confidence,
+          }),
+        )
         })
         return outcome(diagnostics, [
           `${violations.length} upward import(s) among ${ranked} ranked file(s) in ${layers.length} declared layer(s); ${unranked} file(s) in no layer` +
@@ -220,7 +239,9 @@ export const importCycle: PlannedRule = {
   description: "A module imports, directly or indirectly, from itself.",
   judged: true,
   onUnavailable: "report",
+  messages: ARCHITECTURE_MESSAGES,
   plan: Effect.fn("joggle/import-cycle")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(importCycle, locator(workspace))
     const cycles = cyclesIn(workspace.imports)
     const runtime = cycles.filter((cycle) => cycle.runtime)
     const named = cycles.filter((cycle) => !cycle.runtime)
@@ -295,16 +316,17 @@ export const importCycle: PlannedRule = {
           }
           const verdict = verdicts[index]?.["verdict"]
           const confidence = verdict !== undefined && "confidence" in verdict ? verdict.confidence : undefined
-          const input: Parameters<typeof finding>[0] = {
-            ruleId: CYCLE_RULE,
-            severity: "warn",
-            message: `Import cycle: ${[...cycle.files, first].join(" -> ")}.`,
-            help: "Break the loop by moving the shared piece below both modules, or by passing the dependency in.",
-            location: { file: first, line: 1, column: 1 },
+          diagnostics.push(
+          report({
+            at: { file: first, start: 0 },
+            messageId: "import_cycle",
+            data: { files: [...cycle.files, first].join(" -> ") },
+            helpId: "import_cycle_help",
             identity: [CYCLE_RULE, ...[...cycle.files].sort()].join("\u0000"),
             judged: true,
-          }
-          diagnostics.push(confidence === undefined ? finding(input) : finding({ ...input, confidence }))
+            confidence,
+          }),
+        )
         })
         return outcome(
           diagnostics,
@@ -331,6 +353,7 @@ export const layerPurity: PlannedRule = {
   description: "A module imports something its layer forbids.",
   judged: true,
   onUnavailable: "report",
+  messages: ARCHITECTURE_MESSAGES,
   plan: Effect.fn("joggle/layer-purity")(function* (
     workspace: Workspace,
     scope: Scope,
@@ -351,6 +374,7 @@ export const layerPurity: PlannedRule = {
     const all = purityViolations(workspace.imports, layers)
     const violations =
       scope.changed === undefined ? all : all.filter((violation) => inGraphScope(scope, violation.from))
+    const report = reporter(layerPurity, locator(workspace))
     const files = filesByPath(workspace)
     const edgeAt = new Map(workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.specifier, edge]))
 
@@ -414,24 +438,22 @@ export const layerPurity: PlannedRule = {
           }
           const verdict = verdicts[index]?.["verdict"]
           const confidence = verdict !== undefined && "confidence" in verdict ? verdict.confidence : undefined
-          const input: Parameters<typeof finding>[0] = {
-            ruleId: PURITY_RULE,
-            severity: "warn",
-            message:
-              violation.from + " imports " + violation.specifier + ", which the " + violation.layer + " layer forbids.",
-            help:
-              "The " +
-              violation.layer +
-              " layer declares " +
-              violation.pattern +
-              " forbidden in joggle.config.json, so nothing inside it may reach for " +
-              violation.specifier +
-              ". Take what this needs as an argument, or move the file out of the layer.",
-            location: { file: violation.from, ...lineOf(files, edge) },
+          diagnostics.push(
+          report({
+            at: spanOf(files, edge),
+            messageId: "forbidden_import",
+            data: {
+              from: violation.from,
+              specifier: violation.specifier,
+              layer: violation.layer,
+              pattern: violation.pattern,
+            },
+            helpId: "forbidden_import_help",
             identity: [PURITY_RULE, violation.from, violation.specifier].join("\u0000"),
             judged: true,
-          }
-          diagnostics.push(confidence === undefined ? finding(input) : finding({ ...input, confidence }))
+            confidence,
+          }),
+        )
         })
         return outcome(
           diagnostics,

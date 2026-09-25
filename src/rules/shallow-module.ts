@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter } from "../reporting.ts"
 import {
   budgetNote,
   declined,
-  finding,
   marginOfAnswer,
   outcome,
   qualityOf,
@@ -79,7 +79,14 @@ export const shallowModule: PlannedRule = {
   description: "A file with many exports and little implementation behind them.",
   judged: true,
   onUnavailable: "propagate",
+  messages: messages({
+    grab_bag:
+      "{{file}} exports {{exports}} thing(s) over {{lines}} implementation line(s), and they are a grab bag rather than one job.",
+    grab_bag_help:
+      "A deep module is a simple interface over a complex implementation. This is the other way round. Move the exports to where their work lives, or give the file the implementation that earns them.{{review}}",
+  }),
   plan: Effect.fn("joggle/shallow-module")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(shallowModule, locator(workspace))
     const candidates = workspace.files.filter((file) => {
       if (scope.changed !== undefined && !scope.changed.has(file.path)) return false
       const exports = file.units.filter((unit) => unit.exported).length
@@ -182,25 +189,22 @@ export const shallowModule: PlannedRule = {
           const review = quality.quality === "review"
           const exports = file.units.filter((unit) => unit.exported).length
           diagnostics.push(
-            finding({
-              ruleId: RULE_ID,
-              severity: review ? "info" : "warn",
-              message:
-                file.path +
-                " exports " +
-                exports +
-                " thing(s) over " +
-                implementationLines(file.text) +
-                " implementation line(s), and they are a grab bag rather than one job.",
-              help:
-                "A deep module is a simple interface over a complex implementation. This is the other way round. Move the exports to where their work lives, or give the file the implementation that earns them." +
-                (review ? " For review: " + quality.reason + "." : ""),
-              location: { file: file.path, line: 1, column: 1 },
-              identity: [RULE_ID, file.path].join("\u0000"),
-              confidence: job.confidence ?? 1,
-              score: grab.probability,
-              judged: true,
-            }),
+            report({
+                          at: file,
+                          messageId: "grab_bag",
+                          data: {
+                            file: file.path,
+                            exports,
+                            lines: implementationLines(file.text),
+                            review: review ? " For review: " + quality.reason + "." : "",
+                          },
+                          helpId: "grab_bag_help",
+                          identity: [RULE_ID, file.path].join("\u0000"),
+                          confidence: job.confidence ?? 1,
+                          score: grab.probability,
+                          judged: true,
+                          severity: review ? "info" : "warn",
+                        }),
           )
         })
         return outcome(
