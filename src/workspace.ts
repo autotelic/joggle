@@ -244,6 +244,19 @@ export const GuardSite = Schema.Struct({
 
 export interface GuardSite extends Schema.Schema.Type<typeof GuardSite> {}
 
+/**
+ * A `continue` in a loop: a place a unit skips an item.
+ *
+ * Structural, not semantic. It says the loop moved on without this item; it does
+ * NOT say the skip is a data loss the caller must know about. That is a question.
+ */
+export const SkipSite = Schema.Struct({
+  start: Schema.Number,
+  end: Schema.Number,
+})
+
+export interface SkipSite extends Schema.Schema.Type<typeof SkipSite> {}
+
 export const StructureFacts = Schema.Struct({
   /**
    * Every call site in the file, in order.
@@ -263,6 +276,8 @@ export const StructureFacts = Schema.Struct({
   stringSites: Schema.Array(StringSite),
   /** Every `if` statement, with the references its test names. */
   guards: Schema.Array(GuardSite),
+  /** Every `continue`: a place a loop skips an item. */
+  skips: Schema.Array(SkipSite),
 })
 
 export interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}
@@ -919,6 +934,7 @@ const structureIn = (root: unknown): StructureFacts => {
   const columns: Array<Schema.Schema.Type<typeof ColumnFact>> = []
   const stringSites: Array<Schema.Schema.Type<typeof StringSite>> = []
   const guards: Array<Schema.Schema.Type<typeof GuardSite>> = []
+  const skips: Array<Schema.Schema.Type<typeof SkipSite>> = []
   interface DeclaredFields {
     readonly required: Array<string>
     readonly nullable: Array<string>
@@ -1300,6 +1316,12 @@ const structureIn = (root: unknown): StructureFacts => {
         }
         break
       }
+      case "ContinueStatement": {
+        const start = node["start"]
+        const end = node["end"]
+        if (typeof start === "number" && typeof end === "number") skips.push({ start, end })
+        break
+      }
       case "IfStatement": {
         const start = node["start"]
         const end = node["end"]
@@ -1320,7 +1342,7 @@ const structureIn = (root: unknown): StructureFacts => {
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
-  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards }
+  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards, skips }
 }
 
 /** A parse result, whichever language produced it. */
