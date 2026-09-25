@@ -98,6 +98,8 @@ export interface Coupling {
 const REGEX_LINE = /^\s*\/[^/*\n][^\n]*\/[gimsuy]*,?\s*$/m
 /** A regex literal in an arrow body: `=> /^(route|page)\.tsx?$/.test(…)`. */
 const REGEX_ARROW = /=>\s*\/[^/*\n][^\n]*\/[gimsuy]*/
+/** A regex literal applied inline: `/^[a-z]$/.test(name)`. */
+const REGEX_APPLIED = /\/[^/*\n][^/\n]*\/[gimsuy]*\.(test|exec|match)\(/
 /** A named array or a Set: where a literal vocabulary starts. */
 const VOCABULARY_OPEN = /(new Set\(\[|^\s*(?:export )?const [A-Z][A-Z0-9_]*[^=\n]*= \[)/m
 
@@ -128,7 +130,7 @@ export const couplingIn = (source: string): ReadonlyArray<Coupling> => {
   if (source.includes("new RegExp(")) {
     found.push({ kind: "regex", detail: "builds a RegExp" })
   }
-  const literal = REGEX_LINE.exec(source) ?? REGEX_ARROW.exec(source)
+  const literal = REGEX_LINE.exec(source) ?? REGEX_ARROW.exec(source) ?? REGEX_APPLIED.exec(source)
   if (literal !== null) {
     found.push({ kind: "regex", detail: "a regex literal: " + literal[0].trim().slice(0, 70) })
   }

@@ -20,62 +20,6 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/reimplemented-primitive"
 
-/** Split a call's argument list on top-level commas, respecting nesting and quotes. */
-const splitTopLevel = (text: string): ReadonlyArray<string> => {
-  const parts: Array<string> = []
-  let depth = 0
-  let quote = ""
-  let start = 0
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index] ?? ""
-    if (quote !== "") {
-      if (character === quote && text[index - 1] !== "\\") quote = ""
-      continue
-    }
-    if (character === '"' || character === "'" || character === "`") {
-      quote = character
-      continue
-    }
-    if (character === "(" || character === "[" || character === "{") depth += 1
-    else if (character === ")" || character === "]" || character === "}") depth -= 1
-    else if (character === "," && depth === 0) {
-      parts.push(text.slice(start, index))
-      start = index + 1
-    }
-  }
-  parts.push(text.slice(start))
-  return parts.map((part) => part.trim()).filter((part) => part !== "")
-}
-
-/**
- * The INPUTS a call reads, as opposed to the calls it chains.
- *
- * Keying on callee names alone reported two functions as re-implementations
- * because both read `Number -> Number -> Number -> String`, when the difference
- * was what they fed in (`row.companyTotal` against `row.crewTotal`). Keying on
- * the raw argument text instead broke the real case, where one declaration
- * writes `save(validate(normalise(row)))` and the other sequences the same three
- * calls through locals. So a nested call and a bare identifier -- a local or a
- * parameter -- both become `#`, while a member access, a literal or an
- * expression is kept. A chain therefore keeps only its source, and two
- * different sources stop looking alike.
- */
-const inputKey = (call: string): string => {
-  const open = call.indexOf("(")
-  const close = call.lastIndexOf(")")
-  if (open === -1 || close <= open) return "()"
-  const args = splitTopLevel(call.slice(open + 1, close))
-  if (args.length === 0) return "()"
-  return "(" + args.map(argKey).join(",") + ")"
-}
-
-const argKey = (arg: string): string => {
-  const normalized = arg.replace(/\s+/g, " ")
-  if (normalized.includes("(")) return "#"
-  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(normalized)) return "#"
-  return normalized
-}
-
 /**
  * A function that inlines exactly what an existing declaration already does.
  *
@@ -83,10 +27,10 @@ const argKey = (arg: string): string => {
  *
  * The deterministic half is GENERATION: which pairs are even candidates. That is
  * the resolved call graph -- a function whose whole body is a run of calls has a
- * key, and two functions with the same key are a pair worth judging. The keys are
- * coarse on purpose (`inputKey` keeps only a call's source, because a chain
- * written nested and the same chain written through locals must match), so the
- * key is a high-recall filter and not the verdict.
+ * key, and two functions with the same key are a pair worth judging. The key is
+ * the resolved callees, coarse on purpose -- what each call READS is evidence the
+ * question sees, not part of the key -- so it is a high-recall filter and not the
+ * verdict.
  *
  * The judged half is the VERDICT: are these two the same operation? That is the
  * question `same_behavior` used to ask and answered badly, because it was asked
@@ -140,10 +84,14 @@ export const reimplementedPrimitive: PlannedRule = {
       )
       // The pairing only holds when every call has its span.
       if (sites.length !== unit.calls.length) return undefined
-      const keys = sites.map(
-        (site, index) =>
-          (unit.calls[index] ?? "") + "\u0001" + inputKey(file.text.slice(site.start, site.end)),
-      )
+      // The resolved callee, which is a fact. What each call READS is evidence --
+      // `callGraphEvidence` carries it -- not part of the key: collapsing it here
+      // decided whether two calls had "the same inputs", which is the question
+      // (docs/rule-coupling.md).
+      const keys = sites.map((site, index) => {
+        void site
+        return unit.calls[index] ?? ""
+      })
       return { keys, sites, text: file.text }
     }
 
@@ -303,11 +251,10 @@ const probabilityOfLabel = (answer: { label: string; probabilities?: Record<stri
 /**
  * One declaration as a call graph, which is the state the question needs.
  *
- * `calls` are resolved to `file#name`; `inputs` are what each call reads, with a
- * local or a nested call collapsed to `#` -- the same collapse `inputKey` makes,
- * but now it is EVIDENCE rather than the verdict. The model sees that two
- * functions call the same three helpers and read different fields, and decides;
- * the key alone used to decide for it.
+ * `calls` are resolved to `file#name`; `inputs` are each call as written, which is
+ * EVIDENCE rather than the verdict. The model sees that two functions call the
+ * same three helpers and read different fields, and decides; a collapsed key
+ * alone used to decide it.
  */
 const callGraphEvidence = (unit: Unit, workspace: Workspace): Schema.Json => {
   const file = workspace.files.find((candidate) => candidate.path === unit.file)
@@ -316,7 +263,7 @@ const callGraphEvidence = (unit: Unit, workspace: Workspace): Schema.Json => {
       ? []
       : file.facts.callSites.filter((site) => site.start >= unit.start && site.end <= unit.end)
   const inputs = sites.map((site) =>
-    file === undefined ? "()" : inputKey(file.text.slice(site.start, site.end)),
+    file === undefined ? "()" : file.text.slice(site.start, Math.min(site.end, site.start + 120)),
   )
   return {
     symbol: unit.name,

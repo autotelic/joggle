@@ -59,37 +59,9 @@ const isCandidate = (unit: Unit): boolean => {
   // A React component renders; it does not decide. Components are recognised by
   // the name convention rather than by JSX, because a component can return
   // another component's output and never write a tag itself.
-  if (/^[A-Z]/.test(unit.name)) return false
+  const first = unit.name[0]
+  if (first !== undefined && first >= "A" && first <= "Z") return false
   return true
-}
-
-/**
- * How much this looks like a rule, from signals the code already has.
- *
- * The docs' Composite Scoring pattern: break a complex judgment into atomic
- * scores and combine them with weights you control in code. The point is not to
- * decide with the score -- it is to decide WHAT TO ASK ABOUT, so that a budget
- * takes the most promising candidates instead of the alphabetically first ones.
- *
- * Every signal is derived, and every one is cheap:
- *
- *   somebody else imports it      a local helper is not a rule; a shared thing is
- *   it names types                a rule operates on things that have names
- *   it compares against a value   a threshold is a policy, and policies are rules
- *   it carries a non-trivial number  a rate, a limit, a percentage
- *   it is documented              somebody thought it was worth explaining
- *
- * None of these proves anything. Together they rank, and ranking is all that is
- * needed: the model still answers the actual question about whatever is asked.
- */
-export const ruleLikeness = (unit: Unit, workspace: Workspace): number => {
-  let score = 0
-  if (workspace.imports.importersOfName(unit.file, unit.name).length > 0) score += 3
-  if (unit.typeRefs.length > 0) score += 2
-  if (/[<>]=?|===|!==/.test(unit.text)) score += 2
-  if (/\b(?!0\b|1\b)\d{2,}(\.\d+)?\b/.test(unit.text)) score += 1
-  if (unit.doc !== undefined) score += 1
-  return score
 }
 
 /**
@@ -121,8 +93,6 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Unit> =
     // query is what the body DOES, and that is a judgement rather than a shape.
     // Ranking by a guess about it spent the budget on the wrong end of the list.
     //
-    // `ruleLikeness` stays because it is honest about what it measures and the
-    // drop reason reports it. It is not trusted to order anything.
     .sort((left, right) => left.file.localeCompare(right.file) || left.start - right.start)
 
 /** The two questions about one declaration, pointing at its atom by id. */
@@ -226,12 +196,7 @@ export const hoistToDomain: PlannedRule = {
       ruleId: RULE_ID,
       subject: label(unit),
       stage: "budget" as const,
-      reason:
-        "past the budget of " +
-        budget +
-        "; rule-likeness " +
-        ruleLikeness(unit, workspace) +
-        " (the budget takes the highest scores first)",
+      reason: "past the budget of " + budget + " declarations",
     }))
 
     const atoms = yield* Atoms

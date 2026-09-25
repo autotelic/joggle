@@ -17,6 +17,8 @@ import {
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
 
+// meta-allow: no-pattern-classifier -- `termsOf` tokenises prose -- a capitalised word, a sentence end -- which is
+// unavoidable text parsing of a doc block, not a classification of the code. docs/rule-coupling.md.
 const RULE_ID = "joggle/language-drift"
 
 /**

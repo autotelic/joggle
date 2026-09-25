@@ -19,6 +19,8 @@ import { dependencyVocabulary } from "../vocabulary.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { Workspace } from "../workspace.ts"
 
+// meta-allow: no-pattern-classifier -- a file-extension test (`/\.(?:[cm]?[jt]sx?)$/`) on an import specifier -- a
+// language fact about what a source file is called, not this repository's naming. docs/rule-coupling.md.
 const RULE_ID = "joggle/dependency-fit"
 
 /**
