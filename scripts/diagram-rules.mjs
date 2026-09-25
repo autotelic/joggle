@@ -40,7 +40,7 @@ p.push(box(0, 0, W, H, { fill: PAPER, stroke: PAPER, rx: 0 }))
 
 // ── header ──────────────────────────────────────────────────────────────
 p.push(t(64, 80, "How joggle decides", { size: 36, w: 700 }))
-p.push(t(64, 112, "Two kinds of rule, one report.  Be deterministic where you can prove, and judge only where you must.", { size: 16, fill: MUTED }))
+p.push(t(64, 112, "One kind of rule: a candidate generator, and a question.  Be deterministic where you can prove, and judge only where you must.", { size: 16, fill: MUTED }))
 p.push(`<line x1="64" y1="136" x2="${W - 64}" y2="136" stroke="${RULE}" stroke-width="1.2"/>`)
 
 // ── where it sits ───────────────────────────────────────────────────────
@@ -65,73 +65,46 @@ p.push(t(86, 296, "oxc parse  →  units · imports · call sites · jsx · obje
 p.push(t(86, 318, "tsgo  →  types", { size: 13.5, mono: true, fill: CODE }))
 p.push(t(86, 340, "an unchanged run costs nothing: the index is reused", { size: 12, fill: MUTED }))
 
-// ── lanes ───────────────────────────────────────────────────────────────
+// ── the rule ────────────────────────────────────────────────────────────
 const LY = 392, LH = 396
-const DX = 64, DW = 616
-const JX = 756, JW = W - 64 - JX
+const DX = 64, DW = W - 128
 
-// deterministic lane
-p.push(box(DX, LY, DW, LH, { fill: "#ffffff", stroke: DET, sw: 1.4 }))
-p.push(`<rect x="${DX}" y="${LY}" width="${DW}" height="6" rx="3" fill="${DET}"/>`)
-p.push(t(DX + 22, LY + 40, "2a · DETERMINISTIC RULES", { size: 15.5, w: 700, fill: DET, ls: 0.4 }))
-p.push(t(DX + DW - 22, LY + 40, "static", { size: 12, fill: DET, anchor: "end", mono: true }))
-p.push(t(DX + 22, LY + 66, "a predicate over the facts — never calls the model", { size: 12.5, fill: MUTED }))
-
-const fy = LY + 92
-p.push(pill(DX + 22, fy, 150, 40, { fill: SOFT }))
-p.push(t(DX + 22 + 75, fy + 25, "find", { size: 14, w: 600, anchor: "middle" }))
-p.push(arrow(DX + 176, fy + 20, DX + 206, fy + 20, DET))
-p.push(pill(DX + 210, fy, 210, 40, { fill: SOFT }))
-p.push(t(DX + 210 + 105, fy + 25, "predicate over facts", { size: 13.5, w: 600, anchor: "middle" }))
-p.push(arrow(DX + 424, fy + 20, DX + 454, fy + 20, DET))
-p.push(pill(DX + 458, fy, 136, 40, { fill: SOFT }))
-p.push(t(DX + 458 + 68, fy + 25, "diagnostic", { size: 14, w: 600, anchor: "middle" }))
-
-p.push(t(DX + 22, LY + 186, "EXAMPLES", { size: 11, fill: MUTED, ls: 1 }))
-const detEx1 = ["layer-direction", "import-cycle", "field-type-drift", "nullability-drift", "object-shape"]
-const detEx2 = ["compose-types", "one-concept-one-type", "call-pattern", "duplicate-call-run", "name-the-primitive"]
-detEx1.forEach((r, i) => p.push(t(DX + 22, LY + 210 + i * 22, "joggle/" + r, { size: 12.5, mono: true, fill: CODE })))
-detEx2.forEach((r, i) => p.push(t(DX + 300, LY + 210 + i * 22, "joggle/" + r, { size: 12.5, mono: true, fill: CODE })))
-p.push(t(DX + 22, LY + LH - 20, "always runs — no model, no key", { size: 12, fill: DET }))
-
-// judged lane
-p.push(box(JX, LY, JW, LH, { fill: "#ffffff", stroke: JUD, sw: 1.4 }))
-p.push(`<rect x="${JX}" y="${LY}" width="${JW}" height="6" rx="3" fill="${JUD}"/>`)
-p.push(t(JX + 22, LY + 40, "2b · JUDGED RULES", { size: 15.5, w: 700, fill: JUD, ls: 0.4 }))
-p.push(t(JX + JW - 22, LY + 40, "planned · batched", { size: 12, fill: JUD, anchor: "end", mono: true }))
-p.push(t(JX + 22, LY + 66, "a query over candidates the code cannot decide by looking", { size: 12.5, fill: MUTED }))
+p.push(box(DX, LY, DW, LH, { fill: "#ffffff", stroke: JUD, sw: 1.4 }))
+p.push(`<rect x="${DX}" y="${LY}" width="${DW}" height="6" rx="3" fill="${JUD}"/>`)
+p.push(t(DX + 22, LY + 40, "2 · A RULE", { size: 15.5, w: 700, fill: JUD, ls: 0.4 }))
+p.push(t(DX + DW - 22, LY + 40, "generation is deterministic · the verdict is a question", { size: 12, fill: JUD, anchor: "end", mono: true }))
+p.push(t(DX + 22, LY + 66, "Every rule is judged. The deterministic half is its find: a predicate over the facts, free and high recall.", { size: 12.5, fill: MUTED, w: 900 }))
 
 const moves = [
-  ["1  find", "high recall · noise tolerated"],
-  ["2  evidence", "the panel a reviewer would need — atoms"],
+  ["1  find", "a predicate over the facts · high recall · noise tolerated"],
+  ["2  evidence", "the panel a reviewer would need · bounded atoms"],
   ["3  questions", "atomic and typed:  Noul · Choice · Score"],
-  ["4  policy", "the gates you control"],
+  ["4  policy", "the gates you control, in one file"],
   ["5  diagnose", "span · message · help · confidence"],
 ]
 moves.forEach(([k, v], i) => {
-  const y = LY + 98 + i * 30
-  p.push(t(JX + 22, y, k, { size: 13.5, w: 700, fill: JUD }))
-  p.push(t(JX + 148, y, v, { size: 13, fill: INK }))
+  const x = DX + 30 + i * ((DW - 60) / 5)
+  p.push(t(x, LY + 118, k, { size: 14, w: 700, fill: JUD }))
+  p.push(t(x, LY + 142, v, { size: 12.5, fill: INK, w: (DW - 60) / 5 - 20 }))
 })
 
-const prim = LY + 246
-p.push(t(JX + 22, prim, "Noul: is it true? (0–1)      Choice: one of a set      Score: a level on a rubric", { size: 12.5, fill: MUTED }))
+const prim = LY + 208
+p.push(t(DX + 30, prim, "Noul: is it true? (0–1)      Choice: one of a set      Score: a level on a rubric", { size: 12.5, fill: MUTED, w: 900 }))
 
-const bx = LY + 266
-p.push(box(JX + 22, bx, JW - 44, 34, { fill: SOFT, stroke: JUD }))
-p.push(t(JX + 22 + (JW - 44) / 2, bx + 22, "every judged rule's questions travel in ONE request", { size: 13, w: 600, anchor: "middle", fill: JUD }))
+const bx = LY + 228
+p.push(box(DX + 30, bx, DW - 60, 34, { fill: SOFT, stroke: JUD }))
+p.push(t(DX + 30 + (DW - 60) / 2, bx + 22, "every rule's questions for a run travel in ONE request", { size: 13, w: 600, anchor: "middle", fill: JUD }))
 
-const gy = LY + 308
-p.push(box(JX + 22, gy, JW - 44, 58, { fill: "none", stroke: RULE }))
-p.push(t(JX + 38, gy + 23, "gates", { size: 12, w: 700, fill: MUTED, ls: 0.6 }))
-p.push(t(JX + 96, gy + 23, "probabilityFloor 0.5  ·  minMargin 0.25  ·  reviewFloor 0.6", { size: 13, mono: true, fill: CODE }))
-p.push(t(JX + 38, gy + 44, "below the floor: drop      ·      uncertain: review      ·      decisive: act", { size: 12.5, fill: MUTED }))
+const gy = LY + 272
+p.push(box(DX + 30, gy, DW - 60, 58, { fill: "none", stroke: RULE }))
+p.push(t(DX + 46, gy + 23, "gates", { size: 12, w: 700, fill: MUTED, ls: 0.6 }))
+p.push(t(DX + 104, gy + 23, "probabilityFloor 0.5  ·  minMargin 0.25  ·  reviewFloor 0.6", { size: 13, mono: true, fill: CODE }))
+p.push(t(DX + 46, gy + 44, "below the floor: drop      ·      uncertain: a notice      ·      decisive: a finding", { size: 12.5, fill: MUTED }))
 
-p.push(t(JX + 22, LY + LH - 18, "duplicate-meaning · reimplemented-primitive · naming-drift · hoist-to-domain · …", { size: 12.5, mono: true, fill: CODE, op: 0.85 }))
+p.push(t(DX + 30, LY + LH - 18, "a rule with no model key is skipped, unless --offline replays its cached answers", { size: 12, fill: JUD }))
 
 // ── connectors ──────────────────────────────────────────────────────────
-p.push(arrow(430, 352, 372, LY, DET))
-p.push(arrow(1090, 352, 1096, LY, JUD))
+p.push(arrow(W / 2, 352, W / 2, LY, JUD))
 
 // ── outcome ─────────────────────────────────────────────────────────────
 const OY = 824, OH = 140
@@ -140,7 +113,7 @@ p.push(`<rect x="64" y="${OY}" width="${W - 128}" height="6" rx="3" fill="${OUT}
 p.push(t(86, OY + 42, "3 · THE OUTCOME", { size: 15.5, w: 700, fill: OUT, ls: 0.4 }))
 p.push(t(W - 86, OY + 42, "text · stylish · unix · json · github", { size: 12.5, mono: true, fill: MUTED, anchor: "end" }))
 const outs = [
-  [86, "DIAGNOSTICS", "one shape for both lanes — span · severity · message · help · confidence"],
+  [86, "DIAGNOSTICS", "one diagnostic shape — span · severity · message · help · confidence"],
   [546, "NOTES", "the census, and every bound the run hit"],
   [1006, "DROPS", "the funnel: no_evidence · budget · declined · gated · unreadable"],
 ]
@@ -148,8 +121,7 @@ for (const [x, head, body] of outs) {
   p.push(t(x, OY + 76, head, { size: 12.5, w: 700, fill: MUTED, ls: 0.8 }))
   p.push(t(x, OY + 100, body, { size: 12.5, fill: INK }))
 }
-p.push(arrow(372, LY + LH, 372, OY, DET))
-p.push(arrow(1096, LY + LH, 1096, OY, JUD))
+p.push(arrow(W / 2, LY + LH, W / 2, OY, JUD))
 
 // ── replay / scope ──────────────────────────────────────────────────────
 const RY = 992

@@ -1,5 +1,10 @@
 # joggle friction log
 
+A chronological record. The rounds are in the order they happened and each says
+what was true then; the rules, flags and thresholds it names have moved since, and
+the current set is whatever `joggle rules` prints. It is kept because the *kind* of
+thing that fights back is the useful part, not the state of any one round.
+
 Running joggle against a real repository (`shakti-v2`, ~2,500 parsed files) from
 a sibling checkout. Everything that fought back, with the reproduction and the
 resolution, plus two suspicions that were disproved.
