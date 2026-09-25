@@ -1,45 +1,59 @@
 import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
-import { defineRule, finding, outcome, type Scope } from "../rule.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
+import {
+  budgetNote,
+  finding,
+  marginOfAnswer,
+  outcome,
+  qualityOf,
+  type DecisionAnswers,
+  type PlannedRule,
+  type Scope,
+} from "../rule.ts"
+import type { Diagnostic, Drop } from "../schema.ts"
 import { stripFile } from "./call-pattern.ts"
-import type { Diagnostic } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/duplicate-call-run"
 
-/**
- * A run of calls one declaration shares with another, without sharing the whole
- * sequence.
- *
- * `call-pattern` compares the WHOLE sequence: two functions that do the same
- * three things and then diverge are two functions, and it is right not to call
- * them one. But when the shared run is the body of a helper that already exists,
- * the longer function has inlined it and should call it instead. That is the
- * case a whole-sequence comparison cannot see, and it is how a shared filter, a
- * shared validation or a shared query chain gets copied into a second call site.
- *
- * Deterministic. The calls are resolved, so "the same call" is identity rather
- * than spelling, and the run is extended left and right from a shared n-gram so
- * the report names the longest one.
- */
-export const duplicateCallRun = defineRule({
+// A run of calls one declaration shares with another, without sharing the whole
+// sequence.
+//
+// `call-pattern` compares the WHOLE sequence. But when the shared run is the body
+// of a helper that already exists, the longer function has inlined it and should
+// call it instead. That is the case a whole-sequence comparison cannot see, and it
+// is how a shared filter, validation or query chain gets copied into a second
+// call site.
+//
+// What is deterministic is the run. Calls are resolved, so "the same call" is
+// identity, and the run is extended left and right from a shared n-gram so the
+// candidate names the longest one. Whether that run is a helper somebody inlined
+// -- or a common idiom both functions happen to perform -- is the question.
+export const duplicateCallRun: PlannedRule = {
   id: RULE_ID,
   severity: "info",
   description: "A run of calls one declaration shares with another, without the whole sequence.",
-  judged: false,
-  run: Effect.fn("joggle/duplicate-call-run")(function* (workspace: Workspace, scope: Scope) {
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/duplicate-call-run")(function* (workspace: Workspace, scope: Scope) {
     const { minCalls, maxFindings } = policy.duplicateCallRun
     const eligible = workspace.units.filter(
       (unit) =>
         unit.kind === "function" &&
         unit.calls.length >= minCalls &&
-        // A framework export is called by the framework, not by a sibling.
         !policy.frameworkExports.some((name) => name === unit.name),
     )
     if (eligible.length === 0) {
-      return outcome([], [
-        "no function makes " + minCalls + " or more resolved calls, so nothing had a run to share",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            "no function makes " + minCalls + " or more resolved calls, so nothing had a run to share",
+          ]),
+      }
     }
 
     // Every function is indexed by each run of `minCalls` calls it contains, so
@@ -54,11 +68,8 @@ export const duplicateCallRun = defineRule({
       }
     }
 
-    // The longest run per pair, so a pair is reported once.
-    const runs = new Map<string, { left: Unit; right: Unit; length: number; start: number }>()
+    const runs = new Map<string, { left: Unit; right: Unit; length: number; start: number; rightStart: number }>()
     for (const list of grams.values()) {
-      // A run shared by a hundred functions is a common idiom, not a helper to
-      // call. Bound the pairs so one popular run cannot cost a quadratic scan.
       const bounded = list.slice(0, 50)
       for (let one = 0; one < bounded.length; one += 1) {
         for (let two = one + 1; two < bounded.length; two += 1) {
@@ -88,17 +99,16 @@ export const duplicateCallRun = defineRule({
           if (length < minCalls) continue
           const start = a.start - left
           const key = [a.unit.file, a.unit.name, b.unit.file, b.unit.name]
-            .sort((one, two) => one.localeCompare(two))
+            .sort((one_, two_) => one_.localeCompare(two_))
             .join("\u0000")
           const existing = runs.get(key)
           if (existing === undefined || length > existing.length) {
-            runs.set(key, { left: a.unit, right: b.unit, length, start })
+            runs.set(key, { left: a.unit, right: b.unit, length, start, rightStart: b.start - left })
           }
         }
       }
     }
 
-    const findings: Array<Diagnostic> = []
     const reported = [...runs.values()]
       .filter(
         (run) =>
@@ -107,42 +117,162 @@ export const duplicateCallRun = defineRule({
           scope.changed.has(run.right.file),
       )
       .sort(
-        (one, two) =>
-          two.length - one.length ||
-          one.left.file.localeCompare(two.left.file) ||
-          one.left.name.localeCompare(two.left.name),
+        (one_, two_) =>
+          two_.length - one_.length ||
+          one_.left.file.localeCompare(two_.left.file) ||
+          one_.left.name.localeCompare(two_.left.name),
       )
 
-    for (const run of reported) {
-      if (findings.length >= maxFindings) break
-      const steps = run.left.calls.slice(run.start, run.start + run.length).map(stripFile)
-      findings.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: "info",
-          message:
-            run.left.name + " and " + run.right.name + " share " + run.length + " call(s) in the same order, but are not the same function.",
-          help:
-            "A shared run this long is a helper one of them has inlined: " +
-            steps.join(" -> ") +
-            ". If it is one thing, make it a function and call it from both.",
-          location: run.left.location,
-          identity: [RULE_ID, run.left.file, run.left.name, run.right.file, run.right.name].join("\u0000"),
-          judged: false,
-        }),
-      )
+    if (reported.length === 0) {
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            eligible.length +
+              " function(s) with " +
+              minCalls +
+              " or more resolved calls; no two share a run without sharing the whole sequence",
+          ]),
+      }
     }
 
-    return outcome(findings, [
-      eligible.length +
-        " function(s) with " +
-        minCalls +
-        " or more resolved calls; " +
-        findings.length +
-        " shared run(s) reported",
-      ...(reported.length > findings.length
-        ? [reported.length - findings.length + " were past the limit of " + maxFindings + " and were not reported"]
-        : []),
-    ])
+    const judged = reported.slice(0, maxFindings)
+    const overBudget: ReadonlyArray<Drop> = reported.slice(maxFindings).map((run) => ({
+      ruleId: RULE_ID,
+      subject: run.left.name + " / " + run.right.name,
+      stage: "budget" as const,
+      reason: "past the budget of " + String(maxFindings) + " runs",
+    }))
+
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(judged, (run) =>
+      Effect.gen(function* () {
+        const steps = run.left.calls.slice(run.start, run.start + run.length).map(stripFile)
+        // The state is the shared run and what each side does immediately around
+        // it, which is what separates "a helper somebody inlined" from "a common
+        // idiom both perform".
+        const before = run.left.calls.slice(0, run.start).map(stripFile)
+        const leftAfter = run.left.calls.slice(run.start + run.length).map(stripFile)
+        const rightAfter = run.right.calls.slice(run.rightStart + run.length).map(stripFile)
+        const id = yield* atoms.add({
+          left: { name: run.left.name, file: run.left.file, line: run.left.location.line },
+          right: { name: run.right.name, file: run.right.file, line: run.right.location.line },
+          steps,
+          before,
+          leftAfter,
+          rightAfter,
+        })
+        const plan: Plan<DecisionAnswers> = {
+          ruleId: RULE_ID,
+          subject: run.left.name + " / " + run.right.name,
+          concerns: [run.left.file, run.right.file],
+          atoms: [id],
+          decisions: {
+            verdict: Decision.classify({
+              instructions: [
+                `\`atoms[${id}].left\` (${run.left.name}) and \`atoms[${id}].right\` (${run.right.name}) share ${run.length} calls in the same order: ${steps.join(" -> ")}.`,
+                `\`atoms[${id}].before\` runs before the shared run on the left; \`atoms[${id}].leftAfter\` and \`atoms[${id}].rightAfter\` run after it on each side.`,
+                "Is that shared run ONE THING that should be a function both call, or a common sequence the two perform for their own reasons?",
+                "Answer `shared_helper` when the run is a self-contained step one of them has inlined, so both should call one function for it.",
+                "Answer `common_idiom` when the run is a recurring sequence -- logging, auth, a standard query chain -- that both perform as part of their own work.",
+                "Answer `coincidental` when the two sequences only line up by chance.",
+              ].join("\n"),
+              criteria: {
+                shared_helper: "A self-contained step. Extract it and call it from both.",
+                common_idiom: "A recurring sequence each performs for its own reasons. Not a helper.",
+                coincidental: "The calls line up by chance.",
+              },
+            }),
+          },
+          read: (answers) => answers,
+        }
+        return { run, steps, id, plan }
+      }),
+      { concurrency: "unbounded" },
+    )
+
+    return {
+      plans: planned.map((value) => value.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...overBudget]
+        planned.forEach((value, index) => {
+          const { run } = value
+          const subject = run.left.name + " / " + run.right.name
+          const answer = verdicts[index]
+          const verdict = answer === undefined ? undefined : answer["verdict"]
+          if (verdict === undefined || !("label" in verdict)) {
+            diagnostics.push(findingFor(value, undefined, "no judgement was available"))
+            return
+          }
+          if (verdict.label !== "shared_helper") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "declined",
+              reason:
+                verdict.label === "common_idiom"
+                  ? "the shared run is a common idiom, not a helper"
+                  : "the two sequences line up by chance",
+            })
+            return
+          }
+          const score = verdict.probabilities[verdict.label] ?? 0
+          const quality = qualityOf({
+            score,
+            margin: marginOfAnswer(verdict),
+            confidence: verdict.confidence,
+          })
+          if (quality.quality !== "act") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "gated",
+              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+            })
+            return
+          }
+          diagnostics.push(findingFor(value, verdict.confidence, undefined))
+        })
+        return outcome(
+          diagnostics,
+          budgetNote("runs", maxFindings, reported.length, reported.slice(maxFindings).map((run) => run.left.name + "/" + run.right.name)),
+          drops,
+        )
+      },
+    }
   }),
-})
+}
+
+const findingFor = (
+  value: {
+    readonly run: {
+      readonly left: Unit
+      readonly right: Unit
+      readonly length: number
+      readonly start: number
+      readonly rightStart: number
+    }
+    readonly steps: ReadonlyArray<string>
+  },
+  confidence: number | undefined,
+  unverifiedReason: string | undefined,
+): Diagnostic => {
+  const { run, steps } = value
+  const input: Parameters<typeof finding>[0] = {
+    ruleId: RULE_ID,
+    severity: "info",
+    message:
+      run.left.name + " and " + run.right.name + " share " + run.length + " call(s) in the same order, but are not the same function.",
+    help:
+      "A shared run this long is a helper one of them has inlined: " +
+      steps.join(" -> ") +
+      ". If it is one thing, make it a function and call it from both." +
+      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
+    location: run.left.location,
+    identity: [RULE_ID, run.left.file, run.left.name, run.right.file, run.right.name].join("\u0000"),
+    judged: unverifiedReason === undefined,
+  }
+  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+}
