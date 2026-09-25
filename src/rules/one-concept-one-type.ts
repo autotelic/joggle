@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
-  finding,
   inScope,
   outcome,
   qualityOf,
@@ -39,7 +39,14 @@ export const oneConceptOneType: PlannedRule = {
   description: "One declared name resolving to different types in different files.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    one_name_many_types:
+      "`{{name}}` resolves to {{meanings}} different types across {{files}} file(s).",
+    one_name_many_types_help:
+      "{{lead}}The compiler resolved it to: {{resolved}}. Share one declaration, or give the two concepts two names.{{unverified}}",
+  }),
   plan: Effect.fn("joggle/one-concept-one-type")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(oneConceptOneType, locator(workspace))
     const byName = new Map<string, Array<{ readonly unit: Unit; readonly fact: TypeFact }>>()
     for (const unit of workspace.units) {
       // Functions are already compared as names and as call sequences.
@@ -153,7 +160,7 @@ export const oneConceptOneType: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(candidate, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, candidate, undefined, "no judgement was available"))
             return
           }
           if (verdict.label !== "one_concept" && verdict.label !== "two_concepts") {
@@ -180,7 +187,7 @@ export const oneConceptOneType: PlannedRule = {
             return
           }
           diagnostics.push(
-            findingFor(candidate, verdict.confidence, undefined, verdict.label === "two_concepts"),
+            findingFor(report, candidate, verdict.confidence, undefined, verdict.label === "two_concepts"),
           )
         })
         return outcome(
@@ -205,6 +212,7 @@ export const oneConceptOneType: PlannedRule = {
 }
 
 const findingFor = (
+  report: Report,
   candidate: {
     readonly name: string
     readonly meanings: number
@@ -216,36 +224,29 @@ const findingFor = (
   renamed = false,
 ): Diagnostic => {
   const first = candidate.entries[0]
-  const location = first === undefined ? { file: "", line: 1, column: 1 } : first.unit.location
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: RULE_ID,
-    severity: "warn",
-    message:
-      "`" +
-      candidate.name +
-      "` resolves to " +
-      candidate.meanings +
-      " different types across " +
-      candidate.files +
-      " file(s).",
-    help:
-      (renamed
+  return report({
+    at: first?.unit ?? { file: "", start: 0 },
+    messageId: "one_name_many_types",
+    data: {
+      name: candidate.name,
+      meanings: candidate.meanings,
+      files: candidate.files,
+      lead: renamed
         ? "One name, different things. Give one of them its own name. "
-        : "One name should mean one type. ") +
-      "The compiler resolved it to: " +
-      candidate.entries
+        : "One name should mean one type. ",
+      resolved: candidate.entries
         .map(
           (entry) =>
             entry.unit.file + ":" + String(entry.unit.location.line) + " -> " + short(entry.fact.display),
         )
-        .join("; ") +
-      ". Share one declaration, or give the two concepts two names." +
-      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location,
+        .join("; "),
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: "one_name_many_types_help",
     identity: [RULE_ID, candidate.name].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+    confidence,
+  })
 }
 
 /** A resolved type, cut to the length a finding's help can carry. */

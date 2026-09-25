@@ -1,13 +1,12 @@
 import { Effect } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
-import { lineAt, lineStarts } from "../cascade.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
-  finding,
   inScope,
   outcome,
   qualityOf,
@@ -15,7 +14,7 @@ import {
   type PlannedRule,
   type Scope,
 } from "../rule.ts"
-import type { Diagnostic, Drop, SourceLocation } from "../schema.ts"
+import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/object-shape"
@@ -35,13 +34,28 @@ const VIOLATIONS = { verdict: ["one_concept"] } as const
 // candidate. Whether that shape is ONE CONCEPT that deserves a name, or two
 // concepts that happen to share field names, is not a fact. That is the question,
 // and it used to be answered by the key set alone.
-export const objectShape: PlannedRule = {
+/**
+ * The rule's identity and its messages, in one place a reporter can be bound to
+ * without the rule having to name itself.
+ */
+const SPEC = {
   id: RULE_ID,
   severity: "info",
-  description: "Object literals that share a shape with no type of their own.",
   judged: true,
+  messages: messages({
+    repeated_fields:
+      "{{count}} object literal(s) in {{files}} file(s) share this shape: { {{fields}} }.",
+    repeated_fields_help:
+      "Define a type with these fields and annotate every site with it. A shape nobody named is a shape nobody validates, and the sixth copy is written from memory: {{paths}}.{{unverified}}",
+  }),
+} as const
+
+export const objectShape: PlannedRule = {
+  ...SPEC,
+  description: "Object literals that share a shape with no type of their own.",
   onUnavailable: "report",
   plan: Effect.fn("joggle/object-shape")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(SPEC, locator(workspace))
     const { minKeys, maxFindings } = policy.objectShape
 
     // A shape a declared type already names is not a shape nobody named. Every
@@ -192,13 +206,12 @@ export const objectShape: PlannedRule = {
         const diagnostics: Array<Diagnostic> = []
         const drops: Array<Drop> = [...overBudget]
         present.forEach((entry, index) => {
-          const { keys, first } = entry
+          const { keys } = entry
           const subject = "object shape { " + keys.join("; ") + " }"
-          const line = lineAt(lineStarts(textOf.get(first.file) ?? ""), first.start)
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(entry, line, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, entry, undefined, "no judgement was available"))
             return
           }
           if (verdict.label !== "one_concept") {
@@ -233,7 +246,7 @@ export const objectShape: PlannedRule = {
             })
             return
           }
-          diagnostics.push(findingFor(entry, line, verdict.confidence, undefined))
+          diagnostics.push(findingFor(report, entry, verdict.confidence, undefined))
         })
         return outcome(
           diagnostics,
@@ -252,38 +265,34 @@ export const objectShape: PlannedRule = {
 
 /** The finding for one shape: verified, or the fact with the reason it is not. */
 const findingFor = (
+  report: Report,
   entry: {
     readonly keys: ReadonlyArray<string>
     readonly sites: ReadonlyArray<{ readonly file: string; readonly start: number }>
     readonly first: { readonly file: string; readonly start: number }
   },
-  line: number,
   confidence: number | undefined,
   unverifiedReason: string | undefined,
 ): Diagnostic => {
   const files = [...new Set(entry.sites.map((site) => site.file))]
-  const location: SourceLocation = { file: entry.first.file, line, column: 1 }
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: RULE_ID,
-    severity: "info",
-    message:
-      entry.sites.length +
-      " object literal(s) in " +
-      files.length +
-      " file(s) share this shape: { " +
-      entry.keys.join("; ") +
-      " }.",
-    help:
-      "Define a type with these fields and annotate every site with it. A shape nobody named is a shape nobody validates, and the sixth copy is written from memory: " +
-      files.slice(0, policy.evidence.maxListedPaths).join(", ") +
-      (files.length > policy.evidence.maxListedPaths
-        ? " and " + (files.length - policy.evidence.maxListedPaths) + " more"
-        : "") +
-      "." +
-      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location,
+  const paths =
+    files.slice(0, policy.evidence.maxListedPaths).join(", ") +
+    (files.length > policy.evidence.maxListedPaths
+      ? " and " + (files.length - policy.evidence.maxListedPaths) + " more"
+      : "")
+  return report({
+    at: { file: entry.first.file, start: entry.first.start },
+    messageId: "repeated_fields",
+    data: {
+      count: entry.sites.length,
+      files: files.length,
+      fields: entry.keys.join("; "),
+      paths,
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: "repeated_fields_help",
     identity: [RULE_ID, entry.keys.join("\u0000")].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+    confidence,
+  })
 }

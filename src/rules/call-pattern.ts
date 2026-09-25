@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
-  finding,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -39,7 +39,14 @@ export const callPattern: PlannedRule = {
   description: "Declarations that make the same calls in the same order with different bodies.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    same_calls:
+      "{{names}} make the same {{count}} call(s) in the same order, written {{ways}} different ways.",
+    same_calls_help:
+      "One of these is the original and the rest re-implement it: {{calls}}. Compare them and keep one, or make the shared part a function the others call.{{unverified}}",
+  }),
   plan: Effect.fn("joggle/call-pattern")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(callPattern, locator(workspace))
     const { minCalls, maxFindings } = policy.callPattern
     const eligible = workspace.units.filter(
       (unit) =>
@@ -159,7 +166,7 @@ export const callPattern: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(value, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, value, undefined, "no judgement was available"))
             return
           }
           if (verdict.label !== "same_orchestration") {
@@ -185,7 +192,7 @@ export const callPattern: PlannedRule = {
             })
             return
           }
-          diagnostics.push(findingFor(value, verdict.confidence, undefined))
+          diagnostics.push(findingFor(report, value, verdict.confidence, undefined))
         })
         return outcome(
           diagnostics,
@@ -198,6 +205,7 @@ export const callPattern: PlannedRule = {
 }
 
 const findingFor = (
+  report: Report,
   value: {
     readonly units: ReadonlyArray<Unit>
     readonly first: Unit
@@ -207,26 +215,21 @@ const findingFor = (
   unverifiedReason: string | undefined,
 ): Diagnostic => {
   const { units, first, calls } = value
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: RULE_ID,
-    severity: "info",
-    message:
-      units.map((unit) => unit.name).join(", ") +
-      " make the same " +
-      calls.length +
-      " call(s) in the same order, written " +
-      units.length +
-      " different ways.",
-    help:
-      "One of these is the original and the rest re-implement it: " +
-      calls.join(" -> ") +
-      ". Compare them and keep one, or make the shared part a function the others call." +
-      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location: first.location,
+  return report({
+    at: first,
+    messageId: "same_calls",
+    data: {
+      names: units.map((unit) => unit.name).join(", "),
+      count: calls.length,
+      ways: units.length,
+      calls: calls.join(" -> "),
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: "same_calls_help",
     identity: [RULE_ID, first.callSignature].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+    confidence,
+  })
 }
 
 /** `path/to/file.ts#name` reads better as `file:name` in a sentence. */

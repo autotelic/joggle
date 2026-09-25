@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
-  finding,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -44,7 +44,14 @@ export const nameThePrimitive: PlannedRule = {
   description: "A group of fields repeated across declarations with no name of its own.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    fields_unnamed:
+      "{{fields}} appear together in {{count}} declaration(s) and are never named as one thing.",
+    fields_unnamed_help:
+      "Extract them as a named type and compose it, so the next declaration adds a field in one place instead of four. See {{file}}:{{line}}, where {{name}} repeats them.{{unverified}}",
+  }),
   plan: Effect.fn("joggle/name-the-primitive")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(nameThePrimitive, locator(workspace))
     const { minFields, minOccurrences, maxFindings } = policy.nameThePrimitive
     const types = workspace.units.filter(isTypeUnit)
     if (types.length === 0) {
@@ -202,7 +209,7 @@ export const nameThePrimitive: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(value, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, value, undefined, "no judgement was available"))
             return
           }
           if (verdict.label !== "one_thing") {
@@ -231,7 +238,7 @@ export const nameThePrimitive: PlannedRule = {
             })
             return
           }
-          diagnostics.push(findingFor(value, verdict.confidence, undefined))
+          diagnostics.push(findingFor(report, value, verdict.confidence, undefined))
         })
         return outcome(
           diagnostics,
@@ -249,6 +256,7 @@ export const nameThePrimitive: PlannedRule = {
 }
 
 const findingFor = (
+  report: Report,
   value: {
     readonly entry: { readonly units: ReadonlyArray<Unit>; readonly fields: ReadonlyArray<string> }
     readonly first: Unit
@@ -257,26 +265,20 @@ const findingFor = (
   unverifiedReason: string | undefined,
 ): Diagnostic => {
   const { entry, first } = value
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: RULE_ID,
-    severity: "info",
-    message:
-      entry.fields.join(", ") +
-      " appear together in " +
-      entry.units.length +
-      " declaration(s) and are never named as one thing.",
-    help:
-      "Extract them as a named type and compose it, so the next declaration adds a field in one place instead of four. See " +
-      first.file +
-      ":" +
-      first.location.line +
-      ", where " +
-      first.name +
-      " repeats them." +
-      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location: first.location,
+  return report({
+    at: first,
+    messageId: "fields_unnamed",
+    data: {
+      fields: entry.fields.join(", "),
+      count: entry.units.length,
+      file: first.file,
+      line: first.location.line,
+      name: first.name,
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: "fields_unnamed_help",
     identity: [RULE_ID, entry.fields.join("\u0000")].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+    confidence,
+  })
 }

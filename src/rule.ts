@@ -6,6 +6,7 @@ import type { JoggleConfig } from "./config.ts"
 import type * as AiError from "effect/unstable/ai/AiError"
 import type { Decision, DecisionModel } from "effect/unstable/ai"
 import type { Diagnostic, Drop, Operation, Repair, Severity, SourceLocation } from "./schema.ts"
+import type { Messages } from "./reporting.ts"
 import type { Workspace } from "./workspace.ts"
 
 /**
@@ -118,6 +119,13 @@ export interface Rule {
   /** Whether this rule needs the model. Deterministic rules must run without it. */
   readonly judged: boolean
   /**
+   * The rule's messages, keyed by id, so the wording lives in one place.
+   *
+   * Referenced through {@link reporter}, which refuses to report a message id
+   * that is not declared here.
+   */
+  readonly messages?: Messages | undefined
+  /**
    * The operations this rule can propose. Absent means it only warns.
    *
    * The model never sees this list. It is what the report groups by, and what
@@ -154,6 +162,8 @@ export interface PlannedRule {
   readonly severity: Severity
   readonly description: string
   readonly judged: true
+  /** The rule's messages, keyed by id, so the wording lives in one place. */
+  readonly messages?: Messages | undefined
   /** The operations this rule can propose. Absent means it only warns. */
   readonly operations?: ReadonlyArray<Operation> | undefined
   /**

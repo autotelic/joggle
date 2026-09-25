@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
-  finding,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -41,7 +41,14 @@ export const duplicateCallRun: PlannedRule = {
   description: "A run of calls one declaration shares with another, without the whole sequence.",
   judged: true,
   onUnavailable: "report",
+  messages: messages({
+    shared_run:
+      "{{left}} and {{right}} share {{count}} call(s) in the same order, but are not the same function.",
+    shared_run_help:
+      "A shared run this long is a helper one of them has inlined: {{steps}}. If it is one thing, make it a function and call it from both.{{unverified}}",
+  }),
   plan: Effect.fn("joggle/duplicate-call-run")(function* (workspace: Workspace, scope: Scope) {
+    const report = reporter(duplicateCallRun, locator(workspace))
     const { minCalls, maxFindings } = policy.duplicateCallRun
     const eligible = workspace.units.filter(
       (unit) =>
@@ -207,7 +214,7 @@ export const duplicateCallRun: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(value, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, value, undefined, "no judgement was available"))
             return
           }
           if (verdict.label !== "shared_helper") {
@@ -236,7 +243,7 @@ export const duplicateCallRun: PlannedRule = {
             })
             return
           }
-          diagnostics.push(findingFor(value, verdict.confidence, undefined))
+          diagnostics.push(findingFor(report, value, verdict.confidence, undefined))
         })
         return outcome(
           diagnostics,
@@ -249,6 +256,7 @@ export const duplicateCallRun: PlannedRule = {
 }
 
 const findingFor = (
+  report: Report,
   value: {
     readonly run: {
       readonly left: Unit
@@ -263,19 +271,19 @@ const findingFor = (
   unverifiedReason: string | undefined,
 ): Diagnostic => {
   const { run, steps } = value
-  const input: Parameters<typeof finding>[0] = {
-    ruleId: RULE_ID,
-    severity: "info",
-    message:
-      run.left.name + " and " + run.right.name + " share " + run.length + " call(s) in the same order, but are not the same function.",
-    help:
-      "A shared run this long is a helper one of them has inlined: " +
-      steps.join(" -> ") +
-      ". If it is one thing, make it a function and call it from both." +
-      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
-    location: run.left.location,
+  return report({
+    at: run.left,
+    messageId: "shared_run",
+    data: {
+      left: run.left.name,
+      right: run.right.name,
+      count: run.length,
+      steps: steps.join(" -> "),
+      unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
+    },
+    helpId: "shared_run_help",
     identity: [RULE_ID, run.left.file, run.left.name, run.right.file, run.right.name].join("\u0000"),
     judged: unverifiedReason === undefined,
-  }
-  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+    confidence,
+  })
 }

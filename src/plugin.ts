@@ -26,6 +26,9 @@
 /* Writing a rule. */
 export * from "./rule.ts"
 
+/* Reporting: the message registry, and naming a subject instead of a location. */
+export * from "./reporting.ts"
+
 /* The shapes a rule produces and reads. */
 export * from "./schema.ts"
 

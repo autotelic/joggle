@@ -278,3 +278,16 @@ export class GitError extends Schema.TaggedError<GitError>()("joggle/GitError", 
   detail: Schema.String,
 }) {}
 
+/**
+ * A rule reported a message its own registry does not declare, or a template hole
+ * it gave no data for. That is a bug in the rule, not in the code under analysis.
+ */
+export class RuleAuthoringError extends Schema.TaggedError<RuleAuthoringError>()(
+  "joggle/RuleAuthoringError",
+  {
+    ruleId: Schema.String,
+    messageId: Schema.String,
+    detail: Schema.String,
+  },
+) {}
+
