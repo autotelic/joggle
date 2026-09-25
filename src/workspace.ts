@@ -180,6 +180,13 @@ export const ObjectSite = Schema.Struct({
    * the rule then compares the two nullabilities.
    */
   sources: Schema.Record(Schema.String, Schema.String),
+  /**
+   * Each field's `Schema` constructor chain, outermost first: `["optionalKey",
+   * "Finite"]`. A FACT about the wire schema, not about the repository: `Finite`
+   * excludes `Infinity` and `NaN`, `NullOr` admits a null, `Int` excludes a
+   * fraction. It is what a value produced on the other side has to satisfy.
+   */
+  schemas: Schema.Record(Schema.String, Schema.Array(Schema.String)),
 })
 
 /**
@@ -956,6 +963,7 @@ const structureIn = (root: unknown): StructureFacts => {
     readonly required: Array<string>
     readonly nullable: Array<string>
     readonly sources: Record<string, string>
+    readonly schemas: Record<string, ReadonlyArray<string>>
   }
   const declaredObjects = new Map<number, DeclaredFields>()
 
@@ -1046,6 +1054,26 @@ const structureIn = (root: unknown): StructureFacts => {
     return methods
   }
 
+  /**
+   * A field value's `Schema` chain, including a bare member.
+   *
+   * `chainOf` follows CALL chains (`Schema.NullOr(Schema.String)`), so it misses
+   * `Schema.Finite`, which is a member and not a call -- and a bare `Finite` is
+   * exactly the field a value has to satisfy.
+   */
+  const schemasOf = (value: unknown): ReadonlyArray<string> => {
+    const methods = chainOf(value)
+    if (methods.length > 0) return methods
+    if (
+      isRecord(value) &&
+      (value["type"] === "MemberExpression" || value["type"] === "StaticMemberExpression")
+    ) {
+      const property = value["property"]
+      if (isRecord(property) && typeof property["name"] === "string") return [property["name"]]
+    }
+    return []
+  }
+
   /** The `sourceColumn` an `.annotate({...})` in the chain names, or "". */
   const sourceColumnOf = (value: unknown): string => {
     let current: unknown = value
@@ -1084,20 +1112,22 @@ const structureIn = (root: unknown): StructureFacts => {
     const required: Array<string> = []
     const nullable: Array<string> = []
     const sources: Record<string, string> = {}
-    if (!Array.isArray(properties)) return { required, nullable, sources }
+    const schemas: Record<string, ReadonlyArray<string>> = {}
+    if (!Array.isArray(properties)) return { required, nullable, sources, schemas }
     for (const property of properties) {
       if (!isRecord(property)) continue
       const key = property["key"]
       const name = isRecord(key) && typeof key["name"] === "string" ? key["name"] : undefined
       if (name === undefined) continue
       const value = property["value"]
-      const methods = chainOf(value)
+      const methods = schemasOf(value)
       if (!methods.includes("optionalKey") && !methods.includes("optional")) required.push(name)
       if (methods.includes("NullOr")) nullable.push(name)
       const source = sourceColumnOf(value)
       if (source !== "") sources[name] = source
+      if (methods.length > 0) schemas[name] = methods
     }
-    return { required, nullable, sources }
+    return { required, nullable, sources, schemas }
   }
 
   // A same-file `const NAME = 'value'`, so `createTable(PAYROLL_CREW, ...)` names
@@ -1259,7 +1289,7 @@ const structureIn = (root: unknown): StructureFacts => {
           expression["type"] === "ObjectExpression" &&
           typeof expression["start"] === "number"
         ) {
-          declaredObjects.set(expression["start"], { required: [], nullable: [], sources: {} })
+          declaredObjects.set(expression["start"], { required: [], nullable: [], sources: {}, schemas: {} })
         }
         break
       }
@@ -1273,7 +1303,7 @@ const structureIn = (root: unknown): StructureFacts => {
           init["type"] === "ObjectExpression" &&
           typeof init["start"] === "number"
         ) {
-          declaredObjects.set(init["start"], { required: [], nullable: [], sources: {} })
+          declaredObjects.set(init["start"], { required: [], nullable: [], sources: {}, schemas: {} })
         }
         break
       }
@@ -1303,6 +1333,7 @@ const structureIn = (root: unknown): StructureFacts => {
               required: declared?.required ?? [],
               nullable: declared?.nullable ?? [],
               sources: declared?.sources ?? {},
+              schemas: declared?.schemas ?? {},
             })
           }
         }
