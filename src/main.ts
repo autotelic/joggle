@@ -14,9 +14,9 @@ import { exitCodeFor, render } from "./report.ts"
 import { loadWorkspace } from "./workspace.ts"
 import { answerPlans, chunkPlans, verdictsOf } from "./plans.ts"
 import { layer as atomsLayer } from "./atoms.ts"
-import { summarizeCalibration, type CalibrationSummary } from "./calibration.ts"
+import { summarizeCalibration, type CalibrationState, type CalibrationSummary } from "./calibration.ts"
 import { verdictOf } from "./verdict.ts"
-import { everyFile, type DecisionAnswers, type PlannedRule } from "./rule.ts"
+import { everyFile, qualityOf, type DecisionAnswers, type PlannedRule } from "./rule.ts"
 import { allRules, builtIn, Rules } from "./rules/index.ts"
 import { layerFromConfig as tsgoLayer } from "./tsgo.ts"
 
@@ -440,7 +440,7 @@ const calibrateCommand = Command.make(
             }),
           )
           const rejected = Result.isFailure(attempt) ? String(attempt.failure) : ""
-          const probabilities: Array<number> = []
+          const probabilities: Array<CalibrationState> = []
           let composed = false
           planned.plans.forEach((plan, index) => {
             const names = Object.keys(plan.decisions)
@@ -453,7 +453,10 @@ const calibrateCommand = Command.make(
             const name = names[0]
             if (name === undefined) return
             const verdict = verdictOf(answers[index]?.[name], plan.violations?.[name] ?? [])
-            if (verdict !== undefined) probabilities.push(verdict.probability)
+            if (verdict !== undefined) {
+              const quality = qualityOf({ score: verdict.probability, margin: verdict.margin, confidence: verdict.confidence })
+              probabilities.push({ probability: verdict.probability, acted: quality.quality === "act" })
+            }
           })
           out.push({
             rule: rule.id,

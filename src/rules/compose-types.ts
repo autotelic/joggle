@@ -154,6 +154,8 @@ export const composeTypes: PlannedRule = {
                 `\`atoms[${id}].shared\` is each shared field with its type on both sides.`,
                 "How do these two declarations relate?",
                 "Answer `composes` when the whole is genuinely the part plus more, so it should be written as the part intersected with the added fields.",
+                "When `atoms[${id}].sameName` is true the two declarations share a NAME, so answer `same_name_drift`: composing a type with itself is nonsense, however the fields line up.",
+                "When one side is a raw or wire mirror -- a `*Row`, an `Unparsed*`, a `*Json` -- the two are different artefacts rather than one composition, so answer `independent`.",
                 "Answer `same_name_drift` when the two declarations share a name but are different things, so one should be renamed or the two unified.",
                 "Answer `independent` when the shared fields are a coincidence and the two types are unrelated.",
                 "Answer `already_composed` when the whole already states its composition, so there is nothing to change.",
@@ -161,7 +163,7 @@ export const composeTypes: PlannedRule = {
               criteria: {
                 composes: "The whole is the part plus more. Write it as part & { the added fields }.",
                 same_name_drift: "One name, two different shapes. Rename one, or unify them.",
-                independent: "Coincidental overlap. The two types are unrelated.",
+                independent: "Coincidental overlap, or two different artefacts (a domain type and its raw or wire mirror). The two are unrelated.",
                 already_composed: "The composition is already written.",
               },
             }),

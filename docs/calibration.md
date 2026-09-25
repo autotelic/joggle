@@ -1,11 +1,12 @@
-# Calibration and the first real measurement
+# Calibration and the measurements
 
-Two measurements of the rules after every one of them became a Jev rule: what the
-questions are worth (`joggle calibrate`), and what the whole rule set reports on a
-real repository (`shakti-v2`). Both run against the sibling `shakti-v2` checkout,
-with the key, and with `--cache-dir` so nothing is written into that repository.
+Two measurements of the rules, both after every one of them became a Jev rule:
+what the questions are worth (`joggle calibrate`), and what the whole rule set
+reports on a real repository (`joggle check`). Both run against the sibling
+`shakti-v2` checkout, with the key, and with `--cache-dir` so nothing is written
+into that repository.
 
-## Calibration
+## Calibration, band-aware
 
 `joggle calibrate` replays each question over the candidates this project
 produces, reduces every answer to `P(violated)` with the plan's declared violating
@@ -13,93 +14,90 @@ labels, and applies abide's rule: answers near 0 or 1 are **decisive**, ones tha
 sit in the middle are **weak**, ones that fire on most states are **noisy**, and
 fewer than five states is **skipped**.
 
-Measured on `shakti-v2` (`joggle calibrate --cwd ../shakti-v2`):
+`fired` counts the states the BAND would act on -- probability, margin and
+confidence together -- not the ones above the probability floor. Calibration that
+cannot see the difference calls a rule noisy when the report is quiet:
+`field-type-drift` fires on 110 of 129 states by probability and acts on 15, and
+counting only the floor called it noisy.
 
-| Rule | States | Verdict | median | min | max | fired |
-| --- | --: | --- | --: | --: | --: | --: |
-| `doc-matches-code` | 400 | decisive | 0.00 | 0.00 | 0.81 | 6 |
-| `language-drift` | 18 | decisive | 0.00 | 0.00 | 0.00 | 0 |
-| `duplicate-call-run` | 23 | decisive | 0.10 | 0.04 | 0.39 | 0 |
-| `call-pattern` | 13 | decisive | 0.09 | 0.00 | 0.42 | 0 |
-| `name-the-primitive` | 16 | weak | 0.38 | 0.11 | 0.53 | 2 |
-| `import-cycle` | 8 | noisy | 0.56 | 0.32 | 0.64 | 6 |
-| `field-type-drift` | 129 | noisy | 0.69 | 0.15 | 0.99 | 110 |
-| `object-shape` | 116 | noisy | 0.84 | 0.56 | 0.97 | 116 |
-| `compose-types` | 147 | noisy | 0.96 | 0.43 | 1.00 | 145 |
+| Rule | States | Verdict | median | max | acted |
+| --- | --: | --- | --: | --: | --: |
+| `doc-matches-code` | 400 | decisive | 0.00 | 0.81 | 2 |
+| `call-pattern` | 13 | decisive | 0.09 | 0.42 | 0 |
+| `duplicate-call-run` | 23 | decisive | 0.10 | 0.39 | 0 |
+| `reimplemented-primitive` | 32 | decisive | 0.00 | 0.00 | 0 |
+| `language-drift` | 18 | decisive | 0.00 | 0.00 | 0 |
+| `field-type-drift` | 129 | decisive | 0.69 | 0.99 | 15 |
+| `name-the-primitive` | 142 | decisive | 0.23 | 0.71 | 0 |
+| `object-shape` | 161 | decisive | 0.79 | 0.96 | 92 |
+| `compose-types` | 222 | noisy | 0.94 | 1.00 | 186 |
+| `import-cycle` | 8 | weak | 0.56 | 0.64 | 0 |
 
-Skipped for too few candidates: `layer-direction`, `layer-purity` (shakti-v2
-declares no layers), `name-as-address`, `rule-judgment`, `shallow-module`,
-`temporal-coupling`, `dependency-fit`, `hoist-to-domain`,
+Skipped for too few candidates: `layer-direction` and `layer-purity` (shakti-v2
+declares no layers), `dependency-fit`, `hoist-to-domain`,
 `duplicate-implementation`, `duplicate-meaning`, `naming-drift`,
-`reimplemented-primitive`, `one-concept-one-type`, `nullability-drift`,
-`data-error-as-outage`.
+`one-concept-one-type`, `nullability-drift`, `data-error-as-outage`. A rule with
+no candidates has nothing to calibrate, and a rule that composes two decisions has
+no single reduction: both are named rather than guessed at.
 
-Two of those are honest about what calibration can do here: a rule with no
-candidates on this repository has nothing to calibrate, and a rule that composes
-two decisions (a Noul and a Choice) has no single reduction, so it is named rather
-than guessed at.
+## Tuning round one
 
-## What the questions are worth
+The first calibration had `object-shape` (median 0.84, 116 of 116 fired) and
+`compose-types` (0.96, 145 of 147) firing on nearly everything. Two of them were
+not bad questions, they were questions that did not use the state they had:
 
-- **The call questions are decisive.** `call-pattern`, `duplicate-call-run`,
-  `language-drift` and `doc-matches-code` answer near 0 on almost every real
-  candidate: the model reads a shared call sequence and says "these are not one
-  orchestration" with a flat distribution. That is the good shape -- the key
-  generates, the question declines.
-- **The shape questions are noisy.** `compose-types` (median 0.96), `object-shape`
-  (0.84) and `field-type-drift` (0.69) say "violated" on nearly every candidate.
-  The keys that generate those candidates are coarse on purpose, so a model that
-  agrees with them adds little: it is answering the same question the key already
-  answered. `naming-drift`'s shape -- `name-the-primitive` -- is weak rather than
-  noisy, which is the opposite problem: it sits in the middle and does not know.
+- **`object-shape`** was naming library option objects -- `Intl.NumberFormat`'s
+  `{ currency; currencyDisplay; minimumFractionDigits; style }`, a router plugin's
+  `{ dir; dirNameRoutePrefix; maxDepth; options }`, an email's `{ from; subject;
+  to }`. The criteria now say so: a shape that is an external library's options
+  object, or generic bookkeeping that unrelated modules carry, is `coincidental`.
+- **`compose-types`** was answering `composes` when the two declarations share a
+  NAME -- "Query lists all 4 fields of Query and adds 1", the nonsense its own
+  comment had warned about -- because nothing told it that `atoms[id].sameName`
+  is decisive. It now says: same name means `same_name_drift`, and a raw or wire
+  mirror (`*Row`, `Unparsed*`, `*Json`) means `independent`.
 
-## The measurement
-
-`joggle check --cwd ../shakti-v2 --format json`:
-
-```
-707 problems across 1729 files
-274 model calls, 4.4M input tokens, 517k output tokens
-
-findings                          drops (3081)
-  220  compose-types               1814 declined
-  178  duplicate-implementation    1018 budget
-  175  object-shape                 210 gated
-   55  duplicate-meaning             36 unreadable
-   40  hoist-to-domain                3 no evidence
-   16  field-type-drift
-   10  naming-drift                 per rule that matters here:
-    7  doc-matches-code               field-type-drift  22 declined, 92 gated, 16 acted
-    2  dependency-fit                 call-pattern      11 declined,  2 gated
-    2  reimplemented-primitive        data-error-as-outage 22 declined,  1 acted
-    1  data-error-as-outage
-    1  module-direction
-```
-
-Against the numbers before the migration:
+Measured effect on the report:
 
 | Rule | before | after |
 | --- | --: | --: |
+| `object-shape` | 175 findings (noisy, 214 acted) | **104** (decisive, 92 acted) |
+| `compose-types` | 220 findings (noisy, 219 acted) | **187** (noisy, 186 acted) |
+| whole report | 707 | **602** |
+
+`object-shape` is tuned. `compose-types` is not, and the reason is worth keeping:
+its remaining answers are true compositions. The containment is the evidence the
+question is given, so a model that agrees with it is right -- the volume is a
+product decision (report advice at info, or flag it), not a question defect.
+
+## The measurement
+
+`joggle check --cwd ../shakti-v2 --format json`, after tuning: **602 findings
+across 1729 files**, 3081+ drops (1889 declined, 1016 budget, 240 gated, 36
+unreadable, 3 no evidence).
+
+| Rule | before the migration | now |
+| --- | --: | --: |
 | `field-type-drift` | 124 | **16** (22 declined, 92 gated) |
 | `data-error-as-outage` | 1 | 1 |
+| `compose-types` | -- | 187 |
+| `object-shape` | -- | 104 |
 
-`field-type-drift` is the one the migration most changed, and for the better: the
-"one concept or two?" question declined 22 candidates and the band flagged another
-92, so 114 of 130 disagreements are now recorded rather than printed. That is the
-answer to the concern from `docs/type-resolution.md`: a concept question here does
-work, as long as the uncertain answers are flagged rather than reported.
+The concept question in `field-type-drift` declined 22 and the band flagged 92,
+so 114 of 130 disagreements are recorded rather than printed. That settles the
+worry in `docs/type-resolution.md`: a concept question here does work, as long as
+the uncertain answers are flagged.
 
-## Two things this exposed
+## What is left
 
-1. **The band does work the calibration does not see.** `field-type-drift` fires on
-   110 of 129 states by probability, but only 16 become findings: the other 92 are
-   `gated` on margin and confidence. Calibration with a single threshold therefore
-   overstates the noise of a gated rule. A faithful version would count ACTED
-   states (apply the whole band) rather than probability above the floor.
-2. **The provider sometimes returns a distribution that does not sum to 1.** Seven
-   rules hit `Invalid output: Provider returned probabilities that do not sum to
-   1` on at least one chunk (`compose-types`, `object-shape`,
-   `name-the-primitive`, `hoist-to-domain`, `duplicate-implementation`,
-   `duplicate-meaning`, `reimplemented-primitive`). `check` retries and finishes;
-   `calibrate` names the rule rather than aborting. It is worth understanding
-   whether the question has too many options or the adapter is dropping mass.
+- **`compose-types` is loud, not wrong.** 187 findings, nearly all true
+  compositions. The lever is whether compose advice is reported or flagged, not
+  the question's wording.
+- **`import-cycle` is weak** (median 0.56, 8 states, nothing acted). Small sample
+  and it never fires; the question needs more states or a sharper boundary.
+- **`name-the-primitive` acts on nothing** (142 states, median 0.23). Either the
+  candidates on this repository are not one thing, or the question is too strict.
+- **The provider sometimes returns a distribution that does not sum to 1.** Seven
+  rules hit it on at least one chunk. `check` retries and finishes; `calibrate`
+  names the rule rather than aborting. Worth understanding whether those questions
+  have too many options or the adapter drops mass.

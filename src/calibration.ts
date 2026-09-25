@@ -1,5 +1,3 @@
-import { policy } from "./policy.ts"
-
 /**
  * Whether a question is worth its gate.
  *
@@ -40,24 +38,37 @@ const median = (values: ReadonlyArray<number>): number => {
   return (low + high) / 2
 }
 
+/** One state: the violation probability, and whether the band would act on it. */
+export interface CalibrationState {
+  readonly probability: number
+  /** `act` from the rule's own gate -- margin and confidence included. */
+  readonly acted: boolean
+}
+
 /**
  * Summarize one question's answers over real states.
  *
- * @param probabilities - P(violated) for each state the rule produced a candidate
- *   on, reduced by `verdictOf` with the plan's declared violating labels.
+ * `fired` counts the states the BAND would act on, not the ones above the
+ * probability floor: a rule whose answers are above the floor but below the
+ * margin is not flooding the report, it is flagging, and calibration that cannot
+ * see the difference calls it noisy when the report is quiet.
+ *
+ * @param states - one per candidate the rule produced: P(violated) from
+ *   `verdictOf`, and whether the gate would act.
  * @returns the counts and the verdict: decisive, weak, noisy, or skipped when
  *   there were too few states to say.
  */
-export const summarizeCalibration = (probabilities: ReadonlyArray<number>): CalibrationSummary => {
-  const states = probabilities.length
+export const summarizeCalibration = (states: ReadonlyArray<CalibrationState>): CalibrationSummary => {
+  const probabilities = states.map((state) => state.probability)
+  const count = states.length
   const med = median(probabilities)
-  const min = states === 0 ? 0 : Math.min(...probabilities)
-  const max = states === 0 ? 0 : Math.max(...probabilities)
-  const fired = probabilities.filter((value) => value >= policy.decision.gates.probabilityFloor).length
+  const min = count === 0 ? 0 : Math.min(...probabilities)
+  const max = count === 0 ? 0 : Math.max(...probabilities)
+  const fired = states.filter((state) => state.acted).length
   let verdict: CalibrationVerdict
-  if (states < MIN_STATES) verdict = "skipped"
-  else if (fired / states >= NOISY_RATE) verdict = "noisy"
+  if (count < MIN_STATES) verdict = "skipped"
+  else if (fired / count >= NOISY_RATE) verdict = "noisy"
   else if (max < CLEAR_YES && med >= CONFIDENT_NO) verdict = "weak"
   else verdict = "decisive"
-  return { states, median: med, min, max, fired, verdict }
+  return { states: count, median: med, min, max, fired, verdict }
 }
