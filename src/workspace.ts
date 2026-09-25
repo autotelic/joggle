@@ -257,6 +257,20 @@ export const SkipSite = Schema.Struct({
 
 export interface SkipSite extends Schema.Schema.Type<typeof SkipSite> {}
 
+/**
+ * A string literal, and where it is.
+ *
+ * Structural: it says a piece of text is written here. It does NOT say the text
+ * is a label, a route name or a message. A rule that needs to know asks.
+ */
+export const LiteralSite = Schema.Struct({
+  value: Schema.String,
+  start: Schema.Number,
+  end: Schema.Number,
+})
+
+export interface LiteralSite extends Schema.Schema.Type<typeof LiteralSite> {}
+
 export const StructureFacts = Schema.Struct({
   /**
    * Every call site in the file, in order.
@@ -278,6 +292,8 @@ export const StructureFacts = Schema.Struct({
   guards: Schema.Array(GuardSite),
   /** Every `continue`: a place a loop skips an item. */
   skips: Schema.Array(SkipSite),
+  /** Every string literal, with its value and span. */
+  literals: Schema.Array(LiteralSite),
 })
 
 export interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}
@@ -935,6 +951,7 @@ const structureIn = (root: unknown): StructureFacts => {
   const stringSites: Array<Schema.Schema.Type<typeof StringSite>> = []
   const guards: Array<Schema.Schema.Type<typeof GuardSite>> = []
   const skips: Array<Schema.Schema.Type<typeof SkipSite>> = []
+  const literals: Array<Schema.Schema.Type<typeof LiteralSite>> = []
   interface DeclaredFields {
     readonly required: Array<string>
     readonly nullable: Array<string>
@@ -1316,6 +1333,26 @@ const structureIn = (root: unknown): StructureFacts => {
         }
         break
       }
+      case "Literal": {
+        const start = node["start"]
+        const end = node["end"]
+        if (typeof node["value"] === "string" && typeof start === "number" && typeof end === "number") {
+          literals.push({ value: node["value"], start, end })
+        }
+        break
+      }
+      case "JSXText": {
+        // The text between tags is its own node, not a Literal -- which is why the
+        // review's own case, a label inside a component, was invisible at first.
+        const start = node["start"]
+        const end = node["end"]
+        const raw = node["value"]
+        if (typeof raw === "string" && typeof start === "number" && typeof end === "number") {
+          const value = raw.trim()
+          if (value !== "") literals.push({ value, start, end })
+        }
+        break
+      }
       case "ContinueStatement": {
         const start = node["start"]
         const end = node["end"]
@@ -1342,7 +1379,7 @@ const structureIn = (root: unknown): StructureFacts => {
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
-  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards, skips }
+  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards, skips, literals }
 }
 
 /** A parse result, whichever language produced it. */
