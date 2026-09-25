@@ -31,8 +31,14 @@ const isWordCharacter = (code: number): boolean =>
   code === 95 || // _
   code === 36 // $
 
-/** How many times a name occurs as a whole word. */
-const occurrencesOf = (text: string, name: string): number => {
+/**
+ * How many times a name occurs as a whole word.
+ *
+ * One argument rather than two adjacent strings: the linter's own
+ * `no-swappable-primitive-params` would flag `(text, name)`.
+ */
+const occurrencesOf = (input: { readonly text: string; readonly name: string }): number => {
+  const { text, name } = input
   let count = 0
   let index = text.indexOf(name)
   while (index !== -1) {
@@ -64,7 +70,7 @@ export const unusedImport = defineRule({
           // An aliased import is recorded under the imported name, not the local
           // one, so leave it alone rather than guess which is which.
           if (file.text.includes(name + " as ")) continue
-          if (occurrencesOf(file.text, name) > 1) continue
+          if (occurrencesOf({ text: file.text, name }) > 1) continue
           diagnostics.push(
             report({
               at: file,

@@ -35,11 +35,11 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     expect(boundary?.message).toContain("outside the project root")
 
     // A breach withholds every JUDGED rule, because their evidence would cross
-    // repositories. The structural rules persist nothing, so they still run.
-    // 11 -> 10 when `reimplemented-primitive` became judged, -> 11 when
-    // every built-in rule is judged now (the import rules were the last three),
-    // so a breach runs none of them.
-    expect(report.rules).toBe(0)
+    // repositories. The structural rules persist nothing, so they still run --
+    // and there is one now: `unused-import`, deterministic, needing no key and no
+    // trace, so a breach reports it and skips only the judged rules.
+    expect(report.rules).toBe(1)
+    expect(report.skipped.some((skip) => skip.ruleId === "joggle/unused-import")).toBe(false)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/call-pattern",
