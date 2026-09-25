@@ -14,7 +14,7 @@ import {
 } from "../rule.ts"
 import type { Diagnostic, Drop, DropStage } from "../schema.ts"
 import { pageDecisions, pageVerdictByRole } from "../vocabulary.ts"
-import { baseOf, dirOf } from "../bundles.ts"
+import { dirOf } from "../bundles.ts"
 import type { Result } from "./cluster-verdict.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
 
@@ -36,8 +36,6 @@ const RULE_ID = "joggle/page-needs-composition"
  */
 
 /** A page is a route, a page, or a modal -- not merely something under routes/. */
-const isPage = (file: string): boolean => /^(route|page)\.tsx?$/.test(baseOf(file)) || /modal/i.test(baseOf(file))
-
 interface Page {
   readonly file: SourceFile
   readonly localState: number
@@ -62,7 +60,6 @@ const candidatesIn = (workspace: Workspace): ReadonlyArray<Page> => {
   const { minLocalState, minInlineElements } = policy.pageNeedsComposition
   const pages: Array<Page> = []
   for (const file of workspace.files) {
-    if (!isPage(file.path)) continue
     // Call SITES, not distinct names. This was counting a deduplicated set, so a
     // file with thirty-four useState calls reported one and the gate below --
     // which wants three -- could never be satisfied. The rule had never fired.
@@ -306,5 +303,3 @@ export const pageNeedsComposition = defineRule({
   }),
 })
 
-// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: a filename pattern deciding whether a file is a page.
-// See docs/rule-coupling.md.

@@ -17,8 +17,6 @@ import { planClusters, readClusters, type ClusterRule } from "./cluster-verdict.
 import { layersFrom } from "../architecture.ts"
 import { nameVocabulary } from "../vocabulary.ts"
 import type { Unit, Workspace } from "../workspace.ts"
-// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: NON_DISTINGUISHING is a hand-maintained word list deciding same-concept.
-// See docs/rule-coupling.md.
 
 /**
  * The question naming-drift should always have been asking.
@@ -206,33 +204,16 @@ const nameScore = (left: string, right: string): number => {
 }
 
 /**
- * Words that do not distinguish one concept from another when they differ.
- *
- * The note on the filter has always said this is the discriminator -- "case,
- * word order and an accessor verb like `get` or `calculate` do not distinguish
- * anything" -- and the CODE admitted any single extra word, which is how
- * `convertUtcDateToLocalizedDateTime` and `convertUtcDateToFormatted
- * LocalizedDateTime` got in. On one repository that bucket was the whole of the
- * rule's 87 candidates, and the model declined all 87 with `one_concept` between
- * 0.37 and 0.44: not "no", but "not quite". A filter that produces near-misses
- * at 0.42 is paying to be told it was close.
- *
- * The distinction is not the size of the difference but its kind. `get` in front
- * of a name adds nothing; `formatted` in the middle of one changes what the
- * function does, and two functions that do different things are two concepts no
- * matter how much of their names they share.
- */
-const NON_DISTINGUISHING = new Set([
-  "get", "fetch", "load", "read", "find", "lookup", "resolve", "query",
-  "calculate", "compute", "derive", "make", "build", "create", "do",
-  "the", "a", "an", "of", "for", "by", "with", "to", "from", "on",
-])
-
-/**
  * Whether a pair of names is worth asking the model about.
  *
  * Exported so the filter can be tested as a rule of its own. It is the whole
  * difference between a rule that costs money and one that spends it.
+ *
+ * It no longer decides whether the extra word CARRIES meaning -- `get` in front
+ * of a name versus `formatted` in the middle. That is the question this rule
+ * exists to ask, and a hand-maintained list of "words that do not count" was
+ * answering it (docs/rule-coupling.md). The filter keeps the structural part:
+ * the two names are nested and differ by exactly one word.
  */
 export const worthJudging = (left: string, right: string): boolean => {
   if (left === right) return false
@@ -243,14 +224,11 @@ export const worthJudging = (left: string, right: string): boolean => {
   const differs = words.size - common + (other.size - common)
   // Identical expanded words: the spellings differ and nothing else does.
   if (differs === 0) return true
-  // One side inside the other, by exactly one word, and that word carries no
-  // meaning of its own.
+  // One side inside the other, by exactly one word. Whether that word carries
+  // meaning is the QUESTION: a hand-maintained list of "words that do not count"
+  // used to decide it (docs/rule-coupling.md).
   const nested = common === words.size || common === other.size
-  if (!nested || differs !== 1) return false
-  const extra = words.size > other.size
-    ? [...words].filter((word) => !other.has(word))
-    : [...other].filter((word) => !words.has(word))
-  return extra.every((word) => NON_DISTINGUISHING.has(word))
+  return nested && differs === 1
 }
 
 const sharedWords = (left: string, right: string): number => {

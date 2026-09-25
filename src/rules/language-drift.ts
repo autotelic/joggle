@@ -33,18 +33,6 @@ const RULE_ID = "joggle/language-drift"
  * The words are the Choice's options, one per candidate, so the answer names
  * which one is a concept rather than only that one exists.
  */
-const STOPWORDS = new Set([
-  "react", "typescript", "javascript", "json", "http", "https", "html", "css", "jsx", "tsx",
-  "api", "url", "uri", "uuid", "sql", "yaml", "toml", "xml", "npm", "pnpm", "cli", "sdk",
-  "note", "example", "usage", "param", "params", "returns", "return", "throws", "see",
-  "todo", "fixme", "hack", "workaround", "important", "warning", "deprecated",
-  // Language primitives and the decline label itself. "none" also has to be
-  // filtered because it is the Choice's decline option: a candidate word that
-  // equals it collides with the option in the criteria map.
-  "none", "null", "undefined", "true", "false", "void", "never", "unknown", "any",
-  "string", "number", "boolean", "object", "array", "function", "method", "symbol", "bigint",
-  "failure", "success", "error",
-])
 
 const wordsOf = (name: string): ReadonlyArray<string> =>
   name
@@ -66,9 +54,9 @@ const termsOf = (doc: string): ReadonlyArray<string> => {
     // Split a camel-cased word the same way a declaration name is split, so
     // prose that writes `SortedByDate` is compared as `sorted`/`by`/`date` and
     // not as one lowercase blob that no name can ever contain.
-    for (const part of wordsOf(clean)) {
-      if (!STOPWORDS.has(part)) terms.push(part)
-    }
+    // No stop-list: whether a word is a domain concept is the QUESTION, and a
+    // hand-maintained list of tech words was deciding it (docs/rule-coupling.md).
+    for (const part of wordsOf(clean)) terms.push(part)
   }
   return terms
 }
@@ -256,5 +244,3 @@ export const languageDrift: PlannedRule = {
   })
 }
 
-// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: STOPWORDS is a hand-maintained list of non-domain words.
-// See docs/rule-coupling.md.

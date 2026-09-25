@@ -148,13 +148,13 @@ it.effect("naming drift collapses to the spelling the model chose", () =>
   ),
 )
 
-it("a filter that admits near-misses pays to be told it was close", () => {
-  // The pair that made up a whole repository's 87 candidates, all declined with
-  // `one_concept` between 0.37 and 0.44: the extra word changes what the function
-  // DOES, so these are two operations that share a tail.
+it("a pair that differs by one word is admitted, and the model decides", () => {
+  // Whether the extra word changes what the function DOES is the question, not a
+  // list of "words that do not count". `formatted` in the middle and `get` in
+  // front are both admitted now; the model tells them apart.
   expect(
     worthJudging("convertUtcDateToFormattedLocalizedDateTime", "convertUtcDateToLocalizedDateTime"),
-  ).toBe(false)
+  ).toBe(true)
   // And a word that adds nothing is not a difference at all.
   expect(worthJudging("getUserProfile", "userProfile")).toBe(true)
   expect(worthJudging("calculateOrderTotal", "orderTotal")).toBe(true)
