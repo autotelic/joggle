@@ -18,6 +18,7 @@ design notes it rests on.
 | [types-over-logic.md](./types-over-logic.md) | a rule that pushes toward refining types instead of adding logic |
 | [writing-rules.md](./writing-rules.md) | the plugin surface, the facts, testing, and registration: how to write a rule |
 | [thesis.md](./thesis.md) | what joggle is for: the entropy reverser, and the three moves |
+| [rule-coupling.md](./rule-coupling.md) | meaning decided in code: the audit of every rule, and the fix |
 | [rule-api.md](./rule-api.md) | the rule API read against oxlint's, and what the comparison taught |
 | [joggle-friction.md](./joggle-friction.md) | the friction log from running joggle on real repositories |
 
