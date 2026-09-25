@@ -70,12 +70,6 @@ export interface Unit {
    * what "composed of smaller canonical things" reduces to once it stops being a
    * principle and becomes a set comparison.
    */
-  /**
-   * True when the declaration is a function whose every parameter is optional or
-   * has a default. Calling it with no arguments is legal, which is the default
-   * path of a query whose filters are all optional.
-   */
-  readonly allParamsOptional: boolean
   readonly fields: ReadonlyArray<string>
   /**
    * Each field's own declaration, normalised: `id: string`, `name?: string`.
@@ -319,6 +313,14 @@ export const StructureFacts = Schema.Struct({
   skips: Schema.Array(SkipSite),
   /** Every string literal, with its value and span. */
   literals: Schema.Array(LiteralSite),
+  /**
+   * Functions whose every parameter is optional or defaulted, by name.
+   *
+   * A list rather than a boolean on each unit: a fourth flag on `Unit` was a
+   * smell (the linter's `no-boolean-field-signals`), and this is a fact about the
+   * file, not a property of the declaration a rule reads.
+   */
+  allOptionalFunctions: Schema.Array(Schema.String),
 })
 
 export interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}
@@ -983,7 +985,7 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
  * `createContext`, a render of `Counter.Provider`, an object literal with
  * `state`, `actions` and `meta` among its keys.
  */
-const structureIn = (root: unknown): StructureFacts => {
+const structureIn = (root: unknown, allOptionalFunctions: ReadonlyArray<string>): StructureFacts => {
   const callSites: Array<Schema.Schema.Type<typeof CallSite>> = []
   const jsx = new Set<string>()
   const objects: Array<Schema.Schema.Type<typeof ObjectSite>> = []
@@ -1462,7 +1464,7 @@ const structureIn = (root: unknown): StructureFacts => {
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
-  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards, skips, literals }
+  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards, skips, literals, allOptionalFunctions }
 }
 
 /** A parse result, whichever language produced it. */
@@ -1502,8 +1504,9 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
   const starts = lineStartsOf(text)
 
   const units: Array<Unit> = []
+  const sites = isRecord(program) ? sitesIn(program, text) : []
   if (isRecord(program)) {
-    for (const site of sitesIn(program, text)) {
+    for (const site of sites) {
       const shape = normalize(text, site, identifiers, comments)
       const tokens = tokenize(shape)
       const from = locate(starts, site.start)
@@ -1540,7 +1543,6 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         typeRefs,
         typed: typeRefs.length > 0,
         fields: site.fields,
-        allParamsOptional: site.allParamsOptional,
         fieldTypes: site.fieldTypes,
         composed: site.bases.map((name) => ({ name, resolved: "" })),
         calls: [],
@@ -1553,7 +1555,10 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
     }
   }
   const imports = isRecord(program) ? importsIn(program) : []
-  return { path: file, text, units, imports, facts: structureIn(program) }
+  const allOptionalFunctions = sites
+    .filter((site) => site.kind === "function" && site.allParamsOptional)
+    .map((site) => site.name)
+  return { path: file, text, units, imports, facts: structureIn(program, allOptionalFunctions) }
 }
 
 /** A file we read, and either parsed or could not. */

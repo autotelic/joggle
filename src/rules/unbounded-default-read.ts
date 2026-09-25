@@ -71,6 +71,11 @@ export const unboundedDefaultRead: PlannedRule = {
     }
     const byIdentity = new Map<string, Unit>()
     for (const unit of workspace.units) byIdentity.set(unit.file + "#" + unit.name, unit)
+    // The fact list, by identity: a function whose every filter is optional.
+    const allOptional = new Set<string>()
+    for (const file of workspace.files) {
+      for (const name of file.facts.allOptionalFunctions) allOptional.add(file.path + "#" + name)
+    }
     const textOf = new Map(workspace.files.map((file) => [file.path, file.text]))
 
     const candidates: Array<{ unit: Unit; start: number; callee: Unit; argumentKeys: ReadonlyArray<string>; argumentCount: number }> = []
@@ -84,7 +89,7 @@ export const unboundedDefaultRead: PlannedRule = {
           const identity = unit.calls[index]
           if (identity === undefined) return
           const callee = byIdentity.get(identity)
-          if (callee === undefined || !callee.allParamsOptional) return
+          if (callee === undefined || !allOptional.has(identity)) return
           if (!dataFiles.has(callee.file)) return
           candidates.push({
             unit,
