@@ -117,13 +117,14 @@ export const metaFindings = (input: {
         )
       }
     }
-    // A judged rule must read a judgement's quality: printing an uncertain answer
-    // beside its findings is how a linter stops being read.
+    // A judged rule must read a judgement's quality and act on every band. A band
+    // is not a reason to discard an answer, and it is not a reason to shout one
+    // either: the rule decides what each band does.
     if (!rule.source.includes("qualityOf")) {
       if (!(rule.delegates && input.shared.includes("qualityOf"))) {
         push(
-          "flag-not-print",
-          "no gate reads a judgement's quality, so an uncertain answer could print",
+          "band-the-answer",
+          "no gate reads a judgement's quality, so a band cannot decide what to do",
         )
       }
     }

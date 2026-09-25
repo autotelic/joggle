@@ -138,16 +138,34 @@ Across shakti-v2 the report is now **459 problems: 162 warnings, 297 notices**
 (down from 508, all of it `duplicate-implementation`). The loud block is small and
 the expected-duplication record stays visible, which is what the bands are for.
 
+## Round four: a band is not a reason to discard an answer
+
+Thirteen rules treated a non-`act` answer as a drop: `quality.quality !== "act"`
+recorded it in the funnel and returned. That is the wrong reading of the bands.
+Jev answers with a band so that every band can drive something, and discarding the
+model's unsure answer throws away the one signal that says a reader should look.
+
+The gate is now `quality.quality === "drop"` -- only a real no is a recorded drop
+-- and `review` is a notice: the rule's own severity when decisive, `info` when
+not. Every one of the thirteen moved (twelve uniform gates plus
+`import-architecture`'s `readVerdict`), and the meta-rule was renamed from
+`flag-not-print` to `band-the-answer`, which is what it was always trying to say.
+
+On shakti-v2: **673 problems = 162 warnings + 511 notices** (was 459 = 162 + 297).
+The warnings did not move at all; the notices are the review band that used to be
+thrown away. `field-type-drift` alone went 15 warnings + 1 notice to 15 + 89,
+`object-shape` 104 + 0 to 131, `types-over-logic` 41 to 67.
+
+That is the honest shape of the report: 162 things a person should change, 511
+things an unsure model pointed at, and nothing silently discarded.
+
 ## What is left
 
-- **`compose-types` is the loudest rule now** (47 warnings), all the name-drift
-  case; `hoist-to-domain` is second (37). The compose advice case is already a
-  notice.
-- **`object-shape` is 104 notices and 0 warnings** -- every finding is `info`, so
-  a shape somebody should really name does not stand out. Severity is a flat
-  property of the rule, not of the finding, which is the "declared kind" gap from
+- **`compose-types` is the loudest rule now** (47 warnings) -- all the name-drift
+  case, which is a real defect. Its compose advice is already a notice.
+- **`object-shape` is 131 notices and 0 warnings.** Every finding is `info`
+  because severity is a property of the rule, not of the finding. A confident
+  `one_concept` deserves a warning; this is the "declared kind" gap from
   `docs/rule-api.md`.
 - **`duplicate-meaning` has one candidate the provider rejects** outright even
   alone; worth a look at whether its criteria shape causes it.
-- **The provider-rejected candidate** is the only remaining blemish on the
-  calibrator.

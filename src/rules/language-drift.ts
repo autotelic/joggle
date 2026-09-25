@@ -220,10 +220,11 @@ export const languageDrift: PlannedRule = {
       // file-level notice at confidence 0.56 is noise. So only `act` is
       // reported -- unlike the duplicate rules, where an unsure answer still
       // points at two declarations a reader can compare.
-      if (quality.quality !== "act") {
+      if (quality.quality === "drop") {
         drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "gated", reason: quality.reason })
         return
       }
+      const review = quality.quality === "review"
       diagnostics.push(
         report({
                   at: candidate.file,
@@ -234,7 +235,7 @@ export const languageDrift: PlannedRule = {
                   confidence: verdict.confidence ?? 1,
                   score: verdict.probability,
                   judged: true,
-                  severity: "warn",
+                  severity: review ? "info" : "warn",
                 }),
       )
         })

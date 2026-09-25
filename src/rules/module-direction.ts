@@ -31,7 +31,7 @@ const RULE_ID = "joggle/module-direction"
  * layering is more precise than a guessed one, and two rules reporting the same
  * upward import is how a report doubles without informing.
  */
-// meta-allow: flag-not-print -- the roles come from one batched classification
+// meta-allow: band-the-answer -- the roles come from one batched classification
 // with no per-module quality to gate on; a rule that classifies rather than asks
 // has no uncertain answer to withhold.
 export const moduleDirection = defineRule({

@@ -341,7 +341,7 @@ export const fieldTypeDrift: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(report, group, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, group, undefined, "no judgement was available", false, false))
             return
           }
           if (verdict.label !== "drift" && verdict.label !== "two_concepts") {
@@ -358,17 +358,18 @@ export const fieldTypeDrift: PlannedRule = {
             margin: verdict.margin,
             confidence: verdict.confidence,
           })
-          if (quality.quality !== "act") {
+          if (quality.quality === "drop") {
             drops.push({
               ruleId: RULE_ID,
               subject,
               stage: "gated",
-              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+              reason: quality.reason,
             })
             return
           }
+          const review = quality.quality === "review"
           const renamed = verdict.label === "two_concepts"
-          diagnostics.push(findingFor(report, group, verdict.confidence, undefined, renamed))
+          diagnostics.push(findingFor(report, group, verdict.confidence, undefined, renamed, review))
         })
         return outcome(
           diagnostics,
@@ -402,6 +403,7 @@ const findingFor = (
   confidence: number | undefined,
   unverifiedReason: string | undefined,
   renamed = false,
+  review = false,
 ): Diagnostic => {
   const first = group.drifts[0]
   if (first === undefined) {
@@ -459,5 +461,6 @@ const findingFor = (
     ].join("\u0000"),
     judged: unverifiedReason === undefined,
     confidence,
+    severity: review ? "info" : "warn",
   })
 }

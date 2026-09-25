@@ -71,10 +71,10 @@ const readVerdict = (
   answer: DecisionAnswers[string] | undefined,
   violating: string,
   declineReason: (label: string) => string,
-): { readonly action: "report" } | { readonly action: "drop"; readonly stage: "declined" | "gated"; readonly reason: string } => {
+): { readonly action: "report"; readonly review: boolean } | { readonly action: "drop"; readonly stage: "declined" | "gated"; readonly reason: string } => {
   const verdict = verdictOf(answer, [violating])
   if (verdict === undefined) {
-    return { action: "report" }
+    return { action: "report", review: false }
   }
   if (verdict.label !== violating) {
     return { action: "drop", stage: "declined", reason: declineReason(verdict.label ?? "unreadable") }
@@ -84,14 +84,14 @@ const readVerdict = (
     margin: verdict.margin,
     confidence: verdict.confidence,
   })
-  if (quality.quality !== "act") {
+  if (quality.quality === "drop") {
     return {
       action: "drop",
       stage: "gated",
-      reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+      reason: quality.reason,
     }
   }
-  return { action: "report" }
+  return { action: "report", review: quality.quality === "review" }
 }
 
 /**
@@ -215,6 +215,7 @@ export const layerDirection: PlannedRule = {
             identity: [LAYER_RULE, violation.from, violation.to].join("\u0000"),
             judged: true,
             confidence,
+            severity: outcomeOf.review ? "info" : "warn",
           }),
         )
         })
@@ -325,6 +326,7 @@ export const importCycle: PlannedRule = {
             identity: [CYCLE_RULE, ...[...cycle.files].sort()].join("\u0000"),
             judged: true,
             confidence,
+            severity: outcomeOf.review ? "info" : "warn",
           }),
         )
         })
@@ -452,6 +454,7 @@ export const layerPurity: PlannedRule = {
             identity: [PURITY_RULE, violation.from, violation.specifier].join("\u0000"),
             judged: true,
             confidence,
+            severity: outcomeOf.review ? "info" : "warn",
           }),
         )
         })

@@ -305,15 +305,16 @@ export const hoistToDomain: PlannedRule = {
         margin: marginOfAnswer(duty),
         confidence: duty.confidence,
       })
-      if (quality.quality !== "act") {
+      if (quality.quality === "drop") {
         drops.push({
           ruleId: RULE_ID,
           subject: label(unit),
           stage: "gated" as const,
-          reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+          reason: quality.reason,
         })
         return
       }
+      const review = quality.quality === "review"
       if (duty.label !== "domain_logic" || declined(home.label) || home.label === "already_there") {
         drops.push({
           ruleId: RULE_ID,
@@ -335,7 +336,7 @@ export const hoistToDomain: PlannedRule = {
                   identity: [RULE_ID, unit.file, unit.name].join("\u0000"),
                   confidence: duty.confidence ?? 1,
                   judged: true,
-                  severity: "warn",
+                  severity: review ? "info" : "warn",
                 }),
       )
         })

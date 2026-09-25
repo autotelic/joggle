@@ -188,9 +188,10 @@ A `preset` is the same thing packaged to share with others:
   the rule is violated; `verdictOf` reduces any answer (a Choice's mass on them, a
   Noul's probability) to one number the gate and the report read. Calibration uses
   the same declaration.
-- **Flag, do not print, when unsure.** `qualityOf` gives `act`, `review` or
-  `drop`; a finding is `act`. A non-decisive answer is recorded as a drop, because
-  a linter that prints its own uncertainty beside its findings stops being read.
+- **Band every answer.** `qualityOf` gives `act`, `review` or `drop`, and a band
+  is not a reason to discard an answer. `act` is the rule's own severity, `review`
+  is a notice, and only a real no is a recorded drop. Discarding the model's
+  unsure answers throws away the one signal that says a reader should look.
 - **State is bounded.** Put the panel a reviewer needs in the atom, and no more:
   unrelated detail costs accuracy.
 
@@ -203,7 +204,8 @@ the authorship rules every rule module here must keep, and a test enforces them:
   violated, or calibration cannot reduce its question.
 - `require-test` -- a test names the rule or a symbol it exports.
 - `bounded-atoms` -- no atom carries a whole file; a bounded sample instead.
-- `flag-not-print` -- a judged rule reads a judgement's quality with `qualityOf`.
+- `band-the-answer` -- a judged rule reads a judgement's quality with `qualityOf`
+  and does something with each band.
 
 A rule can opt out of one with `meta-allow: <rule>` and a stated reason. The
 opt-out is explicit and greppable, the way a recorded decision is: an author can

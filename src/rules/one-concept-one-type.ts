@@ -160,7 +160,7 @@ export const oneConceptOneType: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(report, candidate, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, candidate, undefined, "no judgement was available", false, false))
             return
           }
           if (verdict.label !== "one_concept" && verdict.label !== "two_concepts") {
@@ -177,17 +177,18 @@ export const oneConceptOneType: PlannedRule = {
             margin: verdict.margin,
             confidence: verdict.confidence,
           })
-          if (quality.quality !== "act") {
+          if (quality.quality === "drop") {
             drops.push({
               ruleId: RULE_ID,
               subject,
               stage: "gated",
-              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+              reason: quality.reason,
             })
             return
           }
+          const review = quality.quality === "review"
           diagnostics.push(
-            findingFor(report, candidate, verdict.confidence, undefined, verdict.label === "two_concepts"),
+            findingFor(report, candidate, verdict.confidence, undefined, verdict.label === "two_concepts", review),
           )
         })
         return outcome(
@@ -222,6 +223,7 @@ const findingFor = (
   confidence: number | undefined,
   unverifiedReason: string | undefined,
   renamed = false,
+  review = false,
 ): Diagnostic => {
   const first = candidate.entries[0]
   return report({
@@ -246,6 +248,7 @@ const findingFor = (
     identity: [RULE_ID, candidate.name].join("\u0000"),
     judged: unverifiedReason === undefined,
     confidence,
+    severity: review ? "info" : "warn",
   })
 }
 

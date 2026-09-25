@@ -169,7 +169,7 @@ export const nullabilityDrift: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(report, candidate, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, candidate, undefined, "no judgement was available", false))
             return
           }
           if (verdict.label !== "drift") {
@@ -189,16 +189,17 @@ export const nullabilityDrift: PlannedRule = {
             margin: verdict.margin,
             confidence: verdict.confidence,
           })
-          if (quality.quality !== "act") {
+          if (quality.quality === "drop") {
             drops.push({
               ruleId: RULE_ID,
               subject,
               stage: "gated",
-              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+              reason: quality.reason,
             })
             return
           }
-          diagnostics.push(findingFor(report, candidate, verdict.confidence, undefined))
+          const review = quality.quality === "review"
+          diagnostics.push(findingFor(report, candidate, verdict.confidence, undefined, review))
         })
         return outcome(diagnostics, [
           annotated +
@@ -224,6 +225,7 @@ const findingFor = (
   },
   confidence: number | undefined,
   unverifiedReason: string | undefined,
+  review = false,
 ): Diagnostic =>
   report({
     at: { file: candidate.schema.file, line: candidate.schema.line, column: 1 },
@@ -241,4 +243,5 @@ const findingFor = (
     identity: [RULE_ID, candidate.source, candidate.field].join("\u0000"),
     judged: unverifiedReason === undefined,
     confidence,
+    severity: review ? "info" : "warn",
   })

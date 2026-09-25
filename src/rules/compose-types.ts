@@ -202,7 +202,7 @@ export const composeTypes: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(report, value.candidate, undefined, "no judgement was available", undefined))
+            diagnostics.push(findingFor(report, value.candidate, undefined, "no judgement was available", undefined, false))
             return
           }
           // The compose case is ADVICE, recorded rather than printed. On a real
@@ -237,16 +237,17 @@ export const composeTypes: PlannedRule = {
             margin: verdict.margin,
             confidence: verdict.confidence,
           })
-          if (quality.quality !== "act") {
+          if (quality.quality === "drop") {
             drops.push({
               ruleId: RULE_ID,
               subject,
               stage: "gated",
-              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+              reason: quality.reason,
             })
             return
           }
-          diagnostics.push(findingFor(report, value.candidate, verdict.confidence, undefined, "same_name_drift"))
+          const review = quality.quality === "review"
+          diagnostics.push(findingFor(report, value.candidate, verdict.confidence, undefined, "same_name_drift", review))
         })
         return outcome(diagnostics, [], drops)
       },
@@ -260,6 +261,7 @@ const findingFor = (
   confidence: number | undefined,
   unverifiedReason: string | undefined,
   label: string | undefined,
+  review: boolean,
 ): Diagnostic => {
   const { whole, part, added } = candidate
   const drifted = label === "same_name_drift" || (label === undefined && whole.name === part.name)
@@ -280,6 +282,6 @@ const findingFor = (
     identity: [RULE_ID, whole.file, whole.name, part.name, drifted ? "drift" : "compose"].join("\u0000"),
     judged: unverifiedReason === undefined,
     confidence,
-    severity: drifted ? "warn" : "info",
+    severity: review || !drifted ? "info" : "warn",
   })
 }

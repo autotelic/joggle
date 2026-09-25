@@ -234,15 +234,12 @@ export const objectShape: PlannedRule = {
           // A judgement the model shrugged across is not a finding. It is
           // recorded (band: flag), because a linter that prints its own
           // uncertainty beside its findings stops being read.
-          if (quality.quality !== "act") {
+          if (quality.quality === "drop") {
             drops.push({
               ruleId: RULE_ID,
               subject,
               stage: "gated",
-              reason:
-                quality.quality === "review"
-                  ? "flagged: " + quality.reason
-                  : quality.reason,
+              reason: quality.reason,
             })
             return
           }

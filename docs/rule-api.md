@@ -84,7 +84,7 @@ unbounded atom, an inline message, or no test.
   (`docs/writing-rules.md`).
 - `metaFindings` in `src/meta.ts`, enforced by `tests/meta-rules.test.ts`: the
   four invariants (`require-violations`, `require-test`, `bounded-atoms`,
-  `flag-not-print`), with an explicit `meta-allow` opt-out. On first run it found
+  `band-the-answer`), with an explicit `meta-allow` opt-out. On first run it found
   fourteen real gaps, all now fixed or explicitly exempted.
 
 ## What remains

@@ -126,7 +126,7 @@ const ruleFor = (spec: Spec): PlannedRule => ({
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(report, spec, bundle, problems, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, spec, bundle, problems, undefined, "no judgement was available", false))
             return
           }
           if (verdict.label !== "violation") {
@@ -146,16 +146,17 @@ const ruleFor = (spec: Spec): PlannedRule => ({
             margin: verdict.margin,
             confidence: verdict.confidence,
           })
-          if (quality.quality !== "act") {
+          if (quality.quality === "drop") {
             drops.push({
               ruleId: spec.id,
               subject,
               stage: "gated",
-              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+              reason: quality.reason,
             })
             return
           }
-          diagnostics.push(findingFor(report, spec, bundle, problems, verdict.confidence, undefined))
+          const review = quality.quality === "review"
+          diagnostics.push(findingFor(report, spec, bundle, problems, verdict.confidence, undefined, review))
         })
         return outcome(diagnostics, bundleNote(bundles.length, diagnostics.length), drops)
       },
@@ -170,6 +171,7 @@ const findingFor = (
   problems: ReadonlyArray<string>,
   confidence: number | undefined,
   unverifiedReason: string | undefined,
+  review = false,
 ): Diagnostic =>
   report({
     at: bundle.indexFile ?? { file: bundle.dir, start: 0 },
@@ -184,6 +186,7 @@ const findingFor = (
     identity: [spec.id, bundle.dir].join("\u0000"),
     judged: unverifiedReason === undefined,
     confidence,
+    severity: review ? "info" : spec.severity,
   })
 
 const blockFiles = (bundle: Bundle): ReadonlyArray<string> =>
