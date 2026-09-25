@@ -1,55 +1,61 @@
 import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
-import { defineRule, finding, outcome, type Scope } from "../rule.ts"
-import type { Diagnostic } from "../schema.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
+import {
+  budgetNote,
+  finding,
+  marginOfAnswer,
+  outcome,
+  qualityOf,
+  type DecisionAnswers,
+  type PlannedRule,
+  type Scope,
+} from "../rule.ts"
+import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/call-pattern"
 
-/**
- * Two declarations that make the same calls in the same order.
- *
- * The one thing a body-shape comparison cannot see. `duplicate-implementation`
- * hashes what a declaration LOOKS like, and a re-implementation can look nothing
- * like its original while doing exactly the same things in exactly the same
- * order -- validate, then save, then notify. That is the same logic written twice,
- * and neither a shape hash nor a token overlap reliably finds it, because both are
- * distracted by everything else in the body.
- *
- * `calls` is resolved, so "both call the same function" is identity rather than
- * spelling: two call sites resolve to the same `file#name` or they do not. And the
- * shapes are required to DIFFER, because when they match this is already
- * `duplicate-implementation`'s finding and reporting it twice is how a report
- * stops being read.
- *
- * Deterministic and free. The sequences come from the parse, the resolution from
- * the same pass that resolves types, and nothing here needs a model.
- */
-const callSequence = (unit: Unit): ReadonlyArray<string> => unit.calls
-
-export const callPattern = defineRule({
+// Two declarations that make the same calls in the same order.
+//
+// The one thing a body-shape comparison cannot see. `duplicate-implementation`
+// hashes what a declaration LOOKS like, and a re-implementation can look nothing
+// like its original while doing exactly the same things in exactly the same
+// order -- validate, then save, then notify.
+//
+// What is deterministic is the grouping. `unit.callSignature` is the resolved
+// call list, so "the same calls" is identity rather than spelling, and two
+// declarations that share a signature are a candidate. Whether that shared
+// sequence is ONE ORCHESTRATION written twice, or two operations that happen to
+// compose the same helpers, used to be decided by the signature alone.
+export const callPattern: PlannedRule = {
   id: RULE_ID,
   severity: "info",
   description: "Declarations that make the same calls in the same order with different bodies.",
-  judged: false,
-  run: Effect.fn("joggle/call-pattern")(function* (workspace: Workspace, scope: Scope) {
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/call-pattern")(function* (workspace: Workspace, scope: Scope) {
     const { minCalls, maxFindings } = policy.callPattern
     const eligible = workspace.units.filter(
       (unit) =>
-        callSequence(unit).length >= minCalls &&
+        unit.calls.length >= minCalls &&
         unit.kind === "function" &&
         // A framework export cannot be merged however alike two of them are: the
-        // framework calls each one by file. Two Remix loaders that read a param,
-        // fetch, check auth and return json are the same shape because they are
-        // the same job, and consolidating them is not available.
+        // framework calls each one by file.
         !policy.frameworkExports.some((name) => name === unit.name),
     )
     if (eligible.length === 0) {
-      return outcome([], [
-        "no function makes " +
-          minCalls +
-          " or more resolved calls, so nothing had an orchestration to compare",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            "no function makes " +
+              minCalls +
+              " or more resolved calls, so nothing had an orchestration to compare",
+          ]),
+      }
     }
 
     const groups = new Map<string, Array<Unit>>()
@@ -59,72 +65,166 @@ export const callPattern = defineRule({
       else existing.push(unit)
     }
 
-    const findings: Array<Diagnostic> = []
-    const skipped = { identical: 0 }
-    const reported = [...groups.entries()]
+    const candidates = [...groups.entries()]
       .filter(([, units]) => units.length > 1)
-      .sort(
-        (left, right) =>
-          right[1].length - left[1].length || left[0].localeCompare(right[0]),
-      )
+      .sort((left, right) => right[1].length - left[1].length || left[0].localeCompare(right[0]))
+      .filter(([, units]) => units.some((unit) => scope.changed === undefined || scope.changed.has(unit.file)))
+      // Bodies that are ALSO identical are `duplicate-implementation`'s finding,
+      // not this one: two declarations with the same shape and the same calls are
+      // one declaration written twice.
+      .filter(([, units]) => new Set(units.map((unit) => unit.shapeHash)).size > 1)
+      .filter(([, units]) => units[0] !== undefined)
 
-    for (const [, units] of reported) {
-      if (findings.length >= maxFindings) break
-      // Different bodies, or this is the duplicate rule's finding and not this
-      // one's. Two declarations with the same shape AND the same calls are one
-      // declaration written twice.
-      if (new Set(units.map((unit) => unit.shapeHash)).size === 1) {
-        skipped.identical += 1
-        continue
+    if (candidates.length === 0) {
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            eligible.length +
+              " function(s) with " +
+              minCalls +
+              " or more resolved calls; no two share a call sequence without also sharing a body",
+          ]),
       }
-      const first = units[0]
-      if (first === undefined) continue
-      if (
-        scope.changed !== undefined &&
-        !units.some((unit) => scope.changed?.has(unit.file))
-      ) {
-        continue
-      }
-
-      const names = [...new Set(units.map((unit) => unit.name))]
-      const steps = callSequence(first).map(stripFile)
-      findings.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: "info",
-          message:
-            names.join(", ") +
-            " make the same " +
-            steps.length +
-            " call(s) in the same order, written " +
-            units.length +
-            " different ways.",
-          help:
-            "One of these is the original and the rest re-implement it: " +
-            steps.join(" -> ") +
-            ". Compare them and keep one, or make the shared part a function the others call.",
-          location: first.location,
-          identity: [RULE_ID, first.callSignature].join("\u0000"),
-          judged: false,
-        }),
-      )
     }
 
-    // Counted by what happened to each group, not by how many groups there were.
-    // "13 shared orchestrations" beside one finding is the kind of note that
-    // teaches a reader to stop believing the notes.
-    return outcome(findings, [
-      eligible.length +
-        " function(s) with " +
-        minCalls +
-        " or more resolved calls; " +
-        findings.length +
-        " reported, " +
-        skipped.identical +
-        " already covered by shape equality (duplicate-implementation)",
-    ])
+    const judged = candidates.slice(0, maxFindings)
+    const overBudget: ReadonlyArray<Drop> = candidates.slice(maxFindings).map(([, units]) => ({
+      ruleId: RULE_ID,
+      subject: units.map((unit) => unit.name).join(", "),
+      stage: "budget" as const,
+      reason: "past the budget of " + String(maxFindings) + " groups",
+    }))
+
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(judged, ([, units]) =>
+      Effect.gen(function* () {
+        const first = units[0]
+        if (first === undefined) return undefined
+        const calls = first.calls.map(stripFile)
+        // The state is the shared call sequence and a bounded sample of the
+        // members, not every member's source.
+        const members = units.slice(0, 5).map((unit) => ({
+          name: unit.name,
+          file: unit.file,
+          line: unit.location.line,
+          source: unit.text.slice(0, 180),
+        }))
+        const id = yield* atoms.add({ calls, count: units.length, members })
+        const plan: Plan<DecisionAnswers> = {
+          ruleId: RULE_ID,
+          subject: units.map((unit) => unit.name).join(", ") + " (" + calls.length + " calls)",
+          concerns: [...new Set(units.map((unit) => unit.file))],
+          atoms: [id],
+          decisions: {
+            verdict: Decision.classify({
+              instructions: [
+                `\`atoms[${id}].members\` are ${units.length} declarations that make the same ${calls.length} calls in the same order: ${calls.join(" -> ")}.`,
+                "Are they ONE orchestration written more than once -- the same work on the same inputs, so one can call another -- or do they reuse the same sequence for different purposes?",
+                "Answer `same_orchestration` when they do the same work on the same inputs and one is the original the others re-implement.",
+                "Answer `different_inputs` when they run the same helpers over different data, so they are two operations.",
+                "Answer `different_work` when one does something the others do not, beyond the shared calls.",
+                "Answer `coincidental` when they are unrelated and only the helper sequence lines up.",
+              ].join("\n"),
+              criteria: {
+                same_orchestration: "The same work on the same inputs, in the same order. One can call another.",
+                different_inputs: "Same helpers, different data. Two operations, not one.",
+                different_work: "They do not do the same thing.",
+                coincidental: "Unrelated declarations whose helper sequence happens to line up.",
+              },
+            }),
+          },
+          read: (answers) => answers,
+        }
+        return { units, first, calls, id, plan }
+      }),
+      { concurrency: "unbounded" },
+    )
+
+    const present = planned.filter((value): value is NonNullable<typeof value> => value !== undefined)
+
+    return {
+      plans: present.map((value) => value.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...overBudget]
+        present.forEach((value, index) => {
+          const { units } = value
+          const subject = units.map((unit) => unit.name).join(", ")
+          const answer = verdicts[index]
+          const verdict = answer === undefined ? undefined : answer["verdict"]
+          if (verdict === undefined || !("label" in verdict)) {
+            diagnostics.push(findingFor(value, undefined, "no judgement was available"))
+            return
+          }
+          if (verdict.label !== "same_orchestration") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "declined",
+              reason: "the model read them as " + verdict.label.replace(/_/g, " "),
+            })
+            return
+          }
+          const score = verdict.probabilities[verdict.label] ?? 0
+          const quality = qualityOf({
+            score,
+            margin: marginOfAnswer(verdict),
+            confidence: verdict.confidence,
+          })
+          if (quality.quality !== "act") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "gated",
+              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+            })
+            return
+          }
+          diagnostics.push(findingFor(value, verdict.confidence, undefined))
+        })
+        return outcome(
+          diagnostics,
+          budgetNote("groups", maxFindings, candidates.length, candidates.slice(maxFindings).map(([, units]) => units.map((unit) => unit.name).join(", "))),
+          drops,
+        )
+      },
+    }
   }),
-})
+}
+
+const findingFor = (
+  value: {
+    readonly units: ReadonlyArray<Unit>
+    readonly first: Unit
+    readonly calls: ReadonlyArray<string>
+  },
+  confidence: number | undefined,
+  unverifiedReason: string | undefined,
+): Diagnostic => {
+  const { units, first, calls } = value
+  const input: Parameters<typeof finding>[0] = {
+    ruleId: RULE_ID,
+    severity: "info",
+    message:
+      units.map((unit) => unit.name).join(", ") +
+      " make the same " +
+      calls.length +
+      " call(s) in the same order, written " +
+      units.length +
+      " different ways.",
+    help:
+      "One of these is the original and the rest re-implement it: " +
+      calls.join(" -> ") +
+      ". Compare them and keep one, or make the shared part a function the others call." +
+      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
+    location: first.location,
+    identity: [RULE_ID, first.callSignature].join("\u0000"),
+    judged: unverifiedReason === undefined,
+  }
+  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+}
 
 /** `path/to/file.ts#name` reads better as `file:name` in a sentence. */
 export function stripFile(resolved: string): string {
