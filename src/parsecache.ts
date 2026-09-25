@@ -63,6 +63,7 @@ const encodeUnit = (unit: Unit): Schema.Schema.Type<typeof EncodedUnit> => ({
   typeRefs: unit.typeRefs,
   typed: unit.typed,
   fields: unit.fields,
+  allParamsOptional: unit.allParamsOptional,
   fieldTypes: Object.fromEntries(unit.fieldTypes),
   bases: unit.composed.map((base) => base.name),
   test: unit.test,
@@ -102,6 +103,7 @@ const EncodedUnit = Schema.Struct({
   typeRefs: Schema.Array(Schema.String),
   typed: Schema.Boolean,
   fields: Schema.Array(Schema.String),
+  allParamsOptional: Schema.Boolean,
   fieldTypes: Schema.Record(Schema.String, Schema.String),
   // Absent in caches written before composition was recorded; the version bump
   // rebuilds them, and this keeps a stale entry decodable rather than an issue.
@@ -179,6 +181,7 @@ const unitFrom = (
     typeRefs: entry.typeRefs,
     typed: entry.typed,
     fields: entry.fields,
+    allParamsOptional: entry.allParamsOptional,
     fieldTypes: new Map(Object.entries(entry.fieldTypes)),
     composed: (entry.bases ?? []).map((name) => ({ name, resolved: "" })),
     test: entry.test,

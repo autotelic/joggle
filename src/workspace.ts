@@ -70,6 +70,12 @@ export interface Unit {
    * what "composed of smaller canonical things" reduces to once it stops being a
    * principle and becomes a set comparison.
    */
+  /**
+   * True when the declaration is a function whose every parameter is optional or
+   * has a default. Calling it with no arguments is legal, which is the default
+   * path of a query whose filters are all optional.
+   */
+  readonly allParamsOptional: boolean
   readonly fields: ReadonlyArray<string>
   /**
    * Each field's own declaration, normalised: `id: string`, `name?: string`.
@@ -207,12 +213,24 @@ export const ColumnFact = Schema.Struct({
   start: Schema.Number,
 })
 
-/** One call, where it is, and what it names. */
+/** One call, where it is, what it names, and the shape of its arguments. */
 export const CallSite = Schema.Struct({
   /** Callee name, dotted for member calls: `createContext`, `React.useState`. */
   name: Schema.String,
   start: Schema.Number,
   end: Schema.Number,
+  /**
+   * How many arguments the call passes. A call whose default path passes none is
+   * the shape a data-access question needs.
+   */
+  argumentCount: Schema.Number,
+  /**
+   * The keys of the call's one object-literal argument, when it has exactly one.
+   *
+   * A FACT about the call: which filters it sets, not which it ought to. Which of
+   * the missing ones would bound a read is the question.
+   */
+  argumentKeys: Schema.Array(Schema.String),
 })
 
 /**
@@ -658,6 +676,7 @@ interface DeclarationSite extends Span {
   readonly name: string
   readonly exported: boolean
   readonly fields: ReadonlyArray<string>
+  readonly allParamsOptional: boolean
   readonly fieldTypes: ReadonlyMap<string, string>
   /** The types this declaration composes, before resolution. */
   readonly bases: ReadonlyArray<string>
@@ -782,6 +801,18 @@ const fieldsOf = (node: Record<string, unknown>, text: string): FieldSet => {
   return { names, declarations, bases }
 }
 
+/** True when every parameter is optional or has a default. */
+const paramsAllOptional = (node: unknown): boolean => {
+  if (!isRecord(node)) return false
+  const params = node["params"]
+  if (!Array.isArray(params) || params.length === 0) return false
+  return params.every((param) => {
+    if (!isRecord(param)) return false
+    if (param["optional"] === true) return true
+    return param["type"] === "AssignmentPattern"
+  })
+}
+
 const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<DeclarationSite> => {
   const body = program["body"]
   if (!Array.isArray(body)) return []
@@ -807,6 +838,7 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
       end,
       exported,
       fields: fieldSet.names,
+      allParamsOptional: paramsAllOptional(node),
       fieldTypes: fieldSet.declarations,
       bases: fieldSet.bases,
       docStart: docStart ?? start,
@@ -881,6 +913,7 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
               end: value["end"],
               exported,
               fields: [],
+              allParamsOptional: paramsAllOptional(value),
               fieldTypes: new Map(),
               bases: [],
               docStart: typeof member["start"] === "number" ? member["start"] : value["start"],
@@ -1229,7 +1262,26 @@ const structureIn = (root: unknown): StructureFacts => {
         // Order is kept because a call PATTERN is a sequence, and the span is
         // kept so a call can be attributed to the declaration that makes it.
         if (called !== undefined && typeof start === "number" && typeof end === "number") {
-          callSites.push({ name: called, start, end })
+          const args = Array.isArray(node["arguments"]) ? node["arguments"] : []
+          const argumentKeys: Array<string> = []
+          if (args.length === 1 && isRecord(args[0]) && args[0]["type"] === "ObjectExpression") {
+            const properties = args[0]["properties"]
+            if (Array.isArray(properties)) {
+              for (const property of properties) {
+                if (!isRecord(property)) continue
+                const key = property["key"]
+                const name = isRecord(key)
+                  ? typeof key["name"] === "string"
+                    ? key["name"]
+                    : typeof key["value"] === "string"
+                      ? key["value"]
+                      : undefined
+                  : undefined
+                if (name !== undefined) argumentKeys.push(name)
+              }
+            }
+          }
+          callSites.push({ name: called, start, end, argumentCount: args.length, argumentKeys })
         }
         // A `Schema.Struct({...})` or `Schema.TaggedError<X>()("tag", {...})`
         // argument IS a named type. Marking the field object lets the object-shape
@@ -1488,6 +1540,7 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
         typeRefs,
         typed: typeRefs.length > 0,
         fields: site.fields,
+        allParamsOptional: site.allParamsOptional,
         fieldTypes: site.fieldTypes,
         composed: site.bases.map((name) => ({ name, resolved: "" })),
         calls: [],
