@@ -9,10 +9,10 @@ import {
 } from "../architecture.ts"
 import { Atoms } from "../atoms.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { verdictOf } from "../verdict.ts"
 import {
   finding,
   inGraphScope,
-  marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -61,16 +61,17 @@ const readVerdict = (
   violating: string,
   declineReason: (label: string) => string,
 ): { readonly action: "report" } | { readonly action: "drop"; readonly stage: "declined" | "gated"; readonly reason: string } => {
-  if (answer === undefined || !("label" in answer)) {
+  const verdict = verdictOf(answer, [violating])
+  if (verdict === undefined) {
     return { action: "report" }
   }
-  if (answer.label !== violating) {
-    return { action: "drop", stage: "declined", reason: declineReason(answer.label) }
+  if (verdict.label !== violating) {
+    return { action: "drop", stage: "declined", reason: declineReason(verdict.label ?? "unreadable") }
   }
   const quality = qualityOf({
-    score: answer.probabilities[answer.label] ?? 0,
-    margin: marginOfAnswer(answer),
-    confidence: answer.confidence,
+    score: verdict.probability,
+    margin: verdict.margin,
+    confidence: verdict.confidence,
   })
   if (quality.quality !== "act") {
     return {

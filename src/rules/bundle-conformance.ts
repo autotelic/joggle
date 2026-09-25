@@ -10,11 +10,11 @@ import {
 } from "../bundles.ts"
 import { Atoms } from "../atoms.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { verdictOf } from "../verdict.ts"
 import {
   bundleNote,
   finding,
   inScope,
-  marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -109,8 +109,8 @@ const ruleFor = (spec: Spec): PlannedRule => ({
           const { bundle, problems } = value.candidate
           const subject = spec.subject(bundle)
           const answer = verdicts[index]
-          const verdict = answer === undefined ? undefined : answer["verdict"]
-          if (verdict === undefined || !("label" in verdict)) {
+          const verdict = verdictOf(answer?.["verdict"], ["violation"])
+          if (verdict === undefined) {
             diagnostics.push(findingFor(spec, bundle, problems, undefined, "no judgement was available"))
             return
           }
@@ -126,10 +126,9 @@ const ruleFor = (spec: Spec): PlannedRule => ({
             })
             return
           }
-          const score = verdict.probabilities[verdict.label] ?? 0
           const quality = qualityOf({
-            score,
-            margin: marginOfAnswer(verdict),
+            score: verdict.probability,
+            margin: verdict.margin,
             confidence: verdict.confidence,
           })
           if (quality.quality !== "act") {

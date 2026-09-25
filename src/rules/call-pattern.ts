@@ -3,10 +3,10 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
   finding,
-  marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -153,8 +153,8 @@ export const callPattern: PlannedRule = {
           const { units } = value
           const subject = units.map((unit) => unit.name).join(", ")
           const answer = verdicts[index]
-          const verdict = answer === undefined ? undefined : answer["verdict"]
-          if (verdict === undefined || !("label" in verdict)) {
+          const verdict = verdictOf(answer?.["verdict"], ["same_orchestration"])
+          if (verdict === undefined) {
             diagnostics.push(findingFor(value, undefined, "no judgement was available"))
             return
           }
@@ -163,14 +163,13 @@ export const callPattern: PlannedRule = {
               ruleId: RULE_ID,
               subject,
               stage: "declined",
-              reason: "the model read them as " + verdict.label.replace(/_/g, " "),
+              reason: "the model read them as " + (verdict.label ?? "unreadable").replace(/_/g, " "),
             })
             return
           }
-          const score = verdict.probabilities[verdict.label] ?? 0
           const quality = qualityOf({
-            score,
-            margin: marginOfAnswer(verdict),
+            score: verdict.probability,
+            margin: verdict.margin,
             confidence: verdict.confidence,
           })
           if (quality.quality !== "act") {

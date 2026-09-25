@@ -213,6 +213,15 @@ export default {
       },
     },
     {
+      // `verdictOf` returns undefined when an answer carries no label and no
+      // probability -- an unreadable answer, a real third outcome every caller
+      // already branches on by reporting the candidate unverified. Wrapping it in
+      // Option would move the same branch to ten call sites without adding a
+      // distinction the domain does not have.
+      files: ["src/verdict.ts"],
+      rules: { "plumb-effect/guarded-op-must-return-option": "off" },
+    },
+    {
       // The trace bridge: raw `types_N.json` payloads in, typed facts out. This is
       // the same crossing the exception above describes, for the compiler's own
       // output rather than the AST. The payload is external JSON produced by a

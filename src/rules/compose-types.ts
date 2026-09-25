@@ -3,9 +3,9 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { verdictOf } from "../verdict.ts"
 import {
   finding,
-  marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -179,8 +179,8 @@ export const composeTypes: PlannedRule = {
           const { whole, part } = value.candidate
           const subject = whole.name + " (lists " + part.name + ")"
           const answer = verdicts[index]
-          const verdict = answer === undefined ? undefined : answer["verdict"]
-          if (verdict === undefined || !("label" in verdict)) {
+          const verdict = verdictOf(answer?.["verdict"], ["composes", "same_name_drift"])
+          if (verdict === undefined) {
             diagnostics.push(findingFor(value.candidate, undefined, "no judgement was available", undefined))
             return
           }
@@ -196,10 +196,9 @@ export const composeTypes: PlannedRule = {
             })
             return
           }
-          const score = verdict.probabilities[verdict.label] ?? 0
           const quality = qualityOf({
-            score,
-            margin: marginOfAnswer(verdict),
+            score: verdict.probability,
+            margin: verdict.margin,
             confidence: verdict.confidence,
           })
           if (quality.quality !== "act") {

@@ -3,11 +3,11 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
   finding,
   inScope,
-  marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -147,8 +147,8 @@ export const oneConceptOneType: PlannedRule = {
           const { candidate } = value
           const subject = candidate.name
           const answer = verdicts[index]
-          const verdict = answer === undefined ? undefined : answer["verdict"]
-          if (verdict === undefined || !("label" in verdict)) {
+          const verdict = verdictOf(answer?.["verdict"], ["one_concept", "two_concepts"])
+          if (verdict === undefined) {
             diagnostics.push(findingFor(candidate, undefined, "no judgement was available"))
             return
           }
@@ -161,10 +161,9 @@ export const oneConceptOneType: PlannedRule = {
             })
             return
           }
-          const score = verdict.probabilities[verdict.label] ?? 0
           const quality = qualityOf({
-            score,
-            margin: marginOfAnswer(verdict),
+            score: verdict.probability,
+            margin: verdict.margin,
             confidence: verdict.confidence,
           })
           if (quality.quality !== "act") {

@@ -4,11 +4,11 @@ import { Atoms } from "../atoms.ts"
 import { lineAt, lineStarts } from "../cascade.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
+import { verdictOf } from "../verdict.ts"
 import {
   budgetNote,
   finding,
   inScope,
-  marginOfAnswer,
   outcome,
   qualityOf,
   type DecisionAnswers,
@@ -190,8 +190,8 @@ export const objectShape: PlannedRule = {
           const subject = "object shape { " + keys.join("; ") + " }"
           const line = lineAt(lineStarts(textOf.get(first.file) ?? ""), first.start)
           const answer = verdicts[index]
-          const verdict = answer === undefined ? undefined : answer["verdict"]
-          if (verdict === undefined || !("label" in verdict)) {
+          const verdict = verdictOf(answer?.["verdict"], ["one_concept"])
+          if (verdict === undefined) {
             diagnostics.push(findingFor(entry, line, undefined, "no judgement was available"))
             return
           }
@@ -207,10 +207,9 @@ export const objectShape: PlannedRule = {
             })
             return
           }
-          const score = verdict.probabilities[verdict.label] ?? 0
           const quality = qualityOf({
-            score,
-            margin: marginOfAnswer(verdict),
+            score: verdict.probability,
+            margin: verdict.margin,
             confidence: verdict.confidence,
           })
           // A judgement the model shrugged across is not a finding. It is
