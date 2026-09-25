@@ -159,13 +159,34 @@ thrown away. `field-type-drift` alone went 15 warnings + 1 notice to 15 + 89,
 That is the honest shape of the report: 162 things a person should change, 511
 things an unsure model pointed at, and nothing silently discarded.
 
+## Round five: the band decides the severity, and the boundary in the question
+
+Two rules where the band was not reaching the finding.
+
+**`object-shape`** printed every finding as a notice, because severity was a
+property of the rule and not of the finding -- a confident "these literals are one
+concept, name them" did not stand out from a shrug. The band now decides: a
+decisive `one_concept` is a warning, the review band is a notice, an unverified
+fact stays a notice. On shakti-v2: 131 notices -> **104 warnings + 27 notices**.
+
+**`compose-types`** reported 68 same-name pairs, and 18 of them were a name
+defined once under `services/rest` and once under `services/ui` -- two deployables
+that cannot import each other, so each must define its own wire shape. That is the
+same boundary case that was added to `duplicate-implementation`'s verdict, and the
+question now names it too (its atom carries both file paths): a shared name across
+deployables is `independent`, not drift. 68 -> **47 findings (43 warnings, 4
+notices)**.
+
+The report is now **653 problems = 263 warnings + 390 notices**. `object-shape` is
+the loudest rule at 104 warnings -- every one a shape repeated across files that
+nobody has named, which is what the rule exists to say.
+
 ## What is left
 
-- **`compose-types` is the loudest rule now** (47 warnings) -- all the name-drift
-  case, which is a real defect. Its compose advice is already a notice.
-- **`object-shape` is 131 notices and 0 warnings.** Every finding is `info`
-  because severity is a property of the rule, not of the finding. A confident
-  `one_concept` deserves a warning; this is the "declared kind" gap from
-  `docs/rule-api.md`.
+- **`object-shape`'s warning volume** (104) is the next thing to look at, and the
+  lever is the candidate generator rather than the question: a shape shared by two
+  files with two fields is not the same finding as a shape shared by nine files.
 - **`duplicate-meaning` has one candidate the provider rejects** outright even
   alone; worth a look at whether its criteria shape causes it.
+- **The provider-rejected candidate** is the only remaining blemish on the
+  calibrator.
