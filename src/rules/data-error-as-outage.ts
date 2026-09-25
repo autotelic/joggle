@@ -517,3 +517,6 @@ export const dataErrorAsOutage: PlannedRule = {
     }
   }),
 }
+
+// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: status-method names standing in for the checker's type.
+// See docs/rule-coupling.md.

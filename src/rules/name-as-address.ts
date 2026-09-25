@@ -243,3 +243,6 @@ export const nameAsAddress: PlannedRule = {
     }
   })
 }
+
+// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: a regex for the shape of one word.
+// See docs/rule-coupling.md.

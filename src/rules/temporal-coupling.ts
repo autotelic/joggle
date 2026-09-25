@@ -16,6 +16,8 @@ import {
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
+// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: the name pairs are a hand-maintained vocabulary of paired operations.
+// See docs/rule-coupling.md.
 
 const RULE_ID = "joggle/temporal-coupling"
 

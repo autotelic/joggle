@@ -17,6 +17,8 @@ import { planClusters, readClusters, type ClusterRule } from "./cluster-verdict.
 import { layersFrom } from "../architecture.ts"
 import { nameVocabulary } from "../vocabulary.ts"
 import type { Unit, Workspace } from "../workspace.ts"
+// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: NON_DISTINGUISHING is a hand-maintained word list deciding same-concept.
+// See docs/rule-coupling.md.
 
 /**
  * The question naming-drift should always have been asking.

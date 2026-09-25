@@ -305,3 +305,6 @@ export const pageNeedsComposition = defineRule({
     return outcome(diagnostics, [], drops)
   }),
 })
+
+// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: a filename pattern deciding whether a file is a page.
+// See docs/rule-coupling.md.

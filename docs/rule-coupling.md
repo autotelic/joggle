@@ -101,7 +101,24 @@ With those two, a rule's deterministic half is exactly what the design rule says
    `reimplemented-primitive`, `hoist-to-domain`, `language-drift`,
    `naming-drift`, `types-over-logic` and `page-needs-composition` one at a time,
    each with its question re-calibrated.
-3. **Then the fence.** `joggle/rule-judgment` finds this category in a
-   repository's rules; the same shape should be a meta-rule over joggle's own,
-   so a rule that reaches into `unit.text` to decide meaning is rejected where it
-   is written.
+3. **The fence is in.** `no-pattern-classifier` is a meta-rule (`src/meta.ts`)
+   that reads a rule module's own source for the two mechanically detectable
+   kinds: a regex literal, a `new RegExp`, or a literal vocabulary (a named array
+   or a `Set` of short quoted words). It is the same shape as the other
+   authorship rules, with the same escape hatch: a rule states
+   `meta-allow: no-pattern-classifier` and a reason.
+
+   Eight rules currently carry that opt-out -- `temporal-coupling`,
+   `language-drift`, `naming-drift`, `field-type-drift`, `types-over-logic`,
+   `page-needs-composition`, `data-error-as-outage`, `name-as-address` -- so the
+   debt is enumerated in the source and greppable. An opt-out comes out when the
+   rule is rebuilt on facts; a new one fails the test.
+
+   Two limits, stated rather than hidden. The detector is mechanical, so it does
+   not catch a hand-ranked score (`ruleLikeness`), a string rule for a type
+   question (`canCompose`, `inputKey`) or a text parse for a declared type;
+   those are found by reading, and they are in the table above. And it reads
+   structure, not meaning: `name-as-address`'s one-word test is a name SHAPE, not
+   a classification, and is allowed for that reason. `joggle/rule-judgment` is
+   the runtime sibling -- it finds this category in a repository's rules; this
+   finds it in joggle's own.

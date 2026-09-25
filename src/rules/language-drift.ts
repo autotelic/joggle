@@ -255,3 +255,6 @@ export const languageDrift: PlannedRule = {
     }
   })
 }
+
+// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: STOPWORDS is a hand-maintained list of non-domain words.
+// See docs/rule-coupling.md.

@@ -16,6 +16,8 @@ import {
 import { canCompose } from "./compose-types.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
+// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: a nullability regex and a string rule for type compatibility.
+// See docs/rule-coupling.md.
 
 const RULE_ID = "joggle/field-type-drift"
 

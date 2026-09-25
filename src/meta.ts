@@ -75,6 +75,82 @@ export const atomPayloads = (source: string): ReadonlyArray<string> => {
 const unbounded = (payload: string): boolean =>
   /(\.text\b|\btext\s*:)/.test(payload) && !payload.includes(".slice(")
 
+
+/**
+ * Where a rule decides meaning in code: a regular expression, or a literal
+ * vocabulary.
+ *
+ * The first meta-rule about HOW a rule decides rather than what it declares. It
+ * checks the structural shape of a rule's own source -- `docs/rule-coupling.md` --
+ * because "which names are formatters" and "which words mean money" are decisions
+ * that belong to Jev, and a rule that makes them is coupled to one implementation
+ * and will rot. These are the two mechanically detectable kinds; a hand-ranked
+ * score (`ruleLikeness`), a string rule for a type question (`canCompose`,
+ * `inputKey`) and a text parse for a declared type are the same fault and are
+ * found by reading.
+ */
+export interface Coupling {
+  readonly kind: "regex" | "vocabulary"
+  readonly detail: string
+}
+
+/** A regex literal on its own line: `  /^(format|shown)/,`. */
+const REGEX_LINE = /^\s*\/[^/*\n][^\n]*\/[gimsuy]*,?\s*$/m
+/** A regex literal in an arrow body: `=> /^(route|page)\.tsx?$/.test(…)`. */
+const REGEX_ARROW = /=>\s*\/[^/*\n][^\n]*\/[gimsuy]*/
+/** A named array or a Set: where a literal vocabulary starts. */
+const VOCABULARY_OPEN = /(new Set\(\[|^\s*(?:export )?const [A-Z][A-Z0-9_]*[^=\n]*= \[)/m
+
+/** The bracket-balanced literal that starts at or after `from`. */
+const balanced = (source: string, from: number): string => {
+  const open = source.indexOf("[", from)
+  if (open === -1) return ""
+  let depth = 0
+  for (let index = open; index < source.length && index < open + 2000; index += 1) {
+    const character = source[index]
+    if (character === "[") depth += 1
+    else if (character === "]") {
+      depth -= 1
+      if (depth === 0) return source.slice(open, index + 1)
+    }
+  }
+  return source.slice(open, open + 2000)
+}
+
+/**
+ * The coupling in one rule source.
+ *
+ * @param source - the rule module's text.
+ * @returns one entry per mechanical coupling found.
+ */
+export const couplingIn = (source: string): ReadonlyArray<Coupling> => {
+  const found: Array<Coupling> = []
+  if (source.includes("new RegExp(")) {
+    found.push({ kind: "regex", detail: "builds a RegExp" })
+  }
+  const literal = REGEX_LINE.exec(source) ?? REGEX_ARROW.exec(source)
+  if (literal !== null) {
+    found.push({ kind: "regex", detail: "a regex literal: " + literal[0].trim().slice(0, 70) })
+  }
+  const open = VOCABULARY_OPEN.exec(source)
+  if (open !== null) {
+    // The literal's OWN brackets, not a window past them: a window ran into the
+    // rule's messages registry and counted message ids as a vocabulary. And the
+    // `[` after the `=`, not the one in a type annotation (`readonly [string, string]`).
+    const at = open[0].startsWith("new Set")
+      ? open.index + open[0].indexOf("[")
+      : source.indexOf("[", source.indexOf("=", open.index))
+    const words = balanced(source, at).match(/["'][a-z][A-Za-z0-9_]*["']/g) ?? []
+    if (words.length >= 3) {
+      found.push({
+        kind: "vocabulary",
+        detail: "a literal vocabulary of " + String(words.length) + ": " + words.slice(0, 6).join(", "),
+      })
+    }
+  }
+  return found
+}
+
 /**
  * The authorship rules, checked against a set of rule sources and their tests.
  *
@@ -132,6 +208,11 @@ export const metaFindings = (input: {
       if (unbounded(payload)) {
         push("bounded-atoms", "an atom carries a whole file; put a bounded sample in it")
       }
+    }
+    // How the rule DECIDES, not what it declares: a regex or a literal
+    // vocabulary that classifies meaning belongs to Jev (docs/rule-coupling.md).
+    for (const coupling of couplingIn(rule.source)) {
+      push("no-pattern-classifier", coupling.kind + " -- " + coupling.detail)
     }
   }
   return found
