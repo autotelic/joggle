@@ -66,6 +66,7 @@
     "test": "vitest run",
     "lint": "node scripts/lint-baseline.mjs",
     "lint:update": "node scripts/lint-baseline.mjs --update",
+    "diagram:rules": "node scripts/diagram-rules.mjs",
     "check": "pnpm typecheck && pnpm test && pnpm lint"
   },
   "dependencies": {
