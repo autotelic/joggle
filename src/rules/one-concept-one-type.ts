@@ -1,123 +1,249 @@
 import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
-import { defineRule, finding, inScope, outcome, type Scope } from "../rule.ts"
-import type { Diagnostic } from "../schema.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
+import {
+  budgetNote,
+  finding,
+  inScope,
+  marginOfAnswer,
+  outcome,
+  qualityOf,
+  type DecisionAnswers,
+  type PlannedRule,
+  type Scope,
+} from "../rule.ts"
+import type { Diagnostic, Drop } from "../schema.ts"
 import type { TypeFact } from "../typetrace.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/one-concept-one-type"
 
-/**
- * One declared name, resolving to different types in different files.
- *
- * JOGGLE.md names this as the first type-aware rule, and the reason is that text
- * cannot see it. `User` in the API and `User` in the UI read identically and are
- * two types; `User` written twice with the same members reads identically and is
- * one type written twice. Only the compiler can tell which, because only the
- * compiler resolves the name.
- *
- * The measured case from JOGGLE.md: one `User`, 46 resolved entries across 24
- * declaring files, 3 distinct resolved shapes, 4 of them `any`. This rule reports
- * the divergence and names every declaration that took part, so the reader sees
- * the three meanings instead of the one word.
- *
- * Deterministic. The compiler's answer is a fact, not a judgement; what to DO
- * about two meanings is the reader's decision, and the help gives them the
- * material for it.
- */
-export const oneConceptOneType = defineRule({
+// One declared name, resolving to different types in different files.
+//
+// Text cannot see this. `User` in the API and `User` in the UI read identically
+// and are two types; `User` written twice with the same members reads identically
+// and is one type written twice. Only the compiler tells which, and the trace is
+// its answer.
+//
+// The resolved type is a FACT. Whether two resolved meanings are one concept that
+// should share a declaration, or two concepts that should have two names, is the
+// judgement -- and it is the one a reader had to make from the help text.
+export const oneConceptOneType: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
   description: "One declared name resolving to different types in different files.",
-  judged: false,
-  run: Effect.fn("joggle/one-concept-one-type")(function* (workspace: Workspace, scope: Scope) {
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/one-concept-one-type")(function* (workspace: Workspace, scope: Scope) {
     const byName = new Map<string, Array<{ readonly unit: Unit; readonly fact: TypeFact }>>()
     for (const unit of workspace.units) {
-      // Functions are already compared as names and as call sequences. This rule
-      // is about the one contract the compiler enforces, and that is a type.
+      // Functions are already compared as names and as call sequences.
       if (unit.kind === "function") continue
-      // An exported name is a contract other modules import. Two file-local
-      // helpers that share a name are two locals, and nothing outside their own
-      // files can confuse them, so reporting them is noise.
+      // An exported name is a contract other modules import.
       if (!unit.exported) continue
       const fact = unit.typeFacts
-      // A run without a trace has no answer, and "no answer" is not "no
-      // divergence": the empty index is why the note below distinguishes them.
       if (fact === undefined || fact.display === "") continue
       const list = byName.get(unit.name) ?? []
       list.push({ unit, fact })
       byName.set(unit.name, list)
     }
 
-    const findings: Array<Diagnostic> = []
+    if (byName.size === 0) {
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            workspace.types.sites === 0
+              ? "no resolved types were available: run with --types to ask the compiler"
+              : "no exported type declaration carried a resolved type to compare",
+          ]),
+      }
+    }
+
+    const candidates: Array<{ name: string; entries: Array<{ unit: Unit; fact: TypeFact }>; meanings: number; files: number }> = []
     let divergent = 0
     for (const [name, entries] of byName) {
       const files = new Set(entries.map((entry) => entry.unit.file))
       const meanings = new Set(entries.map((entry) => entry.fact.display))
-      // One file declaring the name twice is a different rule; this is the
-      // cross-file meaning of a name, which is what a reader importing it faces.
       if (files.size < 2 || meanings.size < 2) continue
       if (!entries.some((entry) => inScope(scope, entry.unit.file))) continue
       divergent += 1
-      if (findings.length >= policy.oneConceptOneType.maxFindings) continue
-      const first = entries[0]
-      if (first === undefined) continue
-      findings.push(
-        finding({
-          ruleId: RULE_ID,
-          severity: "warn",
-          message:
-            "`" +
-            name +
-            "` resolves to " +
-            meanings.size +
-            " different types across " +
-            files.size +
-            " file(s).",
-          help:
-            "One name should mean one type. The compiler resolved it to: " +
-            entries
-              .map(
-                (entry) =>
-                  entry.unit.file +
-                  ":" +
-                  entry.unit.location.line +
-                  " -> " +
-                  short(entry.fact.display),
-              )
-              .join("; ") +
-            ". Share one declaration, or give the two concepts two names.",
-          location: first.unit.location,
-          identity: [RULE_ID, name].join("\u0000"),
-          judged: false,
-        }),
-      )
+      candidates.push({ name, entries, meanings: meanings.size, files: files.size })
     }
 
-    if (byName.size === 0) {
-      return outcome([], [
-        workspace.types.sites === 0
-          ? "no resolved types were available: run with --types to ask the compiler"
-          : "no exported type declaration carried a resolved type to compare",
-      ])
+    if (candidates.length === 0) {
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            byName.size + " exported type name(s) with a resolved type; none resolve to more than one",
+          ]),
+      }
     }
-    return outcome(findings, [
-      byName.size +
-        " exported type name(s) with a resolved type; " +
-        divergent +
-        " resolve to more than one",
-      ...(divergent > findings.length
-        ? [
-            divergent -
-              findings.length +
-              " were past the limit of " +
-              policy.oneConceptOneType.maxFindings +
-              " and were not reported",
-          ]
-        : []),
-    ])
+
+    const judged = candidates.slice(0, policy.oneConceptOneType.maxFindings)
+    const overBudget: ReadonlyArray<Drop> = candidates
+      .slice(policy.oneConceptOneType.maxFindings)
+      .map((candidate) => ({
+        ruleId: RULE_ID,
+        subject: candidate.name,
+        stage: "budget" as const,
+        reason: "past the budget of " + String(policy.oneConceptOneType.maxFindings) + " names",
+      }))
+
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(judged, (candidate) =>
+      Effect.gen(function* () {
+        // The state is the name and each resolved meaning, bounded, which is what
+        // the question needs: the compiler's answer, not the source.
+        const meanings = candidate.entries.slice(0, 6).map((entry) => ({
+          file: entry.unit.file,
+          line: entry.unit.location.line,
+          display: short(entry.fact.display),
+        }))
+        const id = yield* atoms.add({
+          name: candidate.name,
+          meaningCount: candidate.meanings,
+          fileCount: candidate.files,
+          meanings,
+        })
+        const plan: Plan<DecisionAnswers> = {
+          ruleId: RULE_ID,
+          subject: candidate.name,
+          concerns: [...new Set(candidate.entries.map((entry) => entry.unit.file))],
+          atoms: [id],
+          decisions: {
+            verdict: Decision.classify({
+              instructions: [
+                `\`atoms[${id}].name\` is an exported type name that the compiler resolved to ${candidate.meanings} different types across ${candidate.files} files: \`atoms[${id}].meanings\` lists each declaration and what it resolved to.`,
+                "Are those meanings ONE concept that should share one declaration, or two concepts that should have two names?",
+                "Answer `one_concept` when they are the same idea written incompletely, so they should share one declaration.",
+                "Answer `two_concepts` when the name has been reused for different things, so one should be renamed.",
+                "Answer `intentional` when the divergence is deliberate and fine -- a name scoped per module, a generic used on purpose.",
+              ].join("\n"),
+              criteria: {
+                one_concept: "One idea, written more than one way. Share one declaration.",
+                two_concepts: "One name, different things. Give one of them a new name.",
+                intentional: "A deliberate divergence. Nothing to change.",
+              },
+            }),
+          },
+          read: (answers) => answers,
+        }
+        return { candidate, id, plan }
+      }),
+      { concurrency: "unbounded" },
+    )
+
+    return {
+      plans: planned.map((value) => value.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...overBudget]
+        planned.forEach((value, index) => {
+          const { candidate } = value
+          const subject = candidate.name
+          const answer = verdicts[index]
+          const verdict = answer === undefined ? undefined : answer["verdict"]
+          if (verdict === undefined || !("label" in verdict)) {
+            diagnostics.push(findingFor(candidate, undefined, "no judgement was available"))
+            return
+          }
+          if (verdict.label !== "one_concept" && verdict.label !== "two_concepts") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "declined",
+              reason: "the divergence is deliberate",
+            })
+            return
+          }
+          const score = verdict.probabilities[verdict.label] ?? 0
+          const quality = qualityOf({
+            score,
+            margin: marginOfAnswer(verdict),
+            confidence: verdict.confidence,
+          })
+          if (quality.quality !== "act") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "gated",
+              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+            })
+            return
+          }
+          diagnostics.push(
+            findingFor(candidate, verdict.confidence, undefined, verdict.label === "two_concepts"),
+          )
+        })
+        return outcome(
+          diagnostics,
+          [
+            byName.size +
+              " exported type name(s) with a resolved type; " +
+              divergent +
+              " resolve to more than one",
+            ...budgetNote(
+              "names",
+              policy.oneConceptOneType.maxFindings,
+              candidates.length,
+              candidates.slice(policy.oneConceptOneType.maxFindings).map((candidate) => candidate.name),
+            ),
+          ],
+          drops,
+        )
+      },
+    }
   }),
-})
+}
+
+const findingFor = (
+  candidate: {
+    readonly name: string
+    readonly meanings: number
+    readonly files: number
+    readonly entries: ReadonlyArray<{ readonly unit: Unit; readonly fact: TypeFact }>
+  },
+  confidence: number | undefined,
+  unverifiedReason: string | undefined,
+  renamed = false,
+): Diagnostic => {
+  const first = candidate.entries[0]
+  const location = first === undefined ? { file: "", line: 1, column: 1 } : first.unit.location
+  const input: Parameters<typeof finding>[0] = {
+    ruleId: RULE_ID,
+    severity: "warn",
+    message:
+      "`" +
+      candidate.name +
+      "` resolves to " +
+      candidate.meanings +
+      " different types across " +
+      candidate.files +
+      " file(s).",
+    help:
+      (renamed
+        ? "One name, different things. Give one of them its own name. "
+        : "One name should mean one type. ") +
+      "The compiler resolved it to: " +
+      candidate.entries
+        .map(
+          (entry) =>
+            entry.unit.file + ":" + String(entry.unit.location.line) + " -> " + short(entry.fact.display),
+        )
+        .join("; ") +
+      ". Share one declaration, or give the two concepts two names." +
+      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
+    location,
+    identity: [RULE_ID, candidate.name].join("\u0000"),
+    judged: unverifiedReason === undefined,
+  }
+  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+}
 
 /** A resolved type, cut to the length a finding's help can carry. */
 const short = (value: string): string =>

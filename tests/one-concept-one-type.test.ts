@@ -1,9 +1,9 @@
 import { expect, test } from "vitest"
 import { Effect } from "effect"
 import { oneConceptOneType } from "../src/rules/one-concept-one-type.ts"
-import { everyFile } from "../src/rule.ts"
+import { plannedDiagnosticsOf } from "../src/testing.ts"
 import { emptyTypeIndex, indexOf, parseTrace } from "../src/typetrace.ts"
-import { noConfig } from "./support.ts"
+import { choice, modelStub } from "./support.ts"
 import type { Unit, Workspace } from "../src/workspace.ts"
 
 const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -30,60 +30,63 @@ const declared = (name: string, file: string, line: number, display: string, exp
 const workspaceOf = (units: ReadonlyArray<Unit>): Workspace =>
   ({ units, types: emptyTypeIndex }) as unknown as Workspace
 
+const review = (units: ReadonlyArray<Unit>) =>
+  plannedDiagnosticsOf(oneConceptOneType, workspaceOf(units)).pipe(
+    Effect.provide(modelStub({ verdict: choice("one_concept", 0.95) })),
+  )
+
 test("one exported name resolving to two types is one finding", async () => {
-  const workspace = workspaceOf([
-    declared("User", "src/api.ts", 3, "{ id: String }"),
-    declared("User", "src/ui.ts", 5, "{ id: String; name: String }"),
-  ])
-  const result = await run(oneConceptOneType.run(workspace, everyFile, noConfig))
+  const result = await run(
+    review([
+      declared("User", "src/api.ts", 3, "{ id: String }"),
+      declared("User", "src/ui.ts", 5, "{ id: String; name: String }"),
+    ]),
+  )
   expect(result.diagnostics.length).toBe(1)
   expect(result.diagnostics[0]?.message).toContain("2 different types")
   expect(result.diagnostics[0]?.message).toContain("2 file(s)")
-  // The help names every declaration, so the reader can see both meanings.
   expect(result.diagnostics[0]?.help).toContain("src/api.ts:3")
   expect(result.diagnostics[0]?.help).toContain("src/ui.ts:5")
-  expect(result.diagnostics[0]?.judged).toBe(false)
+  expect(result.diagnostics[0]?.judged).toBe(true)
 })
 
 test("one name written identically twice is not a finding", async () => {
-  // Two copies of one type are a duplication question, not a divergence one.
-  const workspace = workspaceOf([
-    declared("User", "src/api.ts", 3, "{ id: String }"),
-    declared("User", "src/ui.ts", 5, "{ id: String }"),
-  ])
-  const result = await run(oneConceptOneType.run(workspace, everyFile, noConfig))
+  const result = await run(
+    review([
+      declared("User", "src/api.ts", 3, "{ id: String }"),
+      declared("User", "src/ui.ts", 5, "{ id: String }"),
+    ]),
+  )
   expect(result.diagnostics.length).toBe(0)
 })
 
 test("a file-local name is not a contract", async () => {
-  const workspace = workspaceOf([
-    declared("Row", "src/api.ts", 3, "{ id: String }", false),
-    declared("Row", "src/ui.ts", 5, "{ name: String }", false),
-  ])
-  const result = await run(oneConceptOneType.run(workspace, everyFile, noConfig))
+  const result = await run(
+    review([
+      declared("Row", "src/api.ts", 3, "{ id: String }", false),
+      declared("Row", "src/ui.ts", 5, "{ name: String }", false),
+    ]),
+  )
   expect(result.diagnostics.length).toBe(0)
 })
 
 test("one name in one file is not a finding", async () => {
-  const workspace = workspaceOf([
-    declared("User", "src/api.ts", 3, "{ id: String }"),
-    declared("User", "src/api.ts", 9, "{ name: String }"),
-  ])
-  const result = await run(oneConceptOneType.run(workspace, everyFile, noConfig))
+  const result = await run(
+    review([
+      declared("User", "src/api.ts", 3, "{ id: String }"),
+      declared("User", "src/api.ts", 9, "{ name: String }"),
+    ]),
+  )
   expect(result.diagnostics.length).toBe(0)
 })
 
 test("a run without a trace says so rather than reporting agreement", async () => {
-  // The distinction the rule exists to keep: no answer is not the same as
-  // "everything agreed". An empty index is reported in the notes.
-  const workspace = workspaceOf([])
-  const result = await run(oneConceptOneType.run(workspace, everyFile, noConfig))
+  const result = await run(review([]))
   expect(result.diagnostics.length).toBe(0)
   expect(result.notes.join(" ")).toContain("--types")
 })
 
 test("a real trace index drives the rule", () => {
-  // The reader and the rule together, without a compiler in the test.
   const index = indexOf(
     parseTrace("/r", [
       [
