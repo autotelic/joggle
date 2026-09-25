@@ -168,6 +168,7 @@ export const pageNeedsComposition = defineRule({
   severity: "warn",
   description: "Pages whose own state and markup belong in a composition bundle.",
   judged: true,
+  move: "expand",
   messages: messages({
     state_pressure:
       "{{file}} carries {{state}} useState call(s) and {{inline}} inline element(s) that may belong in a composition bundle.",

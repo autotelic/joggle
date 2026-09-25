@@ -38,6 +38,7 @@ export const callPattern: PlannedRule = {
   severity: "info",
   description: "Declarations that make the same calls in the same order with different bodies.",
   judged: true,
+  move: "contract",
   onUnavailable: "report",
   messages: messages({
     same_calls:

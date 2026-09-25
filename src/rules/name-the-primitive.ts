@@ -43,6 +43,7 @@ export const nameThePrimitive: PlannedRule = {
   severity: "info",
   description: "A group of fields repeated across declarations with no name of its own.",
   judged: true,
+  move: "expand",
   onUnavailable: "report",
   messages: messages({
     fields_unnamed:

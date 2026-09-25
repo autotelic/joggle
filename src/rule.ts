@@ -7,6 +7,7 @@ import type * as AiError from "effect/unstable/ai/AiError"
 import type { Decision, DecisionModel } from "effect/unstable/ai"
 import type { Diagnostic, Drop, Operation, Repair, Severity, SourceLocation } from "./schema.ts"
 import type { Messages } from "./reporting.ts"
+import type { Move } from "./moves.ts"
 import type { Workspace } from "./workspace.ts"
 
 /**
@@ -125,6 +126,8 @@ export interface Rule {
    * that is not declared here.
    */
   readonly messages?: Messages | undefined
+  /** The entropy reversal this rule proposes, when it proposes one. */
+  readonly move?: Move | undefined
   /**
    * The operations this rule can propose. Absent means it only warns.
    *
@@ -164,6 +167,8 @@ export interface PlannedRule {
   readonly judged: true
   /** The rule's messages, keyed by id, so the wording lives in one place. */
   readonly messages?: Messages | undefined
+  /** The entropy reversal this rule proposes, when it proposes one. */
+  readonly move?: Move | undefined
   /** The operations this rule can propose. Absent means it only warns. */
   readonly operations?: ReadonlyArray<Operation> | undefined
   /**
@@ -275,6 +280,8 @@ export const finding = (input: {
   readonly identity?: string | undefined
   /** The smaller form this finding proposes, when the rule can propose one. */
   readonly repair?: Repair | undefined
+  /** Overrides the rule's own move, for a rule that proposes more than one. */
+  readonly move?: Move | undefined
 }): Diagnostic => {
   // Built field by field rather than with conditional spreads: an empty-object
   // spread hides the omission, and a reader has to reason about two shapes to
@@ -291,6 +298,7 @@ export const finding = (input: {
   if (input.score !== undefined) diagnostic.score = input.score
   if (input.identity !== undefined) diagnostic.identity = input.identity
   if (input.repair !== undefined) diagnostic.repair = input.repair
+  if (input.move !== undefined) diagnostic.move = input.move
   return diagnostic
 }
 

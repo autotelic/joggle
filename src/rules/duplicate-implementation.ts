@@ -16,6 +16,7 @@ import type { Unit, Workspace } from "../workspace.ts"
 const spec: ClusterRule = {
   ruleId: "joggle/duplicate-implementation",
   severity: "warn",
+  move: "contract",
   // Shape equality is a fact, so an unjudged cluster is still worth reporting.
   onUnavailable: "report",
   questionnaire: collapseQuestionnaire,
@@ -70,6 +71,7 @@ export const duplicateImplementation: PlannedRule = {
   severity: spec.severity,
   description: "One declaration written more than once across files.",
   judged: true,
+  move: "contract",
   onUnavailable: spec.onUnavailable,
   plan: Effect.fn("joggle/duplicate-implementation")(function* (workspace, scope, context) {
     const clusters = find(workspace, scope)

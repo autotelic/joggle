@@ -123,3 +123,42 @@ it("exit codes follow errors and the warning budget", () => {
   expect(exitCodeFor(report([diagnostic()]), 0)).toBe(1)
   expect(exitCodeFor(report([diagnostic({ severity: "error" })]), 999)).toBe(1)
 })
+
+it("groups findings by the move they propose, in the ratchet order", () => {
+  const rendered = render(
+    report([
+      diagnostic({ ruleId: "joggle/reimplemented-primitive", move: "contract", message: "A copy." }),
+      diagnostic({ ruleId: "joggle/compose-types", move: "combine", message: "A combination." }),
+      diagnostic({ ruleId: "joggle/object-shape", move: "expand", message: "A new name." }),
+    ]),
+    "text",
+  )
+  const contract = rendered.indexOf("contract —")
+  const combine = rendered.indexOf("combine —")
+  const expand = rendered.indexOf("expand —")
+  // Contract first, then combine, then expand: the ratchet order.
+  expect(contract).toBeGreaterThan(-1)
+  expect(contract).toBeLessThan(combine)
+  expect(combine).toBeLessThan(expand)
+  expect(rendered).toContain("by move:")
+})
+
+it("a finding with no move is a requirement, and is grouped as correctness", () => {
+  const rendered = render(
+    report([
+      diagnostic({ ruleId: "joggle/import-cycle", message: "A cycle." }),
+      diagnostic({ ruleId: "joggle/object-shape", move: "expand", message: "A new name." }),
+    ]),
+    "text",
+  )
+  expect(rendered).toContain("correctness —")
+})
+
+it("the machine format carries the move counts", () => {
+  const rendered = render(
+    report([diagnostic({ move: "expand" }), diagnostic({ move: "contract" })]),
+    "json",
+  )
+  const parsed = JSON.parse(rendered)
+  expect(parsed.summary.byMove).toEqual({ contract: 1, combine: 0, expand: 1, correctness: 0 })
+})

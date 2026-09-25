@@ -40,6 +40,7 @@ export const duplicateCallRun: PlannedRule = {
   severity: "info",
   description: "A run of calls one declaration shares with another, without the whole sequence.",
   judged: true,
+  move: "contract",
   onUnavailable: "report",
   messages: messages({
     shared_run:

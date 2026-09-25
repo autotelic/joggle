@@ -102,6 +102,7 @@ export const reimplementedPrimitive: PlannedRule = {
   severity: "info",
   description: "A function that inlines exactly what an existing declaration already does.",
   judged: true,
+  move: "contract",
   onUnavailable: "report",
   operations: ["replace"],
   messages: messages({

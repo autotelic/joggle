@@ -1,4 +1,5 @@
 import type { Diagnostic, Repair, Severity, SourceLocation } from "./schema.ts"
+import type { Move } from "./moves.ts"
 import { RuleAuthoringError } from "./schema.ts"
 import type { SourceFile, Unit, Workspace } from "./workspace.ts"
 import { lineAt, lineStarts } from "./cascade.ts"
@@ -101,6 +102,8 @@ export interface ReportInput {
   readonly data?: Readonly<Record<string, string | number>> | undefined
   /** A second registry entry, for the help text. Shares `data`. */
   readonly helpId?: string | undefined
+  /** Overrides the rule's move, for a rule that proposes more than one. */
+  readonly move?: Move | undefined
   /** Overrides the rule's own `judged`, for an unverified finding. */
   readonly judged?: boolean | undefined
   readonly severity?: Severity | undefined
@@ -118,6 +121,7 @@ export interface ReportedRule {
   readonly severity: Severity
   readonly judged: boolean
   readonly messages?: Messages | undefined
+  readonly move?: Move | undefined
 }
 
 const PLACEHOLDER = /\{\{(\w+)\}\}/g
@@ -195,5 +199,6 @@ export const reporter = (rule: ReportedRule, locate: Locate): Report => (input) 
     score: input.score,
     identity: input.identity,
     repair: input.repair,
+    move: input.move ?? rule.move,
   })
 }

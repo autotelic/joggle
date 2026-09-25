@@ -11,6 +11,7 @@ import { nameList } from "../cluster.ts"
 const spec: ClusterRule = {
   ruleId: "joggle/duplicate-meaning",
   severity: "warn",
+  move: "contract",
   // A near-duplicate is a guess until a judgement says otherwise, so an
   // unjudged cluster is silence and the rule reports itself as skipped.
   onUnavailable: "propagate",
@@ -175,6 +176,7 @@ export const duplicateMeaning: PlannedRule = {
   severity: spec.severity,
   description: "Near-duplicates where a judgement says one declaration replaces the other.",
   judged: true,
+  move: "contract",
   onUnavailable: spec.onUnavailable,
   plan: Effect.fn("joggle/duplicate-meaning")(function* (workspace, scope, context) {
     const { clusters, oversized, chained } = find(workspace, scope)

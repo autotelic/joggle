@@ -38,6 +38,7 @@ export const oneConceptOneType: PlannedRule = {
   severity: "warn",
   description: "One declared name resolving to different types in different files.",
   judged: true,
+  move: "contract",
   onUnavailable: "report",
   messages: messages({
     one_name_many_types:

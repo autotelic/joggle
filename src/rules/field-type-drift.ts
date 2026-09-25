@@ -175,6 +175,7 @@ export const fieldTypeDrift: PlannedRule = {
   severity: "warn",
   description: "One field name declared with different, incompatible types.",
   judged: true,
+  move: "expand",
   onUnavailable: "report",
   messages: messages({
     two_types: "{{unit}} has a field declared with two incompatible types.",

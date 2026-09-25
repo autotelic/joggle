@@ -155,6 +155,7 @@ export const hoistToDomain: PlannedRule = {
   severity: "warn",
   description: "Business logic at the edge that belongs in a domain package.",
   judged: true,
+  move: "expand",
   onUnavailable: "report",
   messages: messages({
     rule_at_the_edge:

@@ -63,6 +63,7 @@ export const composeTypes: PlannedRule = {
   severity: "warn",
   description: "A type that repeats every field of another type instead of composing it.",
   judged: true,
+  move: "combine",
   onUnavailable: "report",
   messages: messages({
     same_name_drift:
@@ -206,22 +207,12 @@ export const composeTypes: PlannedRule = {
             diagnostics.push(findingFor(report, value.candidate, undefined, "no judgement was available", undefined, false))
             return
           }
-          // The compose case is ADVICE, recorded rather than printed. On a real
-          // repository it was 140 of 187 findings -- "B could compose A", every
-          // one true and none urgent -- and the containment the candidate was
-          // built from is the same evidence the question is given, so the model
-          // agrees with it almost every time. A name declared twice is the defect
-          // and stays a finding.
-          if (verdict.label === "composes") {
-            drops.push({
-              ruleId: RULE_ID,
-              subject,
-              stage: "gated",
-              reason: "compose advice is recorded, not printed",
-            })
-            return
-          }
-          if (verdict.label !== "same_name_drift") {
+          // Two moves, one rule. `composes` is a COMBINE: the primitives exist
+          // and the combination was never written, so it is a notice -- every one
+          // true, none urgent, and all of them the low band of the same question.
+          // A shared name is an EXPAND: one name means two things, so the
+          // vocabulary has to grow.
+          if (verdict.label !== "same_name_drift" && verdict.label !== "composes") {
             drops.push({
               ruleId: RULE_ID,
               subject,
@@ -248,7 +239,9 @@ export const composeTypes: PlannedRule = {
             return
           }
           const review = quality.quality === "review"
-          diagnostics.push(findingFor(report, value.candidate, verdict.confidence, undefined, "same_name_drift", review))
+          diagnostics.push(
+            findingFor(report, value.candidate, verdict.confidence, undefined, verdict.label, review),
+          )
         })
         return outcome(diagnostics, [], drops)
       },
@@ -284,5 +277,8 @@ const findingFor = (
     judged: unverifiedReason === undefined,
     confidence,
     severity: review || !drifted ? "info" : "warn",
+    // One rule, two moves: writing a combination of primitives, or discovering
+    // that one name means two things and the vocabulary has to grow.
+    move: drifted ? "expand" : "combine",
   })
 }

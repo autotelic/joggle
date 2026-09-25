@@ -42,6 +42,7 @@ const SPEC = {
   id: RULE_ID,
   severity: "info",
   judged: true,
+  move: "expand",
   messages: messages({
     repeated_fields:
       "{{count}} object literal(s) in {{files}} file(s) share this shape: { {{fields}} }.",

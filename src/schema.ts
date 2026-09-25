@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { Move } from "./moves.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Diagnostics                                                                */
@@ -94,6 +95,14 @@ export interface Structure extends Schema.Schema.Type<typeof Structure> {}
 export const Diagnostic = Schema.Struct({
   ruleId: Schema.String,
   severity: Severity,
+  /**
+   * Which entropy reversal this finding proposes, when it proposes one.
+   *
+   * On the finding rather than only on the rule, because one rule can propose
+   * more than one: `compose-types` reports advice to combine and a name
+   * contradiction to expand. Absent means the rule is not about entropy.
+   */
+  move: Schema.optionalKey(Move),
   message: Schema.String,
   help: Schema.optionalKey(Schema.String),
   location: SourceLocation,

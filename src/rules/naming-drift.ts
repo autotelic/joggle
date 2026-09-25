@@ -146,6 +146,7 @@ const nameQuestionnaire: ClusterRule["questionnaire"] = (cluster, described, wor
 const spec: ClusterRule = {
   ruleId: "joggle/naming-drift",
   severity: "warn",
+  move: "contract",
   onUnavailable: "propagate",
   questionnaire: nameQuestionnaire,
   subject: (cluster) => {

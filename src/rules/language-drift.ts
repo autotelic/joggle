@@ -137,6 +137,7 @@ export const languageDrift: PlannedRule = {
   severity: "info",
   description: "A domain word the prose uses and the code never names.",
   judged: true,
+  move: "expand",
   onUnavailable: "propagate",
   messages: messages({
     prose_word_not_named:

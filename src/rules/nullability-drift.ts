@@ -41,6 +41,7 @@ export const nullabilityDrift: PlannedRule = {
   severity: "warn",
   description: "A column nullable in the database and required in a schema, or the reverse.",
   judged: true,
+  move: "expand",
   onUnavailable: "report",
   messages: messages({
     nullable_mismatch:

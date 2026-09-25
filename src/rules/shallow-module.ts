@@ -78,6 +78,7 @@ export const shallowModule: PlannedRule = {
   severity: "info",
   description: "A file with many exports and little implementation behind them.",
   judged: true,
+  move: "expand",
   onUnavailable: "propagate",
   messages: messages({
     grab_bag:

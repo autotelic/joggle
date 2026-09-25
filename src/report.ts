@@ -1,4 +1,5 @@
 import type { Diagnostic, Drop, Note, Severity, Structure } from "./schema.ts"
+import { moveOrder, moveVocabulary, type Move } from "./moves.ts"
 
 /**
  * The funnel, worded for the report.
@@ -162,6 +163,13 @@ const counts = (report: Report) => ({
   judged: report.diagnostics.filter((d) => d.judged).length,
 })
 
+/** Findings per entropy reversal, for a machine. */
+const moveCounts = (report: Report) => {
+  const of = (key: Move | "correctness"): number =>
+    report.diagnostics.filter((diagnostic) => (diagnostic.move ?? "correctness") === key).length
+  return { contract: of("contract"), combine: of("combine"), expand: of("expand"), correctness: of("correctness") }
+}
+
 const problemSummary = (report: Report): string => {
   const { errors, warnings, infos } = counts(report)
   const total = report.diagnostics.length
@@ -215,6 +223,42 @@ const notes = (report: Report): ReadonlyArray<string> => {
 /* -------------------------------------------------------------------------- */
 /* text                                                                       */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * The report grouped by entropy reversal.
+ *
+ * joggle is the entropy reverser: you press the frontier out, then look at what
+ * you built and ask what it can be rebuilt from. Each finding says which move it
+ * is -- contract a copy back to the primitive that already exists, combine
+ * primitives into a composition, or expand the vocabulary with a new name, type
+ * or boundary -- and the report prints them in the ratchet order: the copies hide
+ * the primitives, so contract first; composing makes them explicit; a new
+ * primitive is built out of the ones you can now see. A finding with no move
+ * checks the code against a requirement and belongs in neither.
+ */
+const moveCensus = (report: Report): ReadonlyArray<string> => {
+  const counted = new Map<Move | "correctness", number>()
+  for (const diagnostic of report.diagnostics) {
+    const key = diagnostic.move ?? "correctness"
+    counted.set(key, (counted.get(key) ?? 0) + 1)
+  }
+  const keys: ReadonlyArray<Move | "correctness"> = [...moveOrder, "correctness"]
+  const rows = keys.filter((key) => (counted.get(key) ?? 0) > 0)
+  // One bucket is not a grouping, and a run that is all correctness gains
+  // nothing from a heading that says so.
+  if (rows.length <= 1) return []
+  const width = Math.max(
+    ...rows.map((key) => (key === "correctness" ? "correctness" : moveVocabulary[key].label).length),
+  )
+  const lines = ["", "by move:"]
+  for (const key of rows) {
+    const name = key === "correctness" ? "correctness" : moveVocabulary[key].label
+    const blurb =
+      key === "correctness" ? "a requirement the code does not meet" : moveVocabulary[key].blurb
+    lines.push(String(counted.get(key)).padStart(5) + "  " + name.padEnd(width) + "  " + blurb)
+  }
+  return lines
+}
 
 /**
  * How many findings each rule produced, largest first.
@@ -282,14 +326,37 @@ const structureLine = (structure: Structure): string => {
   return `${concepts} concept${concepts === 1 ? "" : "s"} · ${declarations} declaration${declarations === 1 ? "" : "s"} · ${duplicated} duplicated · ${overloaded} overloaded`
 }
 
+const findingLine = (d: Diagnostic): string => {
+  const { file, line, column } = d.location
+  const help = d.help === undefined ? "" : ` help: ${d.help}`
+  const score = d.score === undefined ? "" : ` (${d.score.toFixed(2)})`
+  return `${file}:${line}:${column}: ${label(d.severity)} ${d.ruleId}${score}: ${d.message}${operationNote(d)}${help}`
+}
+
 const text = (report: Report): string => {
-  const lines = report.diagnostics.map((d) => {
-    const { file, line, column } = d.location
-    const help = d.help === undefined ? "" : ` help: ${d.help}`
-    const score = d.score === undefined ? "" : ` (${d.score.toFixed(2)})`
-    return `${file}:${line}:${column}: ${label(d.severity)} ${d.ruleId}${score}: ${d.message}${operationNote(d)}${help}`
-  })
+  const lines: Array<string> = []
+  // Group the findings by the reversal they propose, in the ratchet order, when
+  // any of them propose one. A flat list is a wall; a grouping by move is the
+  // question the tool exists to ask.
+  if (report.diagnostics.some((diagnostic) => diagnostic.move !== undefined)) {
+    for (const move of moveOrder) {
+      const findings = report.diagnostics.filter((diagnostic) => diagnostic.move === move)
+      if (findings.length === 0) continue
+      lines.push("")
+      lines.push(moveVocabulary[move].label + " — " + moveVocabulary[move].blurb)
+      lines.push(...findings.map(findingLine))
+    }
+    const rest = report.diagnostics.filter((diagnostic) => diagnostic.move === undefined)
+    if (rest.length > 0) {
+      lines.push("")
+      lines.push("correctness — a requirement the code does not meet")
+      lines.push(...rest.map(findingLine))
+    }
+  } else {
+    lines.push(...report.diagnostics.map(findingLine))
+  }
   if (lines.length > 0) lines.push("")
+  lines.push(...moveCensus(report))
   lines.push(...census(report))
   lines.push(problemSummary(report))
   const measured = structureLine(report.structure)
@@ -371,6 +438,7 @@ const json = (report: Report): string =>
         structure: report.structure,
         problems: report.diagnostics.length,
         ...counts(report),
+        byMove: moveCounts(report),
         skipped: report.skipped,
         notes: report.notes,
         decision: report.decision,

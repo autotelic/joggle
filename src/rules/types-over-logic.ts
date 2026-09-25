@@ -85,6 +85,7 @@ export const typesOverLogic: PlannedRule = {
   severity: "info",
   description: "A runtime guard on a value whose type should carry the guarantee.",
   judged: true,
+  move: "expand",
   onUnavailable: "report",
   messages: messages({
     guard_not_type:

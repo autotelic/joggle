@@ -74,6 +74,7 @@ export const nameAsAddress: PlannedRule = {
   severity: "info",
   description: "A generic single-word export called from too many files to be searchable.",
   judged: true,
+  move: "expand",
   onUnavailable: "propagate",
   messages: messages({
     common_name:

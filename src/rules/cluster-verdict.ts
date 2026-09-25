@@ -7,6 +7,7 @@ import { cascadeOf } from "../cascade.ts"
 import { derivedOperation, describeOperation, permitted, settle } from "../operation.ts"
 import { answerPlans, PlanAnswers, type Plan } from "../plans.ts"
 import { locator, messages, reporter, type Report } from "../reporting.ts"
+import type { Move } from "../moves.ts"
 import { policy } from "../policy.ts"
 import { canImport, sharedLayerFor, type Layer } from "../architecture.ts"
 import {
@@ -115,6 +116,8 @@ export interface Questionnaire {
 export interface ClusterRule {
   readonly ruleId: string
   readonly severity: Severity
+  /** The entropy reversal this rule proposes, when it proposes one. */
+  readonly move?: Move | undefined
   /**
    * What to do when no judgement is available.
    *
@@ -563,7 +566,7 @@ const CLUSTER_MESSAGES = messages({
 /** Bind a cluster rule's messages to a workspace's locator. */
 export const clusterReporter = (rule: ClusterRule, workspace: Workspace): Report =>
   reporter(
-    { id: rule.ruleId, severity: rule.severity, judged: true, messages: CLUSTER_MESSAGES },
+    { id: rule.ruleId, severity: rule.severity, judged: true, messages: CLUSTER_MESSAGES, move: rule.move },
     locator(workspace),
   )
 
