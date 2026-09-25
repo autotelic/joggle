@@ -298,6 +298,15 @@ export const ReturnSite = Schema.Struct({
 
 export interface ReturnSite extends Schema.Schema.Type<typeof ReturnSite> {}
 
+/** A comparison, its operator and span. A language construct, not a repository idiom. */
+export const ComparisonSite = Schema.Struct({
+  start: Schema.Number,
+  end: Schema.Number,
+  operator: Schema.String,
+})
+
+export interface ComparisonSite extends Schema.Schema.Type<typeof ComparisonSite> {}
+
 export const StructureFacts = Schema.Struct({
   /**
    * Every call site in the file, in order.
@@ -331,6 +340,8 @@ export const StructureFacts = Schema.Struct({
   allOptionalFunctions: Schema.Array(Schema.String),
   /** Every `return`, with its span. */
   returns: Schema.Array(ReturnSite),
+  /** Every comparison (`===`, `>`, `in`, ...), a language construct. */
+  comparisons: Schema.Array(ComparisonSite),
 })
 
 export interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}
@@ -1005,6 +1016,7 @@ const structureIn = (root: unknown, allOptionalFunctions: ReadonlyArray<string>)
   const skips: Array<Schema.Schema.Type<typeof SkipSite>> = []
   const literals: Array<Schema.Schema.Type<typeof LiteralSite>> = []
   const returns: Array<Schema.Schema.Type<typeof ReturnSite>> = []
+  const comparisons: Array<Schema.Schema.Type<typeof ComparisonSite>> = []
   interface DeclaredFields {
     readonly required: Array<string>
     readonly nullable: Array<string>
@@ -1415,17 +1427,27 @@ const structureIn = (root: unknown, allOptionalFunctions: ReadonlyArray<string>)
         break
       }
       case "BinaryExpression": {
+        const start = node["start"]
+        const end = node["end"]
+        const operator = node["operator"]
         // A `+` with a string literal or a template on one side builds a string.
         const isString = (value: unknown): boolean =>
           isRecord(value) &&
           (value["type"] === "TemplateLiteral" ||
             (value["type"] === "Literal" && typeof value["value"] === "string"))
-        if (node["operator"] === "+" && (isString(node["left"]) || isString(node["right"]))) {
-          const start = node["start"]
-          const end = node["end"]
+        if (operator === "+" && (isString(node["left"]) || isString(node["right"]))) {
           if (typeof start === "number" && typeof end === "number") {
             stringSites.push({ start, end, refs: refsIn(node) })
           }
+          break
+        }
+        // A comparison, by its operator: `===`, `>`, `in`. Syntax, not meaning.
+        const comparing =
+          operator === "===" || operator === "!==" || operator === "==" || operator === "!=" ||
+          operator === ">" || operator === "<" || operator === ">=" || operator === "<=" ||
+          operator === "in" || operator === "instanceof"
+        if (comparing && typeof operator === "string" && typeof start === "number" && typeof end === "number") {
+          comparisons.push({ start, end, operator })
         }
         break
       }
@@ -1484,7 +1506,7 @@ const structureIn = (root: unknown, allOptionalFunctions: ReadonlyArray<string>)
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
-  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards, skips, literals, allOptionalFunctions, returns }
+  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards, skips, literals, allOptionalFunctions, returns, comparisons }
 }
 
 /** A parse result, whichever language produced it. */

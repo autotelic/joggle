@@ -20,6 +20,10 @@ import { verdictOf } from "./verdict.ts"
 import { everyFile, qualityOf, type DecisionAnswers, type PlannedRule } from "./rule.ts"
 import { allRules, builtIn, Rules } from "./rules/index.ts"
 import { layerFromConfig as tsgoLayer } from "./tsgo.ts"
+import { emptyTypeIndex, loadTypeFacts, type TypeIndex } from "./typetrace.ts"
+import { indexOfNodeTypes, typesAtPositions, type NodeTypeIndex } from "./typefacts.ts"
+import { manifestOf } from "./run-cache.ts"
+import { sourceFingerprint } from "./fingerprint.ts"
 
 /**
  * One report, through Effect's Console rather than a raw stdout write.
@@ -404,6 +408,12 @@ const calibrateCommand = Command.make(
       Flag.withDescription("Output format (default text)."),
       Flag.withDefault("text"),
     ),
+    types: Flag.Boolean("types").pipe(
+      Flag.withDescription(
+        "Resolve types, so the type rules can be calibrated: the declaration trace and the per-expression node types. Costs a program, like check --types.",
+      ),
+      Flag.withDefault(false),
+    ),
   },
   (config) =>
     Effect.gen(function* () {
@@ -421,14 +431,40 @@ const calibrateCommand = Command.make(
           isEnabled(ruleSet.effective, rule.id, rule.severity) &&
           (wanted === undefined || wanted.includes(rule.id)),
       )
-      const workspace = yield* loadWorkspace(cwd, config.paths.length > 0 ? config.paths : ["."])
       const cacheDir = Option.getOrUndefined(config.cacheDir) ?? path.join(cwd, ".joggle")
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
+      const inputs = config.paths.length > 0 ? config.paths : ["."]
 
       const rows = yield* Effect.gen(function* () {
+        // A type rule cannot be calibrated without the facts it reads, and there
+        // are two: the declaration trace (`workspace.types`, for a guard's declared
+        // type) and the node types (`RunContext.nodeTypes`, for a returned
+        // expression's resolved type). Both cost a program, so it is opt-in. This
+        // is inside the effect that provides tsgo, which is why it is here and not
+        // beside the other loading above.
+        let types: TypeIndex = emptyTypeIndex
+        if (config.types) {
+          const tool = yield* sourceFingerprint(policy.analysisVersion)
+          const manifest = manifestOf(cwd, [], new Map(), rules.map((rule) => rule.id), tool)
+          const loaded = yield* loadTypeFacts({ root: cwd, cacheDir, tool, manifest })
+          types = loaded.index
+        }
+        const workspace = yield* loadWorkspace(cwd, inputs, undefined, undefined, undefined, types)
+        let nodeTypes: NodeTypeIndex | undefined
+        if (config.types) {
+          const requests = workspace.files
+            .flatMap((file) => file.facts.returns.map((entry) => ({ file: file.path, position: entry.start })))
+            .slice(0, 2000)
+          if (requests.length > 0) {
+            const found = yield* Effect.tryPromise(() =>
+              typesAtPositions({ cwd, tsconfig: "tsconfig.json", requests }),
+            ).pipe(Effect.orElseSucceed(() => []))
+            nodeTypes = indexOfNodeTypes(found)
+          }
+        }
         const out: Array<{ readonly rule: string; readonly decision: string; readonly summary: CalibrationSummary; readonly note: string; readonly sample: ReadonlyArray<string> }> = []
         for (const rule of rules) {
-          const planned = yield* rule.plan(workspace, everyFile, { config: ruleSet.effective })
+          const planned = yield* rule.plan(workspace, everyFile, { config: ruleSet.effective, nodeTypes })
           // Chunked like the engine: one rule's candidates can exceed the
           // provider's token ceiling, so they travel in as many requests as fit.
           //
@@ -504,6 +540,9 @@ const calibrateCommand = Command.make(
           Layer.mergeAll(
             atomsLayer,
             decisionLayer({ cacheDir, wireCacheDir: yield* runCacheDirFor(cwd), offline: false, apiKey }),
+            // The trace and the node types both run tsgo; the calibrate command
+            // provides it only because `--types` may have asked for them.
+            tsgoLayer(cwd),
           ),
         ),
       )

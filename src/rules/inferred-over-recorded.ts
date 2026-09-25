@@ -11,7 +11,6 @@ import {
   qualityOf,
   type DecisionAnswers,
   type PlannedRule,
-  type RunContext,
   type Scope,
 } from "../rule.ts"
 import { verdictOf } from "../verdict.ts"
@@ -29,16 +28,19 @@ const RULE_ID = "joggle/inferred-over-recorded"
 //
 // Three facts, and none classifies:
 //
-//   the result   the checker's type at the returned expression, from the
-//                node-type layer (`--types`): `boolean`
-//   the row      a type the unit names, from `typeRefs`
-//   the record   a `boolean` field on that type that the unit does not read
+//   the comparison  an AST `BinaryExpression` with a comparison operator -- a
+//                   language construct, and the unit returns
+//   the row         a type the unit names, from `typeRefs`
+//   the record      a `boolean` field on that type that the unit does not read
 //
-// Whether the computation RECONSTRUCTS the recorded field is the question. It
-// needs the node-type layer for one reason: "this unit returns a boolean" is a
-// fact about the checker's answer, not about a comparison someone happened to
-// write, and a rule matching `>` in the text would be the coupling
-// docs/rule-coupling.md audits.
+// Whether the computation RECONSTRUCTS the recorded field is the question.
+//
+// An earlier shape asked the CHECKER whether the returned expression is a
+// boolean. Neither type layer answers that: the node-type layer resolves the
+// token at a position (hover), so a binary expression's offset answers its left
+// operand, and the declaration trace carries interfaces and aliases rather than
+// function signatures. A comparison is a language construct read from the AST,
+// not a repository idiom, so it is a fact -- the same standing as a guard shape.
 const declaredOf = (annotation: string): string =>
   annotation.replace(/^\s*:\s*/, "").replace(/\s+/g, " ").trim()
 
@@ -55,23 +57,8 @@ export const inferredOverRecorded: PlannedRule = {
     inferred_help:
       "Read `{{flag}}` instead of deriving it. Two sources of truth for one fact drift: the recorded field is written when the row is saved and the derivation is computed when it is read, and the first time they disagree nobody can tell which is right.{{unverified}}",
   }),
-  plan: Effect.fn("joggle/inferred-over-recorded")(function* (
-    workspace: Workspace,
-    scope: Scope,
-    context: RunContext,
-  ) {
+  plan: Effect.fn("joggle/inferred-over-recorded")(function* (workspace: Workspace, scope: Scope) {
     const report = reporter(inferredOverRecorded, locator(workspace))
-    const nodeTypes = context.nodeTypes
-    if (nodeTypes === undefined) {
-      return {
-        plans: [],
-        read: () =>
-          outcome([], [
-            "no node-type layer reached this run, so 'this unit returns a boolean' has no fact to stand on: run with --types",
-          ]),
-      }
-    }
-
     // The boolean fields, by the type that declares them.
     const booleanFields = new Map<string, Array<string>>()
     const unitOfType = new Map<string, Unit>()
@@ -92,10 +79,14 @@ export const inferredOverRecorded: PlannedRule = {
       for (const unit of file.units) {
         if (unit.kind !== "function") continue
         if (unit.text.length > policy.evidence.maxSourceChars) continue
-        const returned = file.facts.returns.filter(
-          (entry) => entry.start >= unit.start && entry.end <= unit.end,
-        )
-        if (!returned.some((entry) => nodeTypes(file.path, entry.start) === "boolean")) continue
+        // A comparison, and a return: the unit computes a boolean and hands it
+        // back. Both are syntax.
+        if (!file.facts.comparisons.some((entry) => entry.start >= unit.start && entry.end <= unit.end)) {
+          continue
+        }
+        if (!file.facts.returns.some((entry) => entry.start >= unit.start && entry.end <= unit.end)) {
+          continue
+        }
         for (const type of new Set(unit.typeRefs)) {
           const fields = booleanFields.get(type)
           if (fields === undefined) continue
