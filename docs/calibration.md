@@ -181,12 +181,34 @@ The report is now **653 problems = 263 warnings + 390 notices**. `object-shape` 
 the loudest rule at 104 warnings -- every one a shape repeated across files that
 nobody has named, which is what the rule exists to say.
 
+## Round six: the spread, and the instrument's last blemish
+
+**`object-shape`'s volume** was not the question's fault -- every finding was
+true -- but a shape in two files read the same as one in nine. The generator
+already computes the spread, so the band uses it: a shape in three or more files
+is a pattern and a warning, a pair is a notice (`policy.objectShape.warnFromFiles`).
+Both stay in the report. 104 warnings + 27 notices -> **22 warnings + 109
+notices**.
+
+**`duplicate-meaning`'s rejected candidate** no longer reproduces: after the
+verdict-text change re-asked it, all 367 plans have a valid cached answer and a
+per-plan replay finds zero misses. It was the provider returning a distribution
+that does not sum to 1, which is nondeterministic rather than a property of the
+criteria. So the instrument was hardened instead: a lone request that fails this
+way is now asked **once more** before the candidate is given up, in both `check`
+and `calibrate`. A malformed decimal is an instrument fault, not an answer, and
+losing a candidate to one is what this session kept having to design against.
+
+The report is now **653 problems = 181 warnings + 472 notices**.
+
 ## What is left
 
-- **`object-shape`'s warning volume** (104) is the next thing to look at, and the
-  lever is the candidate generator rather than the question: a shape shared by two
-  files with two fields is not the same finding as a shape shared by nine files.
-- **`duplicate-meaning` has one candidate the provider rejects** outright even
-  alone; worth a look at whether its criteria shape causes it.
-- **The provider-rejected candidate** is the only remaining blemish on the
-  calibrator.
+- **`duplicate-implementation` is the loudest rule** (47 warnings) and
+  `compose-types` is second (43). Both are real defects after their boundary
+  tuning; the next lever is the generator -- the pair whose two copies differ by
+  one field is not the same finding as the nine-copy shape, which is the same
+  lesson `object-shape` just learned.
+- **`hoist-to-domain`** (37 warnings) has never been calibrated per decision; its
+  `duty`/`home` split is the obvious next probe.
+- The judge is now trustworthy across the board: every rule calibrates, and no
+  candidate is lost to a malformed distribution.

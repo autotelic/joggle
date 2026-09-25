@@ -555,28 +555,38 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
     // is asked, so a bad answer usually does not repeat.
     const answerChunk: (
       plans: ReadonlyArray<Plan<unknown>>,
+      retried?: boolean,
     ) => Effect.Effect<
       ReadonlyArray<unknown>,
       AiError.AiError,
       Atoms | PlanAnswers | DecisionModel.DecisionModel
-    > = (plans) =>
+    > = (plans, retried = false) =>
       answerPlans(plans).pipe(
         Effect.catch((error) =>
           // A model that was never reached is not a bad answer: retrying it would
           // ask the same unreachable model again, and the engine needs the error
           // to know the rule was skipped rather than judged.
-          plans.length <= 1 || isUnreachable(error)
+          isUnreachable(error)
             ? Effect.fail(error)
-            : Effect.gen(function* () {
-                const half = Math.ceil(plans.length / 2)
-                const left = yield* answerChunk(plans.slice(0, half)).pipe(
-                  Effect.orElseSucceed(() => plans.slice(0, half).map(() => undefined)),
-                )
-                const right = yield* answerChunk(plans.slice(half)).pipe(
-                  Effect.orElseSucceed(() => plans.slice(half).map(() => undefined)),
-                )
-                return [...left, ...right]
-              }),
+            : plans.length <= 1
+              // A lone request is one candidate, and the provider sometimes
+              // returns a distribution that does not sum to 1. That is not a
+              // judgement, so ask once more before giving the candidate up --
+              // the provider is nondeterministic, and losing a candidate to a
+              // malformed decimal is an instrument fault, not an answer.
+              ? retried
+                ? Effect.fail(error)
+                : answerChunk(plans, true)
+              : Effect.gen(function* () {
+                  const half = Math.ceil(plans.length / 2)
+                  const left = yield* answerChunk(plans.slice(0, half)).pipe(
+                    Effect.orElseSucceed(() => plans.slice(0, half).map(() => undefined)),
+                  )
+                  const right = yield* answerChunk(plans.slice(half)).pipe(
+                    Effect.orElseSucceed(() => plans.slice(half).map(() => undefined)),
+                  )
+                  return [...left, ...right]
+                }),
         ),
       )
     const chunkResults = yield* Effect.forEach(

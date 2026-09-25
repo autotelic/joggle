@@ -439,6 +439,7 @@ const calibrateCommand = Command.make(
           // which is an unreadable candidate, not a lost rule.
           const answerChunk = (
             plans: ReadonlyArray<Plan<unknown>>,
+            retried = false,
           ): Effect.Effect<
             ReadonlyArray<DecisionAnswers | undefined>,
             never,
@@ -447,7 +448,11 @@ const calibrateCommand = Command.make(
             Effect.gen(function* () {
               const attempt = yield* Effect.result(answerPlansRaw(plans))
               if (Result.isSuccess(attempt)) return attempt.success
-              if (plans.length <= 1) return [undefined]
+              // A lone request the provider answered with a distribution that
+              // does not sum to 1: ask once more before giving the candidate up.
+              // The provider is nondeterministic, so this is an instrument fault
+              // rather than an answer.
+              if (plans.length <= 1) return retried ? [undefined] : yield* answerChunk(plans, true)
               const middle = Math.ceil(plans.length / 2)
               const left = yield* answerChunk(plans.slice(0, middle))
               const right = yield* answerChunk(plans.slice(middle))
