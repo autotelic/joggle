@@ -20,9 +20,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm typecheck
-
-      - run: pnpm test
+      - run: pnpm check
 
       # Answers are replayed from the committed per-decision cache
       # (.joggle/answers.json), so this job needs no API key and spends no tokens.
