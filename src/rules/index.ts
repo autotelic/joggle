@@ -22,6 +22,7 @@ import { oneConceptOneType } from "./one-concept-one-type.ts"
 import { nullabilityDrift } from "./nullability-drift.ts"
 import { dataErrorAsOutage } from "./data-error-as-outage.ts"
 import { typesOverLogic } from "./types-over-logic.ts"
+import { singlePath } from "./single-path.ts"
 import { Context, Layer } from "effect"
 import type { PlannedRule, Rule } from "../rule.ts"
 
@@ -63,6 +64,7 @@ export const allRules: ReadonlyArray<Rule | PlannedRule> = [
   nullabilityDrift,
   dataErrorAsOutage,
   typesOverLogic,
+  singlePath,
 ]
 
 /**
