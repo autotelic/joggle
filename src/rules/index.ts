@@ -21,6 +21,7 @@ import { reimplementedPrimitive } from "./reimplemented-primitive.ts"
 import { oneConceptOneType } from "./one-concept-one-type.ts"
 import { nullabilityDrift } from "./nullability-drift.ts"
 import { dataErrorAsOutage } from "./data-error-as-outage.ts"
+import { typesOverLogic } from "./types-over-logic.ts"
 import { Context, Layer } from "effect"
 import type { PlannedRule, Rule } from "../rule.ts"
 
@@ -61,6 +62,7 @@ export const allRules: ReadonlyArray<Rule | PlannedRule> = [
   oneConceptOneType,
   nullabilityDrift,
   dataErrorAsOutage,
+  typesOverLogic,
 ]
 
 /**

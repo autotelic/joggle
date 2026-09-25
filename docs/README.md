@@ -15,6 +15,7 @@ design notes it rests on.
 | [names.md](./names.md) | how coding agents read a name, and what makes it findable |
 | [typesafe.md](./typesafe.md) | how joggle uses TypeSafe, held against the vendor's own guidance |
 | [calibration.md](./calibration.md) | what the questions are worth, and the first real measurement |
+| [types-over-logic.md](./types-over-logic.md) | a rule that pushes toward refining types instead of adding logic |
 | [joggle-friction.md](./joggle-friction.md) | the friction log from running joggle on real repositories |
 
 ## Reference
