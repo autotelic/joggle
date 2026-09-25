@@ -37,9 +37,9 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     // A breach withholds every JUDGED rule, because their evidence would cross
     // repositories. The structural rules persist nothing, so they still run.
     // 11 -> 10 when `reimplemented-primitive` became judged, -> 11 when
-    // `nullability-drift` was added, and object-shape became judged: the judged
-    // rules are withheld, the deterministic ones still run.
-    expect(report.rules).toBe(10)
+    // `nullability-drift` was added, then object-shape and name-the-primitive
+    // became judged: the judged rules are withheld, the deterministic ones run.
+    expect(report.rules).toBe(9)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/data-error-as-outage",
@@ -51,6 +51,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       "joggle/language-drift",
       "joggle/module-direction",
       "joggle/name-as-address",
+      "joggle/name-the-primitive",
       "joggle/naming-drift",
       "joggle/object-shape",
       "joggle/reimplemented-primitive",
