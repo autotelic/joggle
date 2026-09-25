@@ -194,6 +194,10 @@ A `preset` is the same thing packaged to share with others:
   unsure answers throws away the one signal that says a reader should look.
 - **State is bounded.** Put the panel a reviewer needs in the atom, and no more:
   unrelated detail costs accuracy.
+- **Declare the move.** A rule that proposes an entropy reversal says which one:
+  `move: "contract" | "combine" | "expand"` (see `docs/thesis.md`). The report
+  groups by it and prints the ratchet order. Leave it off for a rule that checks
+  the code against a requirement instead.
 
 ## The fence
 

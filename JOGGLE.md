@@ -15,7 +15,8 @@ ordinary diagnostic -- so the same tool serves an editor, a pre-commit hook and
 CI.
 
 The design rule is one sentence: **be deterministic where you can prove, and
-judge only where you must.**
+judge only where you must.** What the tool is for -- the entropy reverser, and
+the three moves a finding can propose -- is [docs/thesis.md](./docs/thesis.md).
 
 ## Where it sits
 

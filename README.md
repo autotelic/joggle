@@ -26,7 +26,9 @@ code keeps control of the thresholds. A finding is an ordinary diagnostic, the
 same shape a linter emits.
 
 Be deterministic where you can prove, and judge only where you must. The design
-is in [JOGGLE.md](./JOGGLE.md).
+is in [JOGGLE.md](./JOGGLE.md), and what the tool is *for* -- the entropy reverser,
+and the three moves a finding can propose -- is in
+[docs/thesis.md](./docs/thesis.md).
 
 | Tool | Unit | Question | Output |
 | --- | --- | --- | --- |
