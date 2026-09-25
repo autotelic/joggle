@@ -1,9 +1,21 @@
 import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
-import { defineRule, finding, outcome, type Scope } from "../rule.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
+import {
+  budgetNote,
+  finding,
+  marginOfAnswer,
+  outcome,
+  qualityOf,
+  type DecisionAnswers,
+  type PlannedRule,
+  type Scope,
+} from "../rule.ts"
 import { canCompose } from "./compose-types.ts"
-import type { Diagnostic } from "../schema.ts"
-import type { Workspace } from "../workspace.ts"
+import type { Diagnostic, Drop, SourceLocation } from "../schema.ts"
+import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/field-type-drift"
 
@@ -11,57 +23,30 @@ const RULE_ID = "joggle/field-type-drift"
 //
 // A field name is a promise about meaning. When `projectId` is a `string` in one
 // declaration and a `number` in another, code that moves between them compiles
-// against whichever it imported and fails against the other, and the reader has
-// to hold two meanings for one word.
+// against whichever it imported and fails against the other.
 //
-// `compose-types` compares field SETS and asks whether one type could be written
-// as another plus something. This is the complement: it compares the TYPE of a
-// shared field and asks whether the two declarations can both be right.
+// What is deterministic is the detection. Field types are compared after the
+// index's own resolution (indexed access, local alias, union), a nullability
+// difference counts, raw mirrors are skipped, and only declarations that can
+// reach each other are related. What is a JUDGEMENT is what the disagreement
+// means: one concept declared twice, two concepts sharing a name, or a deliberate
+// difference that breaks nothing.
 //
-// Compatible is not equal. `string` against `string | undefined` and `Policy`
-// against `Partial<Policy>` are one concept written with different strictness --
-// see `canCompose` -- so they are not drift. `string` against `number` is, and
-// that is the finding.
-//
-// NULLABILITY is not strictness. `string` against `string | null` is a value
-// difference, not a wider type: a null can be stored in one and not the other,
-// which is exactly the shape of the bug that produced this note -- a column
-// nullable in the database and required in the contract. `undefined` is
-// optionality (the field may be absent) and stays compatible; `null` is a value
-// and does not.
-//
-// Deterministic, so it needs no model and no key. Whether the two are one concept
-// or two is the reader's call; the finding states the disagreement.
+// That judgement is the one this rule used to make for the reader, and it is the
+// reason the migration is cautious: an earlier experiment asking a concept
+// question here produced MORE findings, not fewer (the model answered "one
+// concept" about 85% of the time), so the question is worded to let it decline
+// (`compatible`) and a non-decisive answer is flagged rather than printed. See
+// `docs/type-resolution.md`.
 
 /**
  * Whether a type admits `null`, which is a value rather than absent.
  *
  * `undefined` is deliberately NOT counted: `T | undefined` and `T?` are the same
- * optionality, and the rule has always treated those as one concept.
+ * optionality.
  */
 const admitsNull = (text: string): boolean => /\bnull\b/.test(text)
 
-/**
- * Whether the two declarations could ever be confused for each other.
- *
- * A field name with two types is a hazard when code can move between the two
- * declarations -- assign one where the other is expected, or carry a value from
- * one into the other. When they sit in different packages and neither file
- * imports the other, no such move exists, and the shared name is a coincidence
- * rather than a promise about meaning. `ProjectRole`/`ProjectCrewRoles` cross a
- * UI constants module and the domain; `SiteSummary`/`RoleYearComparison` cross
- * manage-plots and pay-review. Both were reported, and both are one word for two
- * purposes.
- *
- * This is the LOCALITY argument `docs/names.md` warns about for duplicates -- two
- * unrelated areas can still hold one concept -- but a duplicate is a claim about
- * identity, while drift is a claim about a hazard, and a hazard needs a path. So
- * the test is decidable and free: same file, same package, or one file directly
- * importing the other.
- *
- * A cross test/application pair is not related either, which is the boundary the
- * duplicate rules already draw: a fixture is supposed to repeat.
- */
 const related = (
   left: Declaration,
   right: Declaration,
@@ -88,14 +73,7 @@ const wordsOf = (name: string): ReadonlyArray<string> =>
     .split(/[^A-Za-z0-9]+/)
     .filter((word) => word !== "")
 
-/**
- * Whether a declaration's name marks it as a raw mirror.
- *
- * `UnparsedPlanterDay.treesPlanted: number` and `PersonSummary.treesPlanted:
- * Count` are not drift: the whole point of the unparsed type is that its fields
- * are the raw values, and the parser beside it is what brands them. The name is
- * the signal, and it is the one a reviewer would use.
- */
+/** Whether a declaration's name marks it as a raw mirror of something else. */
 const isRawName = (name: string): boolean =>
   policy.fieldTypeDrift.rawPrefixes.some((prefix) => name.startsWith(prefix)) ||
   policy.fieldTypeDrift.rawSuffixes.some((suffix) => name.endsWith(suffix))
@@ -106,25 +84,6 @@ const normalizeType = (text: string): string =>
 /** An indexed access, `T['k']`, which reads a field's type out of `T`. */
 const indexedPattern = /^([A-Za-z_$][\w$]*)\s*\[\s*['"]([^'"]+)['"]\s*\]$/
 
-/**
- * A type as far as the index can resolve it, before two are compared.
- *
- * STOPGAP. This is a hand-rolled approximation of type resolution, and it is
- * deliberately frozen: `docs/type-resolution.md` scopes the real fix, which is
- * to read the type the COMPILER resolved from the trace and compare that. Text
- * cannot decide type identity -- `ProjectRole` and `ProjectCrewRoles` are two
- * vocabularies computed by the type system, and no amount of string handling
- * settles whether they are the same values. A model is no better here: nobody
- * eyeballs `string` against `Array<string>`. So the authority is the checker,
- * and each heuristic below is a case the trace should answer instead:
- *
- *   - indexed access (`PersonPayrollRecord['personId']`) -- the field's type
- *   - a local alias (`type Count = number & Brand<'Count'>`) -- its right side
- *   - a union (`ProjectRole | null`) -- one constituent at a time
- *   - a derived type (`typeof`, `keyof`, `z.infer`) -- unreadable, so skipped
- *
- * Do not add another case here. Add it to the trace join.
- */
 const barePattern = /^[A-Za-z_$][\w$]*$/
 
 const aliasTargetOf = (text: string): string => {
@@ -156,7 +115,7 @@ const unionParts = (text: string): ReadonlyArray<string> => {
 
 const resolveType = (
   text: string,
-  byName: ReadonlyMap<string, import("../workspace.ts").Unit>,
+  byName: ReadonlyMap<string, Unit>,
   seen: Set<string>,
   depth = 0,
 ): string => {
@@ -164,8 +123,6 @@ const resolveType = (
   if (depth >= 6 || seen.has(current)) return current
   seen.add(current)
 
-  // `ProjectRole | null` is only resolvable one constituent at a time. Each gets
-  // its own `seen` so one part's alias cannot block another's.
   if (current.includes("|")) {
     const parts = unionParts(current)
     if (parts.length > 1) {
@@ -189,30 +146,11 @@ const resolveType = (
   return current
 }
 
-/**
- * True when a type is computed by the type system rather than written down.
- *
- * `(typeof ROLES)[number]`, `keyof T`, `z.infer<typeof X>`,
- * `Schema.Schema.Type<typeof Y>` -- two of these cannot be compared as text,
- * because the values they stand for are not in it. `ProjectRole` is
- * `(typeof PROJECT_ROLES)[number]` and `ProjectCrewRoles` is a zod inference;
- * the rule reported them as drift when they may be the same vocabulary written
- * through two libraries. When BOTH sides are computed, the comparison is
- * meaningless and the pair is skipped. One derived against a written type is
- * still compared, because that asymmetry is real evidence.
- */
+/** True when a type is computed by the type system rather than written down. */
 const isDerivedType = (text: string): boolean =>
   /\btypeof\b|\bkeyof\b|z\.infer|Schema\.Schema\.(Type|Encoded)/.test(text)
 
-/**
- * True when a type is an indexed access the index could not follow.
- *
- * `PersonPayrollRecord` is derived from a `Schema.Struct`, so its fields are not
- * in the index and `PersonPayrollRecord['personId']` cannot be read. That is not
- * evidence of drift; it is evidence the type is out of reach, and reporting a
- * disagreement about a type nobody can see is the wrong direction to guess. The
- * type trace (`--types`) is what resolves this properly.
- */
+/** True when a type is an indexed access the index could not follow. */
 const isUnresolvedIndexed = (text: string): boolean => indexedPattern.test(normalizeType(text))
 
 interface Declaration {
@@ -229,20 +167,18 @@ interface Drift {
   readonly right: Declaration
 }
 
-export const fieldTypeDrift = defineRule({
+export const fieldTypeDrift: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
   description: "One field name declared with different, incompatible types.",
-  judged: false,
-  run: Effect.fn("joggle/field-type-drift")(function* (workspace: Workspace, scope: Scope) {
-    // Field name -> type text -> the declarations that use it.
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/field-type-drift")(function* (workspace: Workspace, scope: Scope) {
     const byField = new Map<string, Map<string, Array<Declaration>>>()
     for (const unit of workspace.units) {
       if (unit.kind !== "interface" && unit.kind !== "type") continue
       for (const [field, annotation] of unit.fieldTypes) {
         const type = annotation.trim()
-        // A shorthand member (`{ name }`) records the name as its own type, which
-        // is not a type at all. Skip it rather than compare it.
         if (type === "" || type === field) continue
         const types = byField.get(field) ?? new Map<string, Array<Declaration>>()
         const declarations = types.get(type) ?? []
@@ -252,33 +188,34 @@ export const fieldTypeDrift = defineRule({
       }
     }
 
-    const findings: Array<Diagnostic> = []
-    let drifted = 0
-    let unrelated = 0
-    // Every type declaration by name, so an indexed access can be read out of
-    // the type it indexes and a bare alias can be followed. First declaration
-    // wins on a duplicate name; the resolver is a heuristic and says so.
-    const byName = new Map<string, import("../workspace.ts").Unit>()
+    if (byField.size === 0) {
+      return {
+        plans: [],
+        read: () =>
+          outcome([], ["no interface or type alias declared a field with a type to compare"]),
+      }
+    }
+
+    const byName = new Map<string, Unit>()
     for (const unit of workspace.units) {
       if (unit.kind !== "interface" && unit.kind !== "type") continue
       if (!byName.has(unit.name)) byName.set(unit.name, unit)
     }
-    // Direct import edges, so relatedness is a lookup rather than a scan.
     const reachable = new Set<string>()
     for (const edge of workspace.imports.edges) {
       if (edge.resolved) reachable.add(edge.from + "\u0000" + edge.to)
     }
     const isTest = (file: string): boolean => policy.testFiles.test(file)
-    // Group by the declaration the finding is anchored to. A type with five
-    // drifting fields produced five findings on the same line, which read as
-    // duplicates and inflated the count; one finding that lists them is smaller
-    // and truer to what a reader has to decide.
+
+    // Group by the declaration the finding is anchored to: a type with five
+    // drifting fields is one thing a reader has to decide, not five.
     const groups = new Map<string, { file: string; line: number; unit: string; drifts: Array<Drift> }>()
+    let unrelated = 0
+    let drifted = 0
     for (const [field, types] of byField) {
       if (types.size < 2) continue
       if (wordsOf(field).length < policy.fieldTypeDrift.minWords) continue
       const entries = [...types.entries()]
-      // The first pair of types that cannot both describe one concept.
       let pair: readonly [string, string] | undefined
       for (let left = 0; left < entries.length && pair === undefined; left += 1) {
         for (let right = left + 1; right < entries.length; right += 1) {
@@ -287,14 +224,8 @@ export const fieldTypeDrift = defineRule({
           if (one === undefined || two === undefined) continue
           const oneType = resolveType(one[0], byName, new Set())
           const twoType = resolveType(two[0], byName, new Set())
-          // An indexed access the index cannot follow is not evidence of drift.
           if (isUnresolvedIndexed(oneType) || isUnresolvedIndexed(twoType)) continue
-          // Two computed types cannot be compared as text.
           if (isDerivedType(oneType) && isDerivedType(twoType)) continue
-          // Resolve before comparing, so `T['k']` and the type it indexes are the
-          // same type rather than two spellings of it.
-          // Nullability differs when exactly one side admits `null`: a value
-          // difference, not a wider type.
           if (admitsNull(oneType) !== admitsNull(twoType) || !canCompose(oneType, twoType)) {
             pair = [one[0], two[0]]
             break
@@ -302,18 +233,12 @@ export const fieldTypeDrift = defineRule({
         }
       }
       if (pair === undefined) continue
-      const left = entries.find(([type]) => type === pair?.[0])?.[1][0]
-      const right = entries.find(([type]) => type === pair?.[1])?.[1][0]
+      const byType = new Map(entries)
+      const left = byType.get(pair[0])?.[0]
+      const right = byType.get(pair[1])?.[0]
       if (left === undefined || right === undefined) continue
-      // One declaration cannot disagree with itself.
       if (left.file === right.file && left.unit === right.unit) continue
-      // A raw mirror is SUPPOSED to be unbranded. `UnparsedPlanterDay` and
-      // `PersonSummary` disagreeing about `treesPlanted` is the parser doing its
-      // job, not drift.
       if (isRawName(left.unit) || isRawName(right.unit)) continue
-      // A shared field name is only a hazard when a value can move between the
-      // two declarations. Two packages that cannot reach each other share a word
-      // by coincidence.
       if (!related(left, right, workspace, reachable, isTest)) {
         unrelated += 1
         continue
@@ -322,79 +247,216 @@ export const fieldTypeDrift = defineRule({
         continue
       }
       drifted += 1
-      const key = left.file + "\u0000" + left.line
+      const key = left.file + "\u0000" + String(left.line)
       const group = groups.get(key) ?? { file: left.file, line: left.line, unit: left.unit, drifts: [] }
       group.drifts.push({ field, left, right })
       groups.set(key, group)
     }
 
-    for (const group of groups.values()) {
-      if (findings.length >= policy.fieldTypeDrift.maxFindings) break
-      const first = group.drifts[0]
-      if (first === undefined) continue
-      const message =
-        group.drifts.length === 1
-          ? "`" + first.field + "` is `" + first.left.type + "` in " + first.left.unit + " and `" + first.right.type + "` in " + first.right.unit + "."
-          : group.drifts.length +
-            " field(s) of " +
-            group.unit +
-            " disagree with another declaration: " +
-            group.drifts
-              .slice(0, 3)
-              .map((drift) => "`" + drift.field + "` (`" + drift.left.type + "` vs `" + drift.right.type + "`)")
-              .join(", ") +
-            (group.drifts.length > 3 ? ", and " + (group.drifts.length - 3) + " more" : "") +
-            "."
-      const where = group.drifts
-        .map(
-          (drift) =>
-            drift.field +
-            ": " +
-            drift.left.file +
-            ":" +
-            drift.left.line +
-            " and " +
-            drift.right.file +
-            ":" +
-            drift.right.line,
-        )
-        .join("; ")
-      findings.push(
-        finding({
+    if (groups.size === 0) {
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            byField.size + " field name(s) across the type declarations; none with incompatible types" +
+              (unrelated > 0
+                ? ", " + unrelated + " skipped because the declarations cannot reach each other"
+                : ""),
+          ]),
+      }
+    }
+
+    const candidates = [...groups.values()]
+    const judged = candidates.slice(0, policy.fieldTypeDrift.maxFindings)
+    const overBudget: ReadonlyArray<Drop> = candidates
+      .slice(policy.fieldTypeDrift.maxFindings)
+      .map((group) => ({
+        ruleId: RULE_ID,
+        subject: group.unit + " (" + group.file + ":" + String(group.line) + ")",
+        stage: "budget" as const,
+        reason: "past the budget of " + String(policy.fieldTypeDrift.maxFindings) + " declarations",
+      }))
+
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(judged, (group) =>
+      Effect.gen(function* () {
+        // The state is the drifts themselves, bounded, each with the two
+        // declarations and the resolved types, which is what the question needs.
+        const drifts = group.drifts.slice(0, 5).map((drift) => ({
+          field: drift.field,
+          left: { unit: drift.left.unit, file: drift.left.file, line: drift.left.line, type: drift.left.type },
+          right: { unit: drift.right.unit, file: drift.right.file, line: drift.right.line, type: drift.right.type },
+        }))
+        const id = yield* atoms.add({ declaration: { unit: group.unit, file: group.file, line: group.line }, drifts })
+        const plan: Plan<DecisionAnswers> = {
           ruleId: RULE_ID,
-          severity: "warn",
-          message,
-          help:
-            "One field name, two incompatible types. If they are one concept, share one declaration of it; if they are two concepts, give them two names. " +
-            where +
-            ".",
-          location: { file: group.file, line: group.line, column: 1 },
-          identity: [
-            RULE_ID,
-            group.file,
-            String(group.line),
-            ...group.drifts.map((drift) => drift.field).sort((left, right) => left.localeCompare(right)),
-          ].join("\u0000"),
-          judged: false,
-        }),
-      )
-    }
+          subject: group.unit + " (" + group.file + ":" + String(group.line) + ")",
+          concerns: [...new Set(group.drifts.flatMap((drift) => [drift.left.file, drift.right.file]))],
+          atoms: [id],
+          decisions: {
+            verdict: Decision.classify({
+              instructions: [
+                `\`atoms[${id}].drifts\` lists field(s) declared with two different types in two declarations that can reach each other.`,
+                "What does each disagreement mean?",
+                "Answer `drift` when the same concept is written with two incompatible types, so code that moves between the declarations breaks.",
+                "Answer `two_concepts` when one name has been reused for two different things, so one of them should be renamed.",
+                "Answer `compatible` when the difference is deliberate and nothing breaks -- a raw or unparsed mirror, a wider or partial variant, a type that only reads differently.",
+              ].join("\n"),
+              criteria: {
+                drift: "One concept, two incompatible types. Share one declaration of it.",
+                two_concepts: "One name, two different things. Rename one.",
+                compatible: "A deliberate difference. Nothing breaks.",
+              },
+            }),
+          },
+          read: (answers) => answers,
+        }
+        return { group, id, plan }
+      }),
+      { concurrency: "unbounded" },
+    )
 
-    if (byField.size === 0) {
-      return outcome([], ["no interface or type alias declared a field with a type to compare"])
+    return {
+      plans: planned.map((value) => value.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = [...overBudget]
+        planned.forEach((value, index) => {
+          const { group } = value
+          const subject = group.unit + " (" + group.file + ":" + String(group.line) + ")"
+          const answer = verdicts[index]
+          const verdict = answer === undefined ? undefined : answer["verdict"]
+          if (verdict === undefined || !("label" in verdict)) {
+            diagnostics.push(findingFor(group, undefined, "no judgement was available"))
+            return
+          }
+          if (verdict.label !== "drift" && verdict.label !== "two_concepts") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "declined",
+              reason: "the difference is deliberate and nothing breaks",
+            })
+            return
+          }
+          const score = verdict.probabilities[verdict.label] ?? 0
+          const quality = qualityOf({
+            score,
+            margin: marginOfAnswer(verdict),
+            confidence: verdict.confidence,
+          })
+          if (quality.quality !== "act") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "gated",
+              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+            })
+            return
+          }
+          const renamed = verdict.label === "two_concepts"
+          diagnostics.push(findingFor(group, verdict.confidence, undefined, renamed))
+        })
+        return outcome(
+          diagnostics,
+          [
+            byField.size + " field name(s) across the type declarations; " + drifted + " with incompatible types",
+            ...(unrelated > 0
+              ? [
+                  unrelated +
+                    " were skipped: the two declarations are in different packages and neither imports the other",
+                ]
+              : []),
+            ...budgetNote(
+              "declarations",
+              policy.fieldTypeDrift.maxFindings,
+              candidates.length,
+              candidates
+                .slice(policy.fieldTypeDrift.maxFindings)
+                .map((group) => group.unit),
+            ),
+          ],
+          drops,
+        )
+      },
     }
-
-    return outcome(findings, [
-      byField.size + " field name(s) across the type declarations; " + drifted + " with incompatible types",
-      ...(unrelated > 0
-        ? [
-            unrelated +
-              " were skipped: the two declarations are in different packages and neither imports the other",
-          ]
-        : []),
-      ...(drifted > findings.length
-        ? [drifted - findings.length + " were past the limit of " + policy.fieldTypeDrift.maxFindings + " and were not reported"]
-        : []),
-    ])
   }),
-})
+}
+
+const findingFor = (
+  group: { readonly file: string; readonly line: number; readonly unit: string; readonly drifts: ReadonlyArray<Drift> },
+  confidence: number | undefined,
+  unverifiedReason: string | undefined,
+  renamed = false,
+): Diagnostic => {
+  const first = group.drifts[0]
+  if (first === undefined) {
+    return finding({
+      ruleId: RULE_ID,
+      severity: "warn",
+      message: group.unit + " has a field declared with two incompatible types.",
+      location: { file: group.file, line: group.line, column: 1 },
+      judged: false,
+    })
+  }
+  const message =
+    group.drifts.length === 1
+      ? "`" +
+        first.field +
+        "` is `" +
+        first.left.type +
+        "` in " +
+        first.left.unit +
+        " and `" +
+        first.right.type +
+        "` in " +
+        first.right.unit +
+        "."
+      : group.drifts.length +
+        " field(s) of " +
+        group.unit +
+        " disagree with another declaration: " +
+        group.drifts
+          .slice(0, 3)
+          .map((drift) => "`" + drift.field + "` (`" + drift.left.type + "` vs `" + drift.right.type + "`)")
+          .join(", ") +
+        (group.drifts.length > 3 ? ", and " + String(group.drifts.length - 3) + " more" : "") +
+        "."
+  const where = group.drifts
+    .map(
+      (drift) =>
+        drift.field +
+        ": " +
+        drift.left.file +
+        ":" +
+        String(drift.left.line) +
+        " and " +
+        drift.right.file +
+        ":" +
+        String(drift.right.line),
+    )
+    .join("; ")
+  const location: SourceLocation = { file: group.file, line: group.line, column: 1 }
+  const input: Parameters<typeof finding>[0] = {
+    ruleId: RULE_ID,
+    severity: "warn",
+    message,
+    help:
+      (renamed
+        ? "One name, two different things. Rename one of them so each field name means one thing. "
+        : "One field name, two incompatible types. If they are one concept, share one declaration of it; if they are two concepts, give them two names. ") +
+      where +
+      "." +
+      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
+    location,
+    identity: [
+      RULE_ID,
+      group.file,
+      String(group.line),
+      ...group.drifts.map((drift) => drift.field).sort((left, right) => left.localeCompare(right)),
+    ].join("\u0000"),
+    judged: unverifiedReason === undefined,
+  }
+  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+}

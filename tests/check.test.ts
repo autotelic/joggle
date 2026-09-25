@@ -38,9 +38,9 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     // repositories. The structural rules persist nothing, so they still run.
     // 11 -> 10 when `reimplemented-primitive` became judged, -> 11 when
     // `nullability-drift` was added, then object-shape, name-the-primitive,
-    // compose-types, call-pattern and duplicate-call-run became judged: judged
-    // rules are withheld, the deterministic ones still run.
-    expect(report.rules).toBe(6)
+    // compose-types, call-pattern, duplicate-call-run and field-type-drift became
+    // judged: judged rules are withheld, the deterministic ones still run.
+    expect(report.rules).toBe(5)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/call-pattern",
@@ -51,6 +51,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       "joggle/duplicate-call-run",
       "joggle/duplicate-implementation",
       "joggle/duplicate-meaning",
+      "joggle/field-type-drift",
       "joggle/hoist-to-domain",
       "joggle/language-drift",
       "joggle/module-direction",
