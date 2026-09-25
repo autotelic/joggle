@@ -1,28 +1,29 @@
 import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
+import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
-import { defineRule, finding, outcome, type Scope } from "../rule.ts"
-import type { Diagnostic } from "../schema.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
+import {
+  finding,
+  marginOfAnswer,
+  outcome,
+  qualityOf,
+  type DecisionAnswers,
+  type PlannedRule,
+  type Scope,
+} from "../rule.ts"
+import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/compose-types"
 
-/**
- * A type that lists every field of another type.
- *
- * "Composed of smaller canonical things" is a principle until it becomes a set
- * comparison, and a set comparison is free. `B.fields` containing `A.fields` as a
- * proper subset means B is A plus something, and writing it as `A & { ... }` is
- * how the smaller thing stays canonical: change A and B follows, instead of the
- * two drifting until they disagree.
- *
- * Deterministic, so it needs no model and no key. The judgement a person makes --
- * is B genuinely an A? -- is not asked here; the finding states the containment
- * and the reader decides. What the model is NOT needed for is noticing, and
- * noticing is the part nobody does by eye.
- *
- * A union or an intersection has no single field set and produces no candidate.
- * `A & B` already states its composition, which is the shape this is looking for.
- */
+// A type that lists every field of another type.
+//
+// "Composed of smaller canonical things" is a principle until it becomes a set
+// comparison, and a set comparison is free. `B.fields` containing `A.fields` as a
+// proper subset means B is A plus something. Whether B is GENUINELY an A -- or two
+// declarations that happen to share field names, or the same name declared twice
+// with different fields -- is the judgement, and it used to be left to the reader.
 const isTypeUnit = (unit: Unit): boolean =>
   (unit.kind === "interface" || unit.kind === "type") &&
   unit.fields.length >= policy.composeTypes.minFields
@@ -33,17 +34,12 @@ const signatureOf = (unit: Unit): string => [...unit.fields].sort().join("\u0000
 /**
  * Whether two declarations of one field can compose.
  *
- * Equality is too strict, and running against a real SDK proved it: this rule
- * missed a genuine finding because two of four shared fields are written
- * differently -- `signal` as `AbortSignal | undefined` on one side and
- * `AbortSignal` on the other, `retry` as `RetryPolicy` against
- * `Partial<RetryPolicy>`.
- *
- * Composition RESOLVES both: the intersection of a type with a union containing
- * it is that type, and the intersection of a wrapper with the thing it wraps is
- * the thing. What it does not resolve is `string` against `number`, which
- * intersects to never. So the test is not equality but whether one declaration
- * mentions everything the other does.
+ * Equality is too strict: this rule missed a genuine finding because two of four
+ * shared fields are written differently -- `signal` as `AbortSignal | undefined`
+ * on one side and `AbortSignal` on the other, `retry` as `RetryPolicy` against
+ * `Partial<RetryPolicy>`. Composition resolves both. What it does not resolve is
+ * `string` against `number`, which intersects to never. So the test is whether one
+ * declaration mentions everything the other does.
  */
 export const canCompose = (part: string | undefined, whole: string | undefined): boolean => {
   if (part === undefined || whole === undefined) return false
@@ -55,51 +51,44 @@ export const canCompose = (part: string | undefined, whole: string | undefined):
   return a.every((word) => b.includes(word)) || b.every((word) => a.includes(word))
 }
 
-export const composeTypes = defineRule({
+export const composeTypes: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
   description: "A type that repeats every field of another type instead of composing it.",
-  judged: false,
-  run: Effect.fn("joggle/compose-types")(function* (workspace: Workspace, scope: Scope) {
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/compose-types")(function* (workspace: Workspace, scope: Scope) {
     const all = workspace.units.filter(isTypeUnit)
     if (all.length === 0) {
-      return outcome([], [
-        "no type declaration has " +
-          policy.composeTypes.minFields +
-          " or more fields, so nothing had a field set to compare",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            "no type declaration has " +
+              policy.composeTypes.minFields +
+              " or more fields, so nothing had a field set to compare",
+          ]),
+      }
     }
 
     const bounded = all.slice(0, policy.composeTypes.maxTypes)
     // One representative per distinct field set. A field set repeated twenty
-    // times is one candidate for composition, not twenty comparisons -- and this
-    // is what keeps the work linear in DISTINCT shapes rather than in types.
+    // times is one candidate for composition, not twenty comparisons.
     const parts = new Map<string, Unit>()
     for (const unit of bounded) {
       const signature = signatureOf(unit)
       if (!parts.has(signature)) parts.set(signature, unit)
     }
 
-    const findings: Array<Diagnostic> = []
+    const candidates: Array<{ whole: Unit; part: Unit; added: ReadonlyArray<string> }> = []
     for (const whole of bounded) {
       if (scope.changed !== undefined && !scope.changed.has(whole.file)) continue
       const wholeFields = new Set(whole.fields)
       let best: Unit | undefined
       for (const [signature, part] of parts) {
-        // A proper subset, so an equal field set is a duplicate rather than a
-        // composition -- that is `duplicate-implementation`'s finding, not this one.
         if (part.fields.length >= whole.fields.length) continue
         if (best !== undefined && part.fields.length <= best.fields.length) continue
-        // The shared part has to be a meaningful fraction of the whole. Without
-        // this, a six-field base under a thirty-one-field type is reported as
-        // composition, and "B = A & { twenty-five more }" is a worse description
-        // of B than B's own declaration is.
         if (whole.fields.length - part.fields.length > part.fields.length) continue
-        // Same NAME is not the same field. `SourceFile.units` is
-        // `ReadonlyArray<Unit>` and `Encoded.units` is `ReadonlyArray<unknown>`;
-        // composing one into the other on the strength of the name would have been
-        // wrong, and it is what the first version of this rule reported. Equal is
-        // too strict the other way -- see `canCompose`.
         const contained = signature
           .split("\u0000")
           .every(
@@ -111,86 +100,179 @@ export const composeTypes = defineRule({
       }
       if (best === undefined) continue
       const added = whole.fields.filter((field) => !best.fields.includes(field))
-      // The same name in two places is a different problem from two names where
-      // one contains the other, and it is the more serious of the two: the two
-      // declarations have already drifted, and the first version of this message
-      // called it `X = X & { ... }`, which is nonsense on its face.
-      const drifted = whole.name === best.name
-      findings.push(
-        finding({
-          ruleId: RULE_ID,
-          // Two different things in one rule, and they are not equally urgent. A
-          // name declared twice with different fields is a defect: code that
-          // moves between the declarations depends on which one it imported. A
-          // type that could compose another is advice, and 177 pieces of advice
-          // at warning level is how a report becomes a wall. The severity follows
-          // the finding, decided here rather than by whoever reads it.
-          severity: drifted ? "warn" : "info",
-          message: drifted
-            ? whole.name +
-              " is declared in two places and they differ by " +
-              added.length +
-              " field(s): " +
-              added.join(", ") +
-              "."
-            : whole.name +
-              " lists all " +
-              best.fields.length +
-              " field(s) of " +
-              best.name +
-              " and adds " +
-              added.length +
-              ".",
-          help: drifted
-            ? whole.name +
-              " is declared at " +
-              whole.file +
-              ":" +
-              whole.location.line +
-              " and at " +
-              best.file +
-              ":" +
-              best.location.line +
-              " with different fields, so any code that moves between the two is relying on which one it imported."
-            : "Declare it as " +
-              whole.name +
-              " = " +
-              best.name +
-              " & { " +
-              added.join("; ") +
-              " } so the shared part stays canonical and cannot drift from " +
-              best.name +
-              " (" +
-              best.file +
-              ":" +
-              best.location.line +
-              ").",
-          location: whole.location,
-          identity: [RULE_ID, whole.file, whole.name, best.name, drifted ? "drift" : "compose"].join(
-            "\u0000",
-          ),
-          judged: false,
-        }),
-      )
+      candidates.push({ whole, part: best, added })
     }
 
-    return outcome(
-      findings,
-      [
-        all.length +
-          " type declaration(s) in " +
-          parts.size +
-          " distinct field set(s)",
-        ...(all.length > bounded.length
-          ? [
-              all.length -
-                bounded.length +
-                " type(s) were past the limit of " +
-                policy.composeTypes.maxTypes +
-                " and were not compared",
-            ]
-          : []),
-      ],
+    if (candidates.length === 0) {
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            all.length +
+              " type declaration(s) in " +
+              parts.size +
+              " distinct field set(s); none contains another as a proper subset",
+          ]),
+      }
+    }
+
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(candidates, (candidate) =>
+      Effect.gen(function* () {
+        const { whole, part, added } = candidate
+        const sameName = whole.name === part.name
+        // The state is the pair and the fields they share, with the declared type
+        // of each shared field, so the question can weigh "is B genuinely an A".
+        const shared = part.fields.map((field) => ({
+          field,
+          partType: part.fieldTypes.get(field) ?? null,
+          wholeType: whole.fieldTypes.get(field) ?? null,
+        }))
+        const id = yield* atoms.add({
+          whole: { name: whole.name, file: whole.file, line: whole.location.line },
+          part: { name: part.name, file: part.file, line: part.location.line },
+          sameName,
+          shared,
+          added,
+        })
+        const plan: Plan<DecisionAnswers> = {
+          ruleId: RULE_ID,
+          subject: whole.name + " (lists " + part.name + ")",
+          concerns: [whole.file, part.file],
+          atoms: [id],
+          decisions: {
+            verdict: Decision.classify({
+              instructions: [
+                `\`atoms[${id}].whole\` (${whole.name}) lists all ${part.fields.length} field(s) of \`atoms[${id}].part\` (${part.name}) and adds ${added.length}: ${added.join(", ")}.`,
+                sameName
+                  ? "The two declarations share a NAME."
+                  : "The two declarations have different names.",
+                `\`atoms[${id}].shared\` is each shared field with its type on both sides.`,
+                "How do these two declarations relate?",
+                "Answer `composes` when the whole is genuinely the part plus more, so it should be written as the part intersected with the added fields.",
+                "Answer `same_name_drift` when the two declarations share a name but are different things, so one should be renamed or the two unified.",
+                "Answer `independent` when the shared fields are a coincidence and the two types are unrelated.",
+                "Answer `already_composed` when the whole already states its composition, so there is nothing to change.",
+              ].join("\n"),
+              criteria: {
+                composes: "The whole is the part plus more. Write it as part & { the added fields }.",
+                same_name_drift: "One name, two different shapes. Rename one, or unify them.",
+                independent: "Coincidental overlap. The two types are unrelated.",
+                already_composed: "The composition is already written.",
+              },
+            }),
+          },
+          read: (answers) => answers,
+        }
+        return { candidate, id, plan }
+      }),
+      { concurrency: "unbounded" },
     )
+
+    return {
+      plans: planned.map((value) => value.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = []
+        planned.forEach((value, index) => {
+          const { whole, part } = value.candidate
+          const subject = whole.name + " (lists " + part.name + ")"
+          const answer = verdicts[index]
+          const verdict = answer === undefined ? undefined : answer["verdict"]
+          if (verdict === undefined || !("label" in verdict)) {
+            diagnostics.push(findingFor(value.candidate, undefined, "no judgement was available", undefined))
+            return
+          }
+          if (verdict.label !== "composes" && verdict.label !== "same_name_drift") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "declined",
+              reason:
+                verdict.label === "already_composed"
+                  ? "the composition is already stated"
+                  : "the shared fields are a coincidence",
+            })
+            return
+          }
+          const score = verdict.probabilities[verdict.label] ?? 0
+          const quality = qualityOf({
+            score,
+            margin: marginOfAnswer(verdict),
+            confidence: verdict.confidence,
+          })
+          if (quality.quality !== "act") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "gated",
+              reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+            })
+            return
+          }
+          diagnostics.push(findingFor(value.candidate, verdict.confidence, undefined, verdict.label))
+        })
+        return outcome(diagnostics, [], drops)
+      },
+    }
   }),
-})
+}
+
+const findingFor = (
+  candidate: { readonly whole: Unit; readonly part: Unit; readonly added: ReadonlyArray<string> },
+  confidence: number | undefined,
+  unverifiedReason: string | undefined,
+  label: string | undefined,
+): Diagnostic => {
+  const { whole, part, added } = candidate
+  const drifted = label === "same_name_drift" || (label === undefined && whole.name === part.name)
+  const input: Parameters<typeof finding>[0] = {
+    ruleId: RULE_ID,
+    severity: drifted ? "warn" : "info",
+    message: drifted
+      ? whole.name +
+        " is declared in two places and they differ by " +
+        added.length +
+        " field(s): " +
+        added.join(", ") +
+        "."
+      : whole.name +
+        " lists all " +
+        part.fields.length +
+        " field(s) of " +
+        part.name +
+        " and adds " +
+        added.length +
+        ".",
+    help: (drifted
+      ? whole.name +
+        " is declared at " +
+        whole.file +
+        ":" +
+        whole.location.line +
+        " and at " +
+        part.file +
+        ":" +
+        part.location.line +
+        " with different fields, so any code that moves between the two is relying on which one it imported."
+      : "Declare it as " +
+        whole.name +
+        " = " +
+        part.name +
+        " & { " +
+        added.join("; ") +
+        " } so the shared part stays canonical and cannot drift from " +
+        part.name +
+        " (" +
+        part.file +
+        ":" +
+        part.location.line +
+        ").") +
+      (unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + "."),
+    location: whole.location,
+    identity: [RULE_ID, whole.file, whole.name, part.name, drifted ? "drift" : "compose"].join("\u0000"),
+    judged: unverifiedReason === undefined,
+  }
+  return confidence === undefined ? finding(input) : finding({ ...input, confidence })
+}

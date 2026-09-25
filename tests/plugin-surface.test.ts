@@ -3,7 +3,6 @@ import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
 import * as plugin from "../src/plugin.ts"
 import { answeringModel, diagnosticsOf } from "../src/testing.ts"
-import { composeTypes } from "../src/rules/compose-types.ts"
 import { loadWorkspace } from "../src/workspace.ts"
 import { choice } from "./support.ts"
 
@@ -55,12 +54,20 @@ test("the authoring surface exports what a rule needs", () => {
 })
 
 test("a rule can be written against the surface and run by the tester", async () => {
-  // A structural rule needs no model and no answers, which is the point: most
-  // opinions are free and the API makes the free path the easy one.
+  // A structural rule needs no model and no answers, which is the point: the API
+  // makes the free path the easy one, for a built-in or for a rule a repository
+  // writes itself.
+  const trivial = plugin.defineRule({
+    id: "test/trivial",
+    severity: "info",
+    description: "A rule with nothing to say.",
+    judged: false,
+    run: () => Effect.succeed(plugin.outcome([], [])),
+  })
   const diagnostics = await Effect.runPromise(
     Effect.gen(function* () {
       const workspace = yield* loadWorkspace("tests/fixtures/layers", ["."])
-      return yield* diagnosticsOf(composeTypes, workspace)
+      return yield* diagnosticsOf(trivial, workspace)
     }).pipe(Effect.provide(NodeServices.layer)),
   )
   expect(Array.isArray(diagnostics)).toBe(true)
