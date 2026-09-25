@@ -147,3 +147,36 @@ With those two, a rule's deterministic half is exactly what the design rule says
    a classification, and is allowed for that reason. `joggle/rule-judgment` is
    the runtime sibling -- it finds this category in a repository's rules; this
    finds it in joggle's own.
+
+## What the substrate cannot carry yet
+
+Four rules from the same reviews are NOT built, and they are not built on purpose.
+Each needs a fact joggle does not extract, and building it now would mean guessing
+with a pattern -- the fault this document audits. Recorded so the next round starts
+from the fact, not the rule.
+
+- **`schema-excludes-domain-value`** (PR 1572). `thetaStandardError` is declared
+  `Schema.Finite` while the domain returns `Infinity` on purpose, so with the encode
+  wrapped in `Effect.orDie` an unidentifiable planter is a 500. Needs a **schema
+  field fact**: the `Schema` constructor chain of each `Schema.Struct` field
+  (`Finite`, `Number`, `NullOr(...)`), which the index records today only as
+  `nullable` and `sources`. The rule is then "a schema field whose constructor
+  rejects a value the producer yields".
+- **`inferred-over-recorded`** (PR 1570). "The mode is inferred from the sums, but
+  the payroll already records it (`use_swa_day_rate`)". Needs **per-expression
+  resolved types** (the checker host of `docs/type-resolution.md`): the fact is
+  that a computed value has the same type as a field that already records it.
+  Without it the candidate is "a unit that branches on arithmetic", which is
+  everything.
+- **`meaning-switched-by-flag`** (PRs 1570, 1568). `total_pay` is one sum for
+  SWA day-rate payrolls and another for the rest, switched by
+  `use_swa_day_rate`. Needs the **row type layer**: the flag and the value on the
+  same row type, and the branch that ties them. The boolean is a fact today
+  (`fieldTypes`); the tie between the flag and the value is not.
+- **`unbounded-default-read`** (PR 1574). The default payroll-review load has no
+  date window and no limit over a table that grows. Needs a **data-access fact**:
+  a call site to a query builder with the shape of its predicates, so "every
+  filter is optional and absent" is a fact rather than a read of the source.
+
+Each is a candidate generator plus a question once its fact exists. None is
+blocked on Jev.
