@@ -395,6 +395,10 @@ const calibrateCommand = Command.make(
       Flag.withDescription("Config file, relative to the project root (default joggle.config.json)."),
       Flag.optional,
     ),
+    cacheDir: Flag.String("cache-dir").pipe(
+      Flag.withDescription("Where answers are cached (default <cwd>/.joggle)."),
+      Flag.optional,
+    ),
     format: Flag.Literals("format", ["text", "json"]).pipe(
       Flag.withDescription("Output format (default text)."),
       Flag.withDefault("text"),
@@ -417,7 +421,7 @@ const calibrateCommand = Command.make(
           (wanted === undefined || wanted.includes(rule.id)),
       )
       const workspace = yield* loadWorkspace(cwd, config.paths.length > 0 ? config.paths : ["."])
-      const cacheDir = path.join(cwd, ".joggle")
+      const cacheDir = Option.getOrUndefined(config.cacheDir) ?? path.join(cwd, ".joggle")
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
 
       const rows = yield* Effect.gen(function* () {
