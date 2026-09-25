@@ -12,6 +12,11 @@ import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
 import { loadWorkspace } from "./workspace.ts"
+import { answerPlans } from "./plans.ts"
+import { layer as atomsLayer } from "./atoms.ts"
+import { summarizeCalibration, type CalibrationSummary } from "./calibration.ts"
+import { verdictOf } from "./verdict.ts"
+import { everyFile, type DecisionAnswers, type PlannedRule } from "./rule.ts"
 import { allRules, builtIn, Rules } from "./rules/index.ts"
 import { layerFromConfig as tsgoLayer } from "./tsgo.ts"
 
@@ -371,6 +376,119 @@ const rules = Command.make(
   ]),
 )
 
+const calibrateCommand = Command.make(
+  "calibrate",
+  {
+    paths: Argument.String("paths").pipe(
+      Argument.withDescription("Files or directories whose candidates to calibrate against. Default: the whole project."),
+      Argument.variadic(),
+    ),
+    rule: Flag.String("rule").pipe(
+      Flag.withDescription("Only calibrate these rule ids (comma-separated)."),
+      Flag.optional,
+    ),
+    cwd: Flag.String("cwd").pipe(
+      Flag.withDescription("Project root to analyse (default: the current directory)."),
+      Flag.optional,
+    ),
+    config: Flag.String("config").pipe(
+      Flag.withDescription("Config file, relative to the project root (default joggle.config.json)."),
+      Flag.optional,
+    ),
+    format: Flag.Literals("format", ["text", "json"]).pipe(
+      Flag.withDescription("Output format (default text)."),
+      Flag.withDefault("text"),
+    ),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path
+      const cwd = path.resolve(Option.getOrUndefined(config.cwd) ?? process.cwd())
+      const ruleSet = yield* ruleSetFor(cwd, Option.getOrUndefined(config.config))
+      const wanted = Option.getOrUndefined(config.rule)
+        ?.split(",")
+        .map((id) => id.trim())
+        .filter((id) => id !== "")
+      // Only judged rules have a question to calibrate.
+      const rules = ruleSet.rules.filter(
+        (rule): rule is PlannedRule =>
+          rule.judged &&
+          isEnabled(ruleSet.effective, rule.id, rule.severity) &&
+          (wanted === undefined || wanted.includes(rule.id)),
+      )
+      const workspace = yield* loadWorkspace(cwd, config.paths.length > 0 ? config.paths : ["."])
+      const cacheDir = path.join(cwd, ".joggle")
+      const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
+
+      const rows = yield* Effect.gen(function* () {
+        const out: Array<{ readonly rule: string; readonly summary: CalibrationSummary; readonly note: string }> = []
+        for (const rule of rules) {
+          const planned = yield* rule.plan(workspace, everyFile, { config: ruleSet.effective })
+          const answers = yield* answerPlans(planned.plans)
+          const probabilities: Array<number> = []
+          let composed = false
+          planned.plans.forEach((plan, index) => {
+            const names = Object.keys(plan.decisions)
+            // A rule that composes two decisions (a Noul and a Choice) has no
+            // single reduction, so it is named rather than guessed at.
+            if (names.length !== 1) {
+              composed = true
+              return
+            }
+            const name = names[0]
+            if (name === undefined) return
+            const answer = answers[index] as DecisionAnswers | undefined
+            const verdict = verdictOf(answer?.[name], plan.violations?.[name] ?? [])
+            if (verdict !== undefined) probabilities.push(verdict.probability)
+          })
+          out.push({
+            rule: rule.id,
+            summary: summarizeCalibration(probabilities),
+            note: composed ? "composed decisions, not calibrated" : "",
+          })
+        }
+        return out
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            atomsLayer,
+            decisionLayer({ cacheDir, wireCacheDir: yield* runCacheDirFor(cwd), offline: false, apiKey }),
+          ),
+        ),
+      )
+
+      if (config.format === "json") {
+        yield* write(JSON.stringify(rows, null, 2))
+        return
+      }
+      const width = rows.reduce((max, row) => Math.max(max, row.rule.length), 0)
+      const lines = [
+        "rule".padEnd(width) + "  states  verdict   median   min   max  fired",
+        ...rows.map(
+          (row) =>
+            row.rule.padEnd(width) +
+            "  " + String(row.summary.states).padStart(6) +
+            "  " + row.summary.verdict.padEnd(8) +
+            "  " + row.summary.median.toFixed(2).padStart(6) +
+            "  " + row.summary.min.toFixed(2).padStart(5) +
+            "  " + row.summary.max.toFixed(2).padStart(5) +
+            "  " + String(row.summary.fired).padStart(5) +
+            (row.note === "" ? "" : "  (" + row.note + ")"),
+        ),
+      ]
+      yield* write(lines.join("\n"))
+    }),
+).pipe(
+  Command.withDescription(
+    "Replay each question over the candidates this project produces, and label it decisive, weak, noisy or skipped.",
+  ),
+  Command.withShortDescription("Calibrate the questions."),
+  Command.withExamples([
+    { command: "joggle calibrate", description: "Calibrate every judged question." },
+    { command: "joggle calibrate --rule joggle/object-shape", description: "Calibrate one question." },
+  ]),
+)
+
 const cli = Command.make("joggle").pipe(
   Command.withDescription(
     "Cross-file patterns and idioms for TypeScript, enforced like a linter: deterministic where it can prove, System One where it has to judge.",
@@ -383,7 +501,7 @@ const cli = Command.make("joggle").pipe(
     { command: "joggle check --since origin/main", description: "Check only what this branch changed." },
     { command: "joggle rules", description: "See what is enforced here." },
   ]),
-  Command.withSubcommands([check, askCommand, rules]),
+  Command.withSubcommands([check, askCommand, rules, calibrateCommand]),
 )
 
 const services = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, builtIn)
