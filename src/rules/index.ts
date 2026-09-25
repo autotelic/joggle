@@ -24,6 +24,7 @@ import { dataErrorAsOutage } from "./data-error-as-outage.ts"
 import { typesOverLogic } from "./types-over-logic.ts"
 import { singlePath } from "./single-path.ts"
 import { unaccountedDrop } from "./unaccounted-drop.ts"
+import { unusedImport } from "./unused-import.ts"
 import { Context, Layer } from "effect"
 import type { PlannedRule, Rule } from "../rule.ts"
 
@@ -67,6 +68,7 @@ export const allRules: ReadonlyArray<Rule | PlannedRule> = [
   typesOverLogic,
   singlePath,
   unaccountedDrop,
+  unusedImport,
 ]
 
 /**
