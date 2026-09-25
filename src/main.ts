@@ -12,7 +12,7 @@ import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
 import { loadWorkspace } from "./workspace.ts"
-import { answerPlans } from "./plans.ts"
+import { answerPlans, verdictsOf } from "./plans.ts"
 import { layer as atomsLayer } from "./atoms.ts"
 import { summarizeCalibration, type CalibrationSummary } from "./calibration.ts"
 import { verdictOf } from "./verdict.ts"
@@ -424,7 +424,7 @@ const calibrateCommand = Command.make(
         const out: Array<{ readonly rule: string; readonly summary: CalibrationSummary; readonly note: string }> = []
         for (const rule of rules) {
           const planned = yield* rule.plan(workspace, everyFile, { config: ruleSet.effective })
-          const answers = yield* answerPlans(planned.plans)
+          const answers = verdictsOf<DecisionAnswers>(yield* answerPlans(planned.plans))
           const probabilities: Array<number> = []
           let composed = false
           planned.plans.forEach((plan, index) => {
@@ -437,8 +437,7 @@ const calibrateCommand = Command.make(
             }
             const name = names[0]
             if (name === undefined) return
-            const answer = answers[index] as DecisionAnswers | undefined
-            const verdict = verdictOf(answer?.[name], plan.violations?.[name] ?? [])
+            const verdict = verdictOf(answers[index]?.[name], plan.violations?.[name] ?? [])
             if (verdict !== undefined) probabilities.push(verdict.probability)
           })
           out.push({
