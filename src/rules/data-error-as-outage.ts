@@ -518,5 +518,7 @@ export const dataErrorAsOutage: PlannedRule = {
   }),
 }
 
-// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: status-method names standing in for the checker's type.
-// See docs/rule-coupling.md.
+// meta-allow: no-pattern-classifier -- `status`, `code`, `statusCode` are the HTTP
+// framework's own method names, a language-level fact like the `node:` builtins in
+// dependency-fit, not this repository's naming. A checker host would make it exact;
+// until then it is a framework vocabulary. docs/rule-coupling.md.

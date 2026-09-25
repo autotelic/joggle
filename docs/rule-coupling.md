@@ -39,18 +39,18 @@ Every rule, by what its deterministic half actually does.
 
 | rule | what the code decides | verdict |
 | --- | --- | --- |
-| `single-path` | `DOMAINS`/`HELPER_NAME`/`HELPER_BODY`/`INLINE`: which strings look like money, a percent or a date, and which names are formatters | **coupled** |
-| `unaccounted-drop` | `ADAPTER_NAME`/`ADAPTER_PATH`/`SKIPS`/`ITERATES`/`ACCOUNTS`: which functions are adapters, which skip, which account | **coupled** |
-| `temporal-coupling` | `PAIRS`: `lock`/`unlock`, `acquire`/`release`, `connect`/`disconnect`, `subscribe`/`unsubscribe`, `mount`/`unmount` | **coupled** |
-| `field-type-drift` | `minWords` and `canCompose`: string rules for whether two types are compatible | **coupled** |
-| `compose-types` | the same `canCompose` | **coupled** |
-| `reimplemented-primitive` | `inputKey`/`argKey`: string shapes standing in for "the same inputs" | **coupled** |
-| `hoist-to-domain` | `ruleLikeness`: imported +3, typed +2, comparisons +2, a number +1, a doc +1 -- a hand-ranked score for "looks like a domain rule" | **coupled** |
-| `language-drift` | `STOPWORDS` and `termsOf`: prose tokenising standing in for "a domain word the code never names" | **coupled** |
-| `naming-drift` | `NON_DISTINGUISHING` and `worthJudging`: a word list plus a token-difference rule for "the same concept" | **coupled** |
-| `types-over-logic` | `BARE`/`NULLABLE`, `GUARDS`, `declaredTypeOf`: guard shapes by regex, the declared type by text parse | **partly coupled** -- the guard shape should be an AST fact and the declared type a type fact |
-| `page-needs-composition` | `isPage`: `/^(route|page)\.tsx?$/` and `/modal/i` | **coupled** -- a filename convention deciding "is a page" |
-| `data-error-as-outage` | `FUNCTION_KINDS`/`STATUS_METHODS`, and "5xx" | borderline -- AST node kinds are facts; the status and the "row" are judged |
+| `single-path` | `DOMAINS`/`HELPER_NAME`/`HELPER_BODY`/`INLINE`: which strings look like money, a percent or a date, and which names are formatters | **removed** — it shipped the fault, not a fix |
+| `unaccounted-drop` | `ADAPTER_NAME`/`ADAPTER_PATH`/`SKIPS`/`ITERATES`/`ACCOUNTS`: which functions are adapters, which skip, which account | **removed** — same |
+| `temporal-coupling` | `PAIRS`: `lock`/`unlock`, `acquire`/`release`, … | **declared convention** — moved to `policy.temporalCoupling.pairs` |
+| `field-type-drift` | `minWords` and `canCompose`: string rules for whether two types are compatible | **fixed** — the fact is a field declared two ways; the question decides compatibility |
+| `compose-types` | the same `canCompose` | **fixed** — `canCompose` deleted; containment is field-NAME containment |
+| `reimplemented-primitive` | `inputKey`/`argKey`: string shapes standing in for "the same inputs" | **coupled** — next |
+| `hoist-to-domain` | `ruleLikeness`: imported +3, typed +2, comparisons +2, a number +1, a doc +1 | **coupled** — next; the detector cannot see a score |
+| `language-drift` | `STOPWORDS` and `termsOf` | **fixed** — `STOPWORDS` deleted; every term is a candidate |
+| `naming-drift` | `NON_DISTINGUISHING` and `worthJudging` | **fixed** — the word list is deleted; `worthJudging` keeps only the structural part |
+| `types-over-logic` | `BARE`/`NULLABLE`, `GUARDS`, `declaredTypeOf` | **fixed** — guard facts + `workspace.types`; no regex, no vocabulary |
+| `page-needs-composition` | `isPage`: `/^(route|page)\.tsx?$/` and `/modal/i` | **fixed** — deleted; the `role` question already decides what a file is |
+| `data-error-as-outage` | `STATUS_METHODS` (`code`, `status`, `statusCode`) | **framework vocabulary** — a language fact, like the `node:` builtins in `dependency-fit` |
 | `doc-matches-code` | `messageLiterals` and doc extraction | borderline -- parsing prose is unavoidable; the comparison is judged |
 | `rule-judgment` | patterns for switch/threshold shapes | borderline -- it is *about* proxies, and its inputs are structural |
 | `object-shape` | field-set equality and subset-of-declared | fact |
@@ -61,10 +61,33 @@ Every rule, by what its deterministic half actually does.
 | `nullability-drift` | migration columns plus schema `nullable`/`sources` | fact |
 | `import-architecture` (3 rules) | the import graph and the declared layers | fact |
 | `dependency-fit` | imports, manifests, node builtins | fact |
-| `name-as-address` | exported + one-word name + caller count | fact |
+| `name-as-address` | exported + one-word name + caller count | fact (the one-word test is a name SHAPE; the regex became the property) |
 | `shallow-module` | export count and implementation lines | fact |
 | `module-direction` | the import graph plus model-classified roles | fact + judged |
 | `bundle-conformance` | bundle structure against the pattern's own `TRIPARTITE` spec | fact (a declared spec, not a proxy) |
+
+## Declared conventions
+
+Two rules keep a vocabulary, and they are a different thing from the coupling
+above. `temporal-coupling` knows that `lock` pairs with `unlock`;
+`data-error-as-outage` knows that `status`, `code` and `statusCode` are how an
+HTTP framework names a response code. Neither is derivable from the code: which
+operations acquire and release is knowledge about resource APIs, and the method
+names are a language fact like the `node:` builtins `dependency-fit` already
+uses.
+
+The honest treatment is not to ask Jev to rediscover it and not to hide it in the
+rule. It is to declare it:
+
+- `temporal-coupling`'s pairs live in `policy.temporalCoupling.pairs`, reviewable
+  and overridable, and the rule's judgement (is this acquire unpaired?) is still
+  the model's.
+- the composition preset's `{ state, actions, meta }` spec and
+  `data-error-as-outage`'s method names are the same kind of thing: the pattern
+  being enforced, not a proxy for it.
+
+Their `meta-allow: no-pattern-classifier` says exactly that, with the reason.
+A declared convention is legible; a hidden pattern is not.
 
 ## How to fix it
 
@@ -108,11 +131,13 @@ With those two, a rule's deterministic half is exactly what the design rule says
    authorship rules, with the same escape hatch: a rule states
    `meta-allow: no-pattern-classifier` and a reason.
 
-   Eight rules currently carry that opt-out -- `temporal-coupling`,
-   `language-drift`, `naming-drift`, `field-type-drift`, `types-over-logic`,
-   `page-needs-composition`, `data-error-as-outage`, `name-as-address` -- so the
-   debt is enumerated in the source and greppable. An opt-out comes out when the
-   rule is rebuilt on facts; a new one fails the test.
+   Five rules have come off the debt and eight were on it: `types-over-logic`,
+   `field-type-drift`, `compose-types`, `language-drift`, `naming-drift`,
+   `page-needs-composition` and `name-as-address` now collect facts, and the
+   opt-out is gone. Two remain and name their reason: `temporal-coupling` (a
+   declared convention in policy) and `data-error-as-outage` (the HTTP
+   framework's method names). `reimplemented-primitive` (`inputKey`) and
+   `hoist-to-domain` (`ruleLikeness`) are still coupled and are the next two.
 
    Two limits, stated rather than hidden. The detector is mechanical, so it does
    not catch a hand-ranked score (`ruleLikeness`), a string rule for a type

@@ -383,6 +383,23 @@ export const policy = {
    */
   temporalCoupling: {
     maxDeclarations: 400,
+    /**
+     * Operations that acquire or open a resource, and the call that releases it.
+     *
+     * A DECLARED convention, not a fact about this repository: which operations
+     * pair is knowledge the author has about resource APIs, and it is not
+     * derivable from the code -- `lock`/`unlock` is English, not structure. It
+     * lives here, reviewable and overridable, rather than hidden in the rule; the
+     * rule's JUDGEMENT (is this acquire unpaired?) is still the model's. See the
+     * "declared conventions" section of docs/rule-coupling.md.
+     */
+    pairs: [
+      ["lock", "unlock"],
+      ["acquire", "release"],
+      ["connect", "disconnect"],
+      ["subscribe", "unsubscribe"],
+      ["mount", "unmount"],
+    ],
   },
 
   /**
@@ -416,15 +433,6 @@ export const policy = {
    */
   fieldTypeDrift: {
     maxFindings: 200,
-    /**
-     * Names that mark a declaration as a raw mirror of something else.
-     *
-     * An `Unparsed*` type, a `*Json` wire shape, a `*Dto` or a `*Row` is the
-     * unbranded side of a parser, so its fields being the plain type while the
-     * domain type is branded is the design, not drift.
-     */
-    rawPrefixes: ["Unparsed", "Raw"],
-    rawSuffixes: ["Json", "Dto", "Row"],
     /**
      * Words a field name must have before its type is compared.
      *

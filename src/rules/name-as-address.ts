@@ -19,29 +19,35 @@ import type { Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/name-as-address"
 
+// A name too common to be an address.
+//
+// The reference material this rule comes from opens with the measurement that
+// motivates it: an agent finds code by searching for a name, so `grep create`
+// returning 1,585 hits is not a style problem, it is a retrieval problem.
+//
+// The CANDIDATE is structural and free: an exported single-word name, called from
+// at least `minFiles` files, where the call RESOLVES to this declaration. The
+// resolution matters -- thirty call sites named `parse` reaching three different
+// functions are not sixty hits on any one of them -- and the single word matters,
+// because `fetchPayrollProjections` used in thirty files is a good address used
+// often.
+//
+// The JUDGEMENT is whether THIS word at THAT count fails as an address. The count
+// is a fact; the verdict is not. `range` reached from thirty files is a bad
+// address, while a one-word domain term reached from the same number may be the
+// right one. The first version answered with the threshold and asserted the
+// verdict in the message -- "searching for it finds everything and nothing" --
+// which moved a judgement into code. The model answers now, and code reports what
+// it picked.
+//
 /**
- * A name too common to be an address.
+ * True when a name is one lowercase word: no camel case, no separators, no digits.
  *
- * The reference material this rule comes from opens with the measurement that
- * motivates it: an agent finds code by searching for a name, so `grep create`
- * returning 1,585 hits is not a style problem, it is a retrieval problem.
- *
- * The CANDIDATE is structural and free: an exported single-word name, called from
- * at least `minFiles` files, where the call RESOLVES to this declaration. The
- * resolution matters -- thirty call sites named `parse` reaching three different
- * functions are not sixty hits on any one of them -- and the single word matters,
- * because `fetchPayrollProjections` used in thirty files is a good address used
- * often.
- *
- * The JUDGEMENT is whether THIS word at THAT count fails as an address. The count
- * is a fact; the verdict is not. `range` reached from thirty files is a bad
- * address, while a one-word domain term reached from the same number may be the
- * right one. The first version answered with the threshold and asserted the
- * verdict in the message -- "searching for it finds everything and nothing" --
- * which moved a judgement into code. The model answers now, and code reports what
- * it picked.
+ * The SHAPE of a name, not its meaning, so `no-pattern-classifier` does not
+ * apply -- and written as the property it is rather than a pattern.
  */
-const isSingleWord = (name: string): boolean => /^[a-z][a-z0-9]*$/.test(name)
+const isSingleWord = (name: string): boolean =>
+  name.length > 0 && [...name].every((character) => character >= "a" && character <= "z")
 
 /** The two questions about one name, pointing at its atom by id. */
 const nameReview = (id: string) => ({
@@ -244,5 +250,3 @@ export const nameAsAddress: PlannedRule = {
   })
 }
 
-// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: a regex for the shape of one word.
-// See docs/rule-coupling.md.

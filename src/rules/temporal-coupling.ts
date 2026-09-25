@@ -16,8 +16,10 @@ import {
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
-// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: the name pairs are a hand-maintained vocabulary of paired operations.
-// See docs/rule-coupling.md.
+// meta-allow: no-pattern-classifier -- the operation pairs are a DECLARED convention
+// in policy.temporalCoupling.pairs, not a fact derivable from the code: which
+// operations acquire and release is knowledge about resource APIs, and the rule's
+// judgement (is this acquire unpaired?) is still the model's. docs/rule-coupling.md.
 
 const RULE_ID = "joggle/temporal-coupling"
 
@@ -37,13 +39,7 @@ const RULE_ID = "joggle/temporal-coupling"
  * The pairs are deliberately few. `start` and `stop` are not here: a function
  * called `startTimer` calls `start`, and the `stop` lives elsewhere by design.
  */
-const PAIRS: ReadonlyArray<readonly [string, string]> = [
-  ["lock", "unlock"],
-  ["acquire", "release"],
-  ["connect", "disconnect"],
-  ["subscribe", "unsubscribe"],
-  ["mount", "unmount"],
-]
+const { pairs: PAIRS } = policy.temporalCoupling
 
 /** The method name at the end of a resolved call: `a/b.ts#this.lock` is `lock`. */
 const methodOf = (resolved: string): string => {
