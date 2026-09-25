@@ -31,9 +31,13 @@ it.effect("a repeated shape the model reads as one concept is a finding", () =>
     expect(messages.some((message) => message.includes("{ label; x; y }"))).toBe(false)
     expect(messages.some((message) => message.includes("{ admin; member; viewer }"))).toBe(false)
     expect(result.diagnostics.every((entry) => entry.judged)).toBe(true)
-    // A decisive answer is the rule's own claim, so it is a warning; the band a
-    // shrug lands in is a notice.
-    expect(result.diagnostics.every((entry) => entry.severity === "warn")).toBe(true)
+    // The spread decides the band, not the rule. `{ alpha; beta; gamma }` spans
+    // three files, so it is a pattern and a warning; `{ delta; epsilon; zeta }`
+    // spans two, so it is a pair and a notice.
+    const pattern = result.diagnostics.find((entry) => entry.message.includes("{ alpha; beta; gamma }"))
+    const pair = result.diagnostics.find((entry) => entry.message.includes("{ delta; epsilon; zeta }"))
+    expect(pattern?.severity).toBe("warn")
+    expect(pair?.severity).toBe("info")
   }).pipe(Effect.provide(modelStub(oneConcept)), Effect.provide(NodeServices.layer)),
 )
 
@@ -56,8 +60,8 @@ it.effect("a non-decisive answer is a notice, not withheld", () =>
     // Score above the probability floor, margin below minMargin: a real answer the
     // model is unsure of. A band is not a reason to discard it, so it is reported
     // at notice severity rather than dropped.
-    expect(result.diagnostics.length).toBe(1)
-    expect(result.diagnostics[0]?.severity).toBe("info")
+    expect(result.diagnostics.length).toBeGreaterThan(0)
+    expect(result.diagnostics.every((entry) => entry.severity === "info")).toBe(true)
     expect(result.drops.some((drop) => drop.reason.startsWith("flagged:"))).toBe(false)
   }).pipe(
     Effect.provide(

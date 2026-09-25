@@ -56,7 +56,7 @@ export const objectShape: PlannedRule = {
   onUnavailable: "report",
   plan: Effect.fn("joggle/object-shape")(function* (workspace: Workspace, scope: Scope) {
     const report = reporter(SPEC, locator(workspace))
-    const { minKeys, maxFindings } = policy.objectShape
+    const { minKeys, maxFindings, warnFromFiles } = policy.objectShape
 
     // A shape a declared type already names is not a shape nobody named. Every
     // interface and type alias contributes its field set, plus the fields of the
@@ -244,8 +244,17 @@ export const objectShape: PlannedRule = {
             })
             return
           }
+          // The spread decides the band, not the rule: a shape in two files is a
+          // pair that may be coincidence, one in three or more is a pattern.
+          const spread = new Set(entry.sites.map((site) => site.file)).size
           diagnostics.push(
-            findingFor(report, entry, verdict.confidence, undefined, quality.quality === "review"),
+            findingFor(
+              report,
+              entry,
+              verdict.confidence,
+              undefined,
+              quality.quality === "review" || spread < warnFromFiles,
+            ),
           )
         })
         return outcome(

@@ -275,6 +275,15 @@ export const policy = {
   objectShape: {
     minKeys: 3,
     maxFindings: 300,
+    /**
+     * How many files a shape must span before the finding is a warning.
+     *
+     * A shape in two files is a pair that may be a coincidence; one in three or
+     * more is a pattern somebody keeps re-writing. Both are reported -- the pair
+     * as a notice -- because the difference is what a reader needs, not a reason
+     * to discard the pair.
+     */
+    warnFromFiles: 3,
   },
 
   /**
