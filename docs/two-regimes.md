@@ -163,7 +163,7 @@ what the answer needs.
 What worked instead was a hazard test, not an identity test: **drift is only a
 hazard when a value can move between the two declarations**, so a pair in two
 packages with no import path is skipped, deterministically. That is the opposite
-of the locality argument for duplicates (`docs/names.md`), and correctly so -- a
+of the locality argument for duplicates (`docs/reference/names.md`), and correctly so -- a
 duplicate claims two things ARE one, which can be true across areas; drift claims
 a shared name will be confused, which needs a path. On `shakti-v2` it took 97
 incompatible pairs to 74 findings and silenced every case in the feedback.

@@ -317,7 +317,7 @@ general-purpose utility. Over 500 verdicts that removed 284 candidates --
 including a type named `GhostProjectSummary` declared once in the API and once
 in the UI, where the model itself answered `sameName 0.97` and "keep left". The
 gate inverted a correct judgement. **Locality is not intent**, and
-`docs/names.md` is the argument: one concept should have one name and one
+`docs/reference/names.md` is the argument: one concept should have one name and one
 declaration. The model may now override the deterministic fact only when it
 judges the two names to mean different things, or says confidently that both
 should stay.
@@ -343,10 +343,10 @@ type declared in 48 -- but 79% of what it reported were *type* declarations,
 judged by text similarity. That is the wrong instrument, and the material in
 `docs/` says why:
 
-* `docs/names.md` -- types are the one contract the compiler enforces, and a
+* `docs/reference/names.md` -- types are the one contract the compiler enforces, and a
   type name is a search term exactly like a function name. Every `any` leaves
   the compiler with nothing to say and the agent with nothing to search.
-* `docs/parse.md` -- the entire argument is that the type system is where a
+* `docs/reference/parse.md` -- the entire argument is that the type system is where a
   program makes illegal states unrepresentable, and that validation which
   discards what it learned is the anti-pattern.
 * `docs/reference/something.md` -- the goal is a compiler on top of the codebase that can

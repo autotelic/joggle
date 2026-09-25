@@ -1531,7 +1531,7 @@ const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): Sourc
     end: comment.end,
     value: comment.value,
   }))
-  // The comment immediately above a declaration: docs/names.md argues it is the
+  // The comment immediately above a declaration: docs/reference/names.md argues it is the
   // single spot an agent is guaranteed to read, so which copy carries one is
   // evidence about which copy to keep.
   const docFor = (from: number): string | undefined => {
