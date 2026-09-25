@@ -426,7 +426,7 @@ const calibrateCommand = Command.make(
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
 
       const rows = yield* Effect.gen(function* () {
-        const out: Array<{ readonly rule: string; readonly summary: CalibrationSummary; readonly note: string }> = []
+        const out: Array<{ readonly rule: string; readonly summary: CalibrationSummary; readonly note: string; readonly sample: ReadonlyArray<string> }> = []
         for (const rule of rules) {
           const planned = yield* rule.plan(workspace, everyFile, { config: ruleSet.effective })
           // Chunked like the engine: one rule's candidates can exceed the
@@ -480,6 +480,7 @@ const calibrateCommand = Command.make(
           out.push({
             rule: rule.id,
             summary: summarizeCalibration(probabilities),
+            sample: planned.plans.slice(0, 3).map((plan) => plan.subject),
             note: rejected !== ""
               ? "provider rejected the answers: " + rejected
               : composed

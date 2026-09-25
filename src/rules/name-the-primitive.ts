@@ -168,14 +168,15 @@ export const nameThePrimitive: PlannedRule = {
               verdict: Decision.classify({
                 instructions: [
                   `\`atoms[${id}].fields\` are ${entry.fields.length} field names that appear together in ${entry.units.length} declarations: ${entry.units.slice(0, 6).map((unit) => unit.name).join(", ")}. \`atoms[${id}].declarations\` shows a few of them.`,
+                  "The fields appearing together in every one of those declarations is the signal: a set that always travels together is a shape, and each new declaration copies it from memory.",
                   "Is that set of fields ONE THING -- a primitive that deserves a name and should be composed everywhere it appears -- or do those declarations reuse the same field names for different reasons?",
                   "Answer `one_thing` when the fields always travel together as one concept, so one named type would replace all of them.",
-                  "Answer `unrelated` when the declarations are separate concepts that happen to share field names.",
+                  "Answer `unrelated` only when the declarations genuinely use the fields for different purposes, so one type would be wrong however often they appear together.",
                   "Answer `already_named` when a declared type already names exactly this set.",
                 ].join("\n"),
                 criteria: {
                   one_thing: "The fields are one concept. Extract a named type and compose it everywhere.",
-                  unrelated: "Separate concepts that share field names. No type would be right.",
+                  unrelated: "The declarations use the fields for genuinely different purposes. No one type would be right.",
                   already_named: "A declared type already covers exactly this field set.",
                 },
               }),

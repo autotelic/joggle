@@ -242,7 +242,13 @@ export const importCycle: PlannedRule = {
     const planned = yield* Effect.forEach(scopedRuntime, (cycle) =>
       Effect.gen(function* () {
         const first = anchorOf(cycle.files)
-        const id = yield* atoms.add({ files: cycle.files, runtime: cycle.runtime, typeOnly: cycle.typeOnly })
+        const members = new Set(cycle.files)
+        // The edges that make the loop, so the question can tell a real mutual
+        // dependency from a barrel or a re-export instead of reading file names.
+        const edges = workspace.imports.edges
+          .filter((edge) => members.has(edge.from) && members.has(edge.to))
+          .map((edge) => ({ from: edge.from, to: edge.to, specifier: edge.specifier }))
+        const id = yield* atoms.add({ files: cycle.files, runtime: cycle.runtime, typeOnly: cycle.typeOnly, edges })
         const plan: Plan<DecisionAnswers> = {
           ruleId: CYCLE_RULE,
           subject: cycle.files.join(" -> "),
@@ -253,9 +259,10 @@ export const importCycle: PlannedRule = {
             verdict: Decision.classify({
               instructions: [
                 `\`atoms[${id}].files\` is an import cycle: ${[...cycle.files, first].join(" -> ")}.`,
+                `\`atoms[${id}].edges\` is the import statements that close the loop, with the specifier each one uses.`,
                 "Is that a real mutual dependency to break, or a false positive?",
-                "Answer `cycle` when the modules genuinely need each other, so the loop should be broken.",
-                "Answer `false_positive` when the cycle cannot cause the load-order problem -- a barrel, a re-export, or an edge that is erased at build time.",
+                "Answer `cycle` when two or more of the modules genuinely need each other, so the loop should be broken.",
+                "Answer `false_positive` when the loop is an artefact -- a barrel or index re-export, a specifier that resolves to a type only, or an edge that is erased at build time.",
               ].join("\n"),
               criteria: {
                 cycle: "A real loop. Move the shared piece below both, or pass it in.",
