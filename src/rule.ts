@@ -111,6 +111,13 @@ export const inGraphScope = (scope: Scope, file: string): boolean =>
  */
 export interface RunContext {
   readonly config: JoggleConfig
+  /**
+   * The checker's type at a byte offset, when the run resolved node types.
+   *
+   * Absent unless `--types` ran, so a rule that needs it says so rather than
+   * reading an empty map and concluding "no types".
+   */
+  readonly nodeTypes?: ((file: string, position: number) => string | undefined) | undefined
 }
 
 export interface Rule {

@@ -5,6 +5,7 @@ import { layer as atomsLayer, type Atoms } from "./atoms.ts"
 import { isUnreachable, DecisionStats } from "./decision.ts"
 import { answerPlans, chunkPlans, type Plan, type PlanAnswers, type PlanChunk } from "./plans.ts"
 import { emptyTypeIndex, loadTypeFacts, type TypeIndex } from "./typetrace.ts"
+import { indexOfNodeTypes, typesAtPositions, type NodeTypeIndex } from "./typefacts.ts"
 import { shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 import { loadParses } from "./parsecache.ts"
@@ -389,6 +390,22 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
   )
   // Written after the load, and only when something was actually parsed.
   yield* parseCache.save
+
+  // The checker's type at the nodes a rule asks about, by offset. One program,
+  // a bounded request list, and only with `--types`: it costs what the trace
+  // costs, and the join by offset is the one the declaration trace cannot make.
+  let nodeTypes: NodeTypeIndex | undefined
+  if (options.types === "trace") {
+    const requests = workspace.files
+      .flatMap((file) => file.facts.returns.map((entry) => ({ file: file.path, position: entry.start })))
+      .slice(0, 2000)
+    if (requests.length > 0) {
+      const found = yield* Effect.tryPromise(() =>
+        typesAtPositions({ cwd: options.cwd, tsconfig: "tsconfig.json", requests }),
+      ).pipe(Effect.orElseSucceed(() => []))
+      nodeTypes = indexOfNodeTypes(found)
+    }
+  }
   const timings: Array<{ phase: string; ms: number }> = [
     { phase: "workspace", ms: (yield* Clock.currentTimeMillis) - workspaceStarted },
   ]
@@ -500,7 +517,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       (rule) =>
         Effect.gen(function* () {
           const ruleStarted = yield* Clock.currentTimeMillis
-          const result = yield* rule.plan(workspace, scope, { config: options.config }).pipe(
+          const result = yield* rule.plan(workspace, scope, { config: options.config, nodeTypes }).pipe(
             Effect.map((value) => Result.succeed(value)),
             Effect.catch((error) => Effect.succeed(Result.fail(error))),
           )
@@ -694,7 +711,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
           const ruleStarted = yield* Clock.currentTimeMillis
           // The config goes in, because a rule that enforces a layering is
           // entitled to know what the layering is.
-          const result = yield* rule.run(workspace, scope, { config: options.config }).pipe(
+          const result = yield* rule.run(workspace, scope, { config: options.config, nodeTypes }).pipe(
             Effect.map((value) => Result.succeed(value)),
             Effect.catch((error) => Effect.succeed(Result.fail(error))),
           )

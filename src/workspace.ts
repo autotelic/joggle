@@ -290,6 +290,14 @@ export const LiteralSite = Schema.Struct({
 
 export interface LiteralSite extends Schema.Schema.Type<typeof LiteralSite> {}
 
+/** A `return`, where it is. The expression it returns is what a type question asks about. */
+export const ReturnSite = Schema.Struct({
+  start: Schema.Number,
+  end: Schema.Number,
+})
+
+export interface ReturnSite extends Schema.Schema.Type<typeof ReturnSite> {}
+
 export const StructureFacts = Schema.Struct({
   /**
    * Every call site in the file, in order.
@@ -321,6 +329,8 @@ export const StructureFacts = Schema.Struct({
    * file, not a property of the declaration a rule reads.
    */
   allOptionalFunctions: Schema.Array(Schema.String),
+  /** Every `return`, with its span. */
+  returns: Schema.Array(ReturnSite),
 })
 
 export interface StructureFacts extends Schema.Schema.Type<typeof StructureFacts> {}
@@ -994,6 +1004,7 @@ const structureIn = (root: unknown, allOptionalFunctions: ReadonlyArray<string>)
   const guards: Array<Schema.Schema.Type<typeof GuardSite>> = []
   const skips: Array<Schema.Schema.Type<typeof SkipSite>> = []
   const literals: Array<Schema.Schema.Type<typeof LiteralSite>> = []
+  const returns: Array<Schema.Schema.Type<typeof ReturnSite>> = []
   interface DeclaredFields {
     readonly required: Array<string>
     readonly nullable: Array<string>
@@ -1418,6 +1429,15 @@ const structureIn = (root: unknown, allOptionalFunctions: ReadonlyArray<string>)
         }
         break
       }
+      case "ReturnStatement": {
+        // The ARGUMENT's span, not the statement's: a type question asks about
+        // the expression, and `getTypeAtPosition` on `return` answers nothing.
+        const argument = node["argument"]
+        if (isRecord(argument) && typeof argument["start"] === "number" && typeof argument["end"] === "number") {
+          returns.push({ start: argument["start"], end: argument["end"] })
+        }
+        break
+      }
       case "Literal": {
         const start = node["start"]
         const end = node["end"]
@@ -1464,7 +1484,7 @@ const structureIn = (root: unknown, allOptionalFunctions: ReadonlyArray<string>)
       if (value !== null && typeof value === "object") stack.push(value)
     }
   }
-  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards, skips, literals, allOptionalFunctions }
+  return { callSites, jsx: [...jsx], objects, columns, stringSites, guards, skips, literals, allOptionalFunctions, returns }
 }
 
 /** A parse result, whichever language produced it. */
