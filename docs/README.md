@@ -14,6 +14,7 @@ design notes it rests on.
 | [parse.md](./parse.md) | parse, don't validate: the boundary that turns input into a value |
 | [names.md](./names.md) | how coding agents read a name, and what makes it findable |
 | [typesafe.md](./typesafe.md) | how joggle uses TypeSafe, held against the vendor's own guidance |
+| [calibration.md](./calibration.md) | what the questions are worth, and the first real measurement |
 | [joggle-friction.md](./joggle-friction.md) | the friction log from running joggle on real repositories |
 
 ## Reference
