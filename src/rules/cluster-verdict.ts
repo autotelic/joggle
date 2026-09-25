@@ -275,6 +275,8 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
               ? `They are syntactically identical, including property names and types.${note}`
               : `They are up to ${Math.round(cluster.overlap * 100)}% structurally similar but not identical.${note}`,
             "Choose `no_issue` when the similarity is coincidence rather than repetition.",
+            "Choose `keep_variants` when the copies are DELIBERATELY separate, so one should not replace the other: a wire contract or a framework-required shape defined on each side of a deployable boundary (neither side may import the other), a special case of a general routine, or a stable shape the framework requires.",
+            "Two identical request bodies in two independently deployed services are `keep_variants`, not `collapse`: sharing them would couple the deploys, which is worse than the repetition.",
             resolved,
           ]
             .filter((line) => line !== "")
