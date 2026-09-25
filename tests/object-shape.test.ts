@@ -31,6 +31,9 @@ it.effect("a repeated shape the model reads as one concept is a finding", () =>
     expect(messages.some((message) => message.includes("{ label; x; y }"))).toBe(false)
     expect(messages.some((message) => message.includes("{ admin; member; viewer }"))).toBe(false)
     expect(result.diagnostics.every((entry) => entry.judged)).toBe(true)
+    // A decisive answer is the rule's own claim, so it is a warning; the band a
+    // shrug lands in is a notice.
+    expect(result.diagnostics.every((entry) => entry.severity === "warn")).toBe(true)
   }).pipe(Effect.provide(modelStub(oneConcept)), Effect.provide(NodeServices.layer)),
 )
 
@@ -46,14 +49,16 @@ it.effect("a shape the model reads as coincidental is dropped, not reported", ()
   ),
 )
 
-it.effect("a non-decisive answer is flagged, not printed", () =>
+it.effect("a non-decisive answer is a notice, not withheld", () =>
   Effect.gen(function* () {
     const workspace = yield* fixture()
     const result = yield* plannedDiagnosticsOf(objectShape, workspace)
-    // score above the probability floor, margin below minMargin: uncertain, so it
-    // is recorded rather than shown.
-    expect(result.diagnostics).toEqual([])
-    expect(result.drops.some((drop) => drop.reason.startsWith("flagged:"))).toBe(true)
+    // Score above the probability floor, margin below minMargin: a real answer the
+    // model is unsure of. A band is not a reason to discard it, so it is reported
+    // at notice severity rather than dropped.
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]?.severity).toBe("info")
+    expect(result.drops.some((drop) => drop.reason.startsWith("flagged:"))).toBe(false)
   }).pipe(
     Effect.provide(
       modelStub({

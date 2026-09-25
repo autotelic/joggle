@@ -211,7 +211,7 @@ export const objectShape: PlannedRule = {
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
-            diagnostics.push(findingFor(report, entry, undefined, "no judgement was available"))
+            diagnostics.push(findingFor(report, entry, undefined, "no judgement was available", true))
             return
           }
           if (verdict.label !== "one_concept") {
@@ -231,9 +231,10 @@ export const objectShape: PlannedRule = {
             margin: verdict.margin,
             confidence: verdict.confidence,
           })
-          // A judgement the model shrugged across is not a finding. It is
-          // recorded (band: flag), because a linter that prints its own
-          // uncertainty beside its findings stops being read.
+          // A band is not a reason to discard an answer. A decisive
+          // `one_concept` is a warning -- somebody should name this shape -- and
+          // an answer the model shrugged across is a notice. Only a real no is
+          // recorded and withheld.
           if (quality.quality === "drop") {
             drops.push({
               ruleId: RULE_ID,
@@ -243,7 +244,9 @@ export const objectShape: PlannedRule = {
             })
             return
           }
-          diagnostics.push(findingFor(report, entry, verdict.confidence, undefined))
+          diagnostics.push(
+            findingFor(report, entry, verdict.confidence, undefined, quality.quality === "review"),
+          )
         })
         return outcome(
           diagnostics,
@@ -270,6 +273,12 @@ const findingFor = (
   },
   confidence: number | undefined,
   unverifiedReason: string | undefined,
+  /**
+   * The answer was not decisive, or there was no judgement at all. Either way the
+   * finding is a notice: the rule's own severity would be a claim the evidence
+   * does not support.
+   */
+  notice = true,
 ): Diagnostic => {
   const files = [...new Set(entry.sites.map((site) => site.file))]
   const paths =
@@ -291,5 +300,6 @@ const findingFor = (
     identity: [RULE_ID, entry.keys.join("\u0000")].join("\u0000"),
     judged: unverifiedReason === undefined,
     confidence,
+    severity: notice ? "info" : "warn",
   })
 }
