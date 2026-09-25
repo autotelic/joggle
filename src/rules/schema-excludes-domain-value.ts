@@ -15,7 +15,7 @@ import {
 } from "../rule.ts"
 import { verdictOf } from "../verdict.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import type { Unit, Workspace } from "../workspace.ts"
+import type { Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/schema-excludes-domain-value"
 
