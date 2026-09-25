@@ -1,5 +1,6 @@
 import { Cause, Config, Console, Effect, Exit, Layer, Option, Path, Predicate, Result, Runtime } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
+import { DecisionModel } from "effect/unstable/ai"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { runCheck } from "./check.ts"
@@ -12,8 +13,8 @@ import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
 import { loadWorkspace } from "./workspace.ts"
-import { answerPlans, chunkPlans, verdictsOf } from "./plans.ts"
-import { layer as atomsLayer } from "./atoms.ts"
+import { answerPlans, chunkPlans, verdictsOf, type Plan, type PlanAnswers } from "./plans.ts"
+import { layer as atomsLayer, type Atoms } from "./atoms.ts"
 import { summarizeCalibration, type CalibrationState, type CalibrationSummary } from "./calibration.ts"
 import { verdictOf } from "./verdict.ts"
 import { everyFile, qualityOf, type DecisionAnswers, type PlannedRule } from "./rule.ts"
@@ -430,16 +431,34 @@ const calibrateCommand = Command.make(
           const planned = yield* rule.plan(workspace, everyFile, { config: ruleSet.effective })
           // Chunked like the engine: one rule's candidates can exceed the
           // provider's token ceiling, so they travel in as many requests as fit.
-          // A rule the provider rejects is named, not allowed to sink the run.
-          const answers: Array<DecisionAnswers | undefined> = []
-          const attempt = yield* Effect.result(
+          //
+          // The provider occasionally returns a distribution that does not sum to
+          // 1 for one decision, and the whole request is rejected for it. Split
+          // and retry, so one bad decision loses its own plan rather than every
+          // rule in the chunk. A single plan that still fails reads as undefined,
+          // which is an unreadable candidate, not a lost rule.
+          const answerChunk = (
+            plans: ReadonlyArray<Plan<unknown>>,
+          ): Effect.Effect<
+            ReadonlyArray<DecisionAnswers | undefined>,
+            never,
+            Atoms | PlanAnswers | DecisionModel.DecisionModel
+          > =>
             Effect.gen(function* () {
-              for (const chunk of yield* chunkPlans(planned.plans, policy.decision.maxStateChars)) {
-                answers.push(...verdictsOf<DecisionAnswers>(yield* answerPlans(chunk.plans)))
-              }
-            }),
-          )
-          const rejected = Result.isFailure(attempt) ? String(attempt.failure) : ""
+              const attempt = yield* Effect.result(answerPlans(plans))
+              if (Result.isSuccess(attempt)) return verdictsOf<DecisionAnswers>(attempt.success)
+              if (plans.length <= 1) return [undefined]
+              const middle = Math.ceil(plans.length / 2)
+              const left = yield* answerChunk(plans.slice(0, middle))
+              const right = yield* answerChunk(plans.slice(middle))
+              return [...left, ...right]
+            })
+          const answers: Array<DecisionAnswers | undefined> = []
+          for (const chunk of yield* chunkPlans(planned.plans, policy.decision.maxStateChars)) {
+            answers.push(...(yield* answerChunk(chunk.plans)))
+          }
+          const unreadable = answers.filter((answer) => answer === undefined).length
+          const rejected = unreadable > 0 ? String(unreadable) + " candidate(s) the provider rejected" : ""
           const probabilities: Array<CalibrationState> = []
           let composed = false
           planned.plans.forEach((plan, index) => {

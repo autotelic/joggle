@@ -22,6 +22,10 @@ const VIOLATIONS = { verdict: ["composes", "same_name_drift"] } as const
 
 // A type that lists every field of another type.
 //
+// The COMPOSE case is advice and is recorded rather than printed; the name-drift
+// case -- one name declared twice with different fields -- is a defect and is the
+// finding. See the read.
+//
 // "Composed of smaller canonical things" is a principle until it becomes a set
 // comparison, and a set comparison is free. `B.fields` containing `A.fields` as a
 // proper subset means B is A plus something. Whether B is GENUINELY an A -- or two
@@ -190,7 +194,22 @@ export const composeTypes: PlannedRule = {
             diagnostics.push(findingFor(value.candidate, undefined, "no judgement was available", undefined))
             return
           }
-          if (verdict.label !== "composes" && verdict.label !== "same_name_drift") {
+          // The compose case is ADVICE, recorded rather than printed. On a real
+          // repository it was 140 of 187 findings -- "B could compose A", every
+          // one true and none urgent -- and the containment the candidate was
+          // built from is the same evidence the question is given, so the model
+          // agrees with it almost every time. A name declared twice is the defect
+          // and stays a finding.
+          if (verdict.label === "composes") {
+            drops.push({
+              ruleId: RULE_ID,
+              subject,
+              stage: "gated",
+              reason: "compose advice is recorded, not printed",
+            })
+            return
+          }
+          if (verdict.label !== "same_name_drift") {
             drops.push({
               ruleId: RULE_ID,
               subject,
@@ -216,7 +235,7 @@ export const composeTypes: PlannedRule = {
             })
             return
           }
-          diagnostics.push(findingFor(value.candidate, verdict.confidence, undefined, verdict.label))
+          diagnostics.push(findingFor(value.candidate, verdict.confidence, undefined, "same_name_drift"))
         })
         return outcome(diagnostics, [], drops)
       },

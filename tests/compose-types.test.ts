@@ -7,24 +7,37 @@ import { loadWorkspace } from "../src/workspace.ts"
 import { choice, modelStub } from "./support.ts"
 
 /**
- * The containment is a fact; whether B is genuinely an A is the question.
+ * The containment is a fact; the name-drift case is the defect and the compose
+ * case is advice. Advice is recorded, not printed.
  */
 const fixture = () => loadWorkspace("tests/fixtures/compose-types", ["src"])
 
-it.effect("a containment the model reads as composition is a finding", () =>
+it.effect("compose advice is recorded, not reported", () =>
   Effect.gen(function* () {
     const workspace = yield* fixture()
     const result = yield* plannedDiagnosticsOf(composeTypes, workspace)
-    expect(result.diagnostics.length).toBe(2)
-    expect(result.diagnostics.some((entry) => entry.message.includes("lists all"))).toBe(true)
-    expect(result.diagnostics.every((entry) => entry.judged)).toBe(true)
+    expect(result.diagnostics).toEqual([])
+    expect(result.drops.some((drop) => drop.reason.includes("compose advice"))).toBe(true)
   }).pipe(
     Effect.provide(modelStub({ verdict: choice("composes", 0.95) })),
     Effect.provide(NodeServices.layer),
   ),
 )
 
-it.effect("a containment the model reads as coincidence is dropped, not reported", () =>
+it.effect("a name declared twice is a finding", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(composeTypes, workspace)
+    expect(result.diagnostics.length).toBe(2)
+    expect(result.diagnostics.every((entry) => entry.severity === "warn")).toBe(true)
+    expect(result.diagnostics.some((entry) => entry.message.includes("declared in two places"))).toBe(true)
+  }).pipe(
+    Effect.provide(modelStub({ verdict: choice("same_name_drift", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
+it.effect("a coincidence is dropped, not reported", () =>
   Effect.gen(function* () {
     const workspace = yield* fixture()
     const result = yield* plannedDiagnosticsOf(composeTypes, workspace)
