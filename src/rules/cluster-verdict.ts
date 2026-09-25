@@ -92,6 +92,8 @@ export interface Questionnaire {
    */
   readonly atoms: ReadonlyArray<string>
   readonly decisions: Record<string, Decision.Any>
+  /** Per decision, the labels that mean the cluster is a violation. */
+  readonly violations?: Readonly<Record<string, ReadonlyArray<string>>> | undefined
   /**
    * Read the answer, or return undefined when the response did not contain one
    * that can be used. That is not the same as "leave it alone": an unreadable
@@ -235,6 +237,9 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
     const resolved = resolvedNote(described)
     return {
       atoms: [...ids, facts],
+      // The Noul is the violation: its probability IS P(redundant), so the
+      // violating set is empty. Calibration reduces this decision.
+      violations: { redundant: [] },
       decisions: {
         redundant: Decision.probability({
           instructions: [
@@ -604,6 +609,7 @@ export const planCluster = (
       concerns: cluster.members.map((member) => member.file),
       atoms: questionnaire.atoms,
       decisions: questionnaire.decisions,
+      violations: questionnaire.violations,
       read: questionnaire.read,
     }
   })

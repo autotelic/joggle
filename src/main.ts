@@ -13,7 +13,7 @@ import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
 import { loadWorkspace } from "./workspace.ts"
-import { answerPlans, chunkPlans, verdictsOf, type Plan, type PlanAnswers } from "./plans.ts"
+import { answerPlansRaw, chunkPlans, type Plan, type PlanAnswers } from "./plans.ts"
 import { layer as atomsLayer, type Atoms } from "./atoms.ts"
 import { summarizeCalibration, type CalibrationState, type CalibrationSummary } from "./calibration.ts"
 import { verdictOf } from "./verdict.ts"
@@ -426,7 +426,7 @@ const calibrateCommand = Command.make(
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
 
       const rows = yield* Effect.gen(function* () {
-        const out: Array<{ readonly rule: string; readonly summary: CalibrationSummary; readonly note: string; readonly sample: ReadonlyArray<string> }> = []
+        const out: Array<{ readonly rule: string; readonly decision: string; readonly summary: CalibrationSummary; readonly note: string; readonly sample: ReadonlyArray<string> }> = []
         for (const rule of rules) {
           const planned = yield* rule.plan(workspace, everyFile, { config: ruleSet.effective })
           // Chunked like the engine: one rule's candidates can exceed the
@@ -445,8 +445,8 @@ const calibrateCommand = Command.make(
             Atoms | PlanAnswers | DecisionModel.DecisionModel
           > =>
             Effect.gen(function* () {
-              const attempt = yield* Effect.result(answerPlans(plans))
-              if (Result.isSuccess(attempt)) return verdictsOf<DecisionAnswers>(attempt.success)
+              const attempt = yield* Effect.result(answerPlansRaw(plans))
+              if (Result.isSuccess(attempt)) return attempt.success
               if (plans.length <= 1) return [undefined]
               const middle = Math.ceil(plans.length / 2)
               const left = yield* answerChunk(plans.slice(0, middle))
@@ -459,34 +459,39 @@ const calibrateCommand = Command.make(
           }
           const unreadable = answers.filter((answer) => answer === undefined).length
           const rejected = unreadable > 0 ? String(unreadable) + " candidate(s) the provider rejected" : ""
-          const probabilities: Array<CalibrationState> = []
-          let composed = false
+          // One row per DECISION that declares its violating labels, so a rule
+          // that composes several questions is calibrated question by question
+          // rather than named and skipped.
+          const byDecision = new Map<string, Array<CalibrationState>>()
           planned.plans.forEach((plan, index) => {
-            const names = Object.keys(plan.decisions)
-            // A rule that composes two decisions (a Noul and a Choice) has no
-            // single reduction, so it is named rather than guessed at.
-            if (names.length !== 1) {
-              composed = true
-              return
-            }
-            const name = names[0]
-            if (name === undefined) return
-            const verdict = verdictOf(answers[index]?.[name], plan.violations?.[name] ?? [])
-            if (verdict !== undefined) {
-              const quality = qualityOf({ score: verdict.probability, margin: verdict.margin, confidence: verdict.confidence })
-              probabilities.push({ probability: verdict.probability, acted: quality.quality === "act" })
+            for (const [decision, labels] of Object.entries(plan.violations ?? {})) {
+              const verdict = verdictOf(answers[index]?.[decision], labels)
+              if (verdict === undefined) continue
+              const quality = qualityOf({
+                score: verdict.probability,
+                margin: verdict.margin,
+                confidence: verdict.confidence,
+              })
+              const states = byDecision.get(decision) ?? []
+              states.push({ probability: verdict.probability, acted: quality.quality === "act" })
+              byDecision.set(decision, states)
             }
           })
-          out.push({
-            rule: rule.id,
-            summary: summarizeCalibration(probabilities),
-            sample: planned.plans.slice(0, 3).map((plan) => plan.subject),
-            note: rejected !== ""
-              ? "provider rejected the answers: " + rejected
-              : composed
-                ? "composed decisions, not calibrated"
-                : "",
-          })
+          const sample = planned.plans.slice(0, 3).map((plan) => plan.subject)
+          const note = rejected !== "" ? "provider rejected the answers: " + rejected : ""
+          if (byDecision.size === 0) {
+            out.push({
+              rule: rule.id,
+              decision: "-",
+              summary: summarizeCalibration([]),
+              sample,
+              note: note === "" ? "no violating decision declared" : note,
+            })
+            continue
+          }
+          for (const [decision, states] of byDecision) {
+            out.push({ rule: rule.id, decision, summary: summarizeCalibration(states), sample, note })
+          }
         }
         return out
       }).pipe(
@@ -502,12 +507,12 @@ const calibrateCommand = Command.make(
         yield* write(JSON.stringify(rows, null, 2))
         return
       }
-      const width = rows.reduce((max, row) => Math.max(max, row.rule.length), 0)
+      const width = rows.reduce((max, row) => Math.max(max, (row.rule + "#" + row.decision).length), 0)
       const lines = [
-        "rule".padEnd(width) + "  states  verdict   median   min   max  fired",
+        "rule#decision".padEnd(width) + "  states  verdict   median   min   max  fired",
         ...rows.map(
           (row) =>
-            row.rule.padEnd(width) +
+            (row.rule + "#" + row.decision).padEnd(width) +
             "  " + String(row.summary.states).padStart(6) +
             "  " + row.summary.verdict.padEnd(8) +
             "  " + row.summary.median.toFixed(2).padStart(6) +

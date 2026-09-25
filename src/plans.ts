@@ -337,10 +337,10 @@ export const chunkPlans = <A>(
  * A plan-local state (`declarations`, `files`) could not be merged into one
  * request without rewriting every instruction; atoms can.
  */
-export const answerPlans = <A>(
-  plans: ReadonlyArray<Plan<A>>,
+export const answerPlansRaw = (
+  plans: ReadonlyArray<Plan<unknown>>,
 ): Effect.Effect<
-  ReadonlyArray<A | undefined>,
+  ReadonlyArray<DecisionAnswers>,
   AiError.AiError,
   Atoms | PlanAnswers | DecisionModel.DecisionModel
 > =>
@@ -413,6 +413,35 @@ export const answerPlans = <A>(
         const answer = answers.get(answerKeyFor(decision, plan.atoms))
         if (answer !== undefined) collected[name] = answer
       }
-      return plan.read(collected)
+      return collected
     })
   })
+
+/**
+ * Answer the plans and READ them, which is what the engine consumes.
+ *
+ * The raw records are a separate function so a caller that needs the answers
+ * themselves -- the calibrator, which reduces each decision -- can have them
+ * without a rule's `read` already having consumed them.
+ *
+ * @param plans - the plans to answer.
+ * @returns one `read` output per plan, in order.
+ */
+export const answerPlans = <A>(
+  plans: ReadonlyArray<Plan<A>>,
+): Effect.Effect<
+  ReadonlyArray<A | undefined>,
+  AiError.AiError,
+  Atoms | PlanAnswers | DecisionModel.DecisionModel
+> =>
+  answerPlansRaw(plans).pipe(
+    Effect.map((records) =>
+      records.map((record, index) => {
+        // SAFETY: the caller built these plans, so each record is the answer
+        // shape its own plan's decisions produced and `read` returns the A that
+        // plan declared. The record was erased only so the plans could be
+        // answered together.
+        return plans[index]?.read(record) as A | undefined
+      }),
+    ),
+  )
