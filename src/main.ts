@@ -1,4 +1,4 @@
-import { Cause, Config, Console, Effect, Exit, Layer, Option, Path, Predicate, Runtime } from "effect"
+import { Cause, Config, Console, Effect, Exit, Layer, Option, Path, Predicate, Result, Runtime } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
@@ -12,7 +12,7 @@ import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
 import { loadWorkspace } from "./workspace.ts"
-import { answerPlans, verdictsOf } from "./plans.ts"
+import { answerPlans, chunkPlans, verdictsOf } from "./plans.ts"
 import { layer as atomsLayer } from "./atoms.ts"
 import { summarizeCalibration, type CalibrationSummary } from "./calibration.ts"
 import { verdictOf } from "./verdict.ts"
@@ -416,7 +416,7 @@ const calibrateCommand = Command.make(
       // Only judged rules have a question to calibrate.
       const rules = ruleSet.rules.filter(
         (rule): rule is PlannedRule =>
-          rule.judged &&
+          "plan" in rule &&
           isEnabled(ruleSet.effective, rule.id, rule.severity) &&
           (wanted === undefined || wanted.includes(rule.id)),
       )
@@ -428,7 +428,18 @@ const calibrateCommand = Command.make(
         const out: Array<{ readonly rule: string; readonly summary: CalibrationSummary; readonly note: string }> = []
         for (const rule of rules) {
           const planned = yield* rule.plan(workspace, everyFile, { config: ruleSet.effective })
-          const answers = verdictsOf<DecisionAnswers>(yield* answerPlans(planned.plans))
+          // Chunked like the engine: one rule's candidates can exceed the
+          // provider's token ceiling, so they travel in as many requests as fit.
+          // A rule the provider rejects is named, not allowed to sink the run.
+          const answers: Array<DecisionAnswers | undefined> = []
+          const attempt = yield* Effect.result(
+            Effect.gen(function* () {
+              for (const chunk of yield* chunkPlans(planned.plans, policy.decision.maxStateChars)) {
+                answers.push(...verdictsOf<DecisionAnswers>(yield* answerPlans(chunk.plans)))
+              }
+            }),
+          )
+          const rejected = Result.isFailure(attempt) ? String(attempt.failure) : ""
           const probabilities: Array<number> = []
           let composed = false
           planned.plans.forEach((plan, index) => {
@@ -447,7 +458,11 @@ const calibrateCommand = Command.make(
           out.push({
             rule: rule.id,
             summary: summarizeCalibration(probabilities),
-            note: composed ? "composed decisions, not calibrated" : "",
+            note: rejected !== ""
+              ? "provider rejected the answers: " + rejected
+              : composed
+                ? "composed decisions, not calibrated"
+                : "",
           })
         }
         return out
