@@ -21,5 +21,6 @@ Material joggle borrows from, kept beside the docs that cite it.
 | Doc | Source |
 | --- | --- |
 | [art-of-approximation.md](./reference/art-of-approximation.md) | Mahajan, MIT 6.055J — CC BY-NC-SA 4.0 |
+| [opencode-reloaded-engine.md](./reference/opencode-reloaded-engine.md) | a reverse-engineering note on the anoma.ly notes diagrams |
 | [sloppiness-measure.html](./reference/sloppiness-measure.html) | a note on measuring code sloppiness |
 | [something.md](./reference/something.md) | a design conversation, transcribed |
