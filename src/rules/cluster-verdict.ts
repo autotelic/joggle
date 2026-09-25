@@ -40,6 +40,15 @@ export interface ClusterVerdict {
    */
   readonly prescription?: string | undefined
   /**
+   * Which prescription the model chose, when it chose one.
+   *
+   * The label, not the wording: the report BANDS on it. `leave_it` and
+   * `share_a_contract` are expected duplication, so they are a notice; a merge or
+   * a move is a warning. The finding is still reported -- a band is not a reason
+   * to discard an answer -- it just does not shout.
+   */
+  readonly prescriptionKind?: string | undefined
+  /**
    * What the GATE reads: whether this is duplication at all.
    *
    * Kept separate from `score` because they answer different questions, and
@@ -349,6 +358,8 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
       // The prescription is the model's answer; the table that used to derive it
       // is gone. `prescriptionFor` remains for the unverified path and for tests.
       const prescribed = answers["prescription"]
+      const prescriptionKind =
+        prescribed !== undefined && "label" in prescribed ? prescribed.label : undefined
       const prescription =
         prescribed !== undefined && "label" in prescribed
           ? duplicateVocabulary.prescription[
@@ -412,6 +423,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
           redundancy,
           margin,
           prescription,
+          prescriptionKind,
           operation: undefined,
           agreement: "drop" as const,
           settled: "the model said " + verdict.label,
@@ -429,6 +441,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         redundancy,
         margin,
         prescription,
+        prescriptionKind,
         operation: settled.operation,
         agreement: settled.quality,
         settled: settled.reason,
@@ -534,6 +547,9 @@ const memberList = (units: ReadonlyArray<Unit>): string => {
  */
 const identityOf = (ruleId: string, cluster: Cluster, keep: Unit): string =>
   [ruleId, keep.name, ...[...new Set(cluster.members.map((m) => m.file))].sort()].join("\u0000")
+
+/** Prescriptions that mean expected duplication: reported, but as a notice. */
+const EXPECTED_DUPLICATION: ReadonlySet<string> = new Set(["leave_it", "share_a_contract"])
 
 /** Every cluster rule reports through these. */
 const CLUSTER_MESSAGES = messages({
@@ -750,7 +766,10 @@ export const findingFor = (
       score: verdict.score,
       judged: true,
       repair,
-      severity: review ? "info" : rule.severity,
+      severity:
+        review || EXPECTED_DUPLICATION.has(verdict.prescriptionKind ?? "")
+          ? "info"
+          : rule.severity,
     }),
   }
 }

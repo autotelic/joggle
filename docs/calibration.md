@@ -111,13 +111,43 @@ The concept question in `field-type-drift` declined 22 and the band flagged 92, 
 in `docs/type-resolution.md`: a concept question here does work, as long as the
 uncertain answers are flagged.
 
+## Round three: bands, not drops
+
+`duplicate-implementation` calibrated for the first time: `redundant` is noisy
+(206 states, median 0.73, 189 acted). Reading every decision of its nine-question
+questionnaire -- via a probe over the warm cache, since calibration reduces only
+the declared one -- showed why:
+
+```
+verdict        collapse 196, keep_variants   8, no_issue 2
+role           domain_concept 94, implementation_detail 53, wire_contract 30, framework_glue 29
+prescription   share_a_contract 69, merge 57, move 57, leave_it 23
+```
+
+The `verdict` question never said that two independently deployed services sharing
+a wire shape should keep both, so it answered `collapse` almost always, and the
+read reports unless `verdict` is `keep_variants`/declined. Naming the case moved
+`collapse` to 152 and `keep_variants` to 52: **178 findings -> 139**.
+
+The second half is the banding. A band is not a reason to discard an answer, so
+the model's `prescription` now sets the severity: `leave_it` and
+`share_a_contract` (expected duplication) are notices, `merge`/`move`/`split` are
+warnings. **139 = 46 warnings + 93 notices.**
+
+Across shakti-v2 the report is now **459 problems: 162 warnings, 297 notices**
+(down from 508, all of it `duplicate-implementation`). The loud block is small and
+the expected-duplication record stays visible, which is what the bands are for.
+
 ## What is left
 
-- **`duplicate-implementation` is now the biggest block** (178 findings) and is a
-  pre-existing judged rule, not one of the migrated ten: the next thing to
-  calibrate.
-- **`compose-types` and `import-cycle` read as noisy** because their candidates are
-  mostly real. The verdict is honest about volume; if the volume is a problem, the
-  lever is the generator or the report policy, not the question.
+- **`compose-types` is the loudest rule now** (47 warnings), all the name-drift
+  case; `hoist-to-domain` is second (37). The compose advice case is already a
+  notice.
+- **`object-shape` is 104 notices and 0 warnings** -- every finding is `info`, so
+  a shape somebody should really name does not stand out. Severity is a flat
+  property of the rule, not of the finding, which is the "declared kind" gap from
+  `docs/rule-api.md`.
 - **`duplicate-meaning` has one candidate the provider rejects** outright even
   alone; worth a look at whether its criteria shape causes it.
+- **The provider-rejected candidate** is the only remaining blemish on the
+  calibrator.
