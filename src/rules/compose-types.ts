@@ -48,16 +48,6 @@ const signatureOf = (unit: Unit): string => [...unit.fields].sort().join("\u0000
  * `string` against `number`, which intersects to never. So the test is whether one
  * declaration mentions everything the other does.
  */
-export const canCompose = (part: string | undefined, whole: string | undefined): boolean => {
-  if (part === undefined || whole === undefined) return false
-  if (part === whole) return true
-  const words = (text: string): ReadonlyArray<string> =>
-    text.replace(/[^A-Za-z0-9_$]+/g, " ").trim().split(" ").filter((word) => word !== "")
-  const a = words(part)
-  const b = words(whole)
-  return a.every((word) => b.includes(word)) || b.every((word) => a.includes(word))
-}
-
 export const composeTypes: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
@@ -108,13 +98,11 @@ export const composeTypes: PlannedRule = {
         if (part.fields.length >= whole.fields.length) continue
         if (best !== undefined && part.fields.length <= best.fields.length) continue
         if (whole.fields.length - part.fields.length > part.fields.length) continue
-        const contained = signature
-          .split("\u0000")
-          .every(
-            (field) =>
-              wholeFields.has(field) &&
-              canCompose(part.fieldTypes.get(field), whole.fieldTypes.get(field)),
-          )
+        // Field-NAME containment, which is a fact. Whether the two types are
+        // compatible is the question's business, not the generator's: the
+        // word-subset test that used to live here decided a type question in code
+        // (docs/rule-coupling.md).
+        const contained = signature.split("\u0000").every((field) => wholeFields.has(field))
         if (contained) best = part
       }
       if (best === undefined) continue

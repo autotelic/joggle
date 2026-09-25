@@ -13,11 +13,8 @@ import {
   type PlannedRule,
   type Scope,
 } from "../rule.ts"
-import { canCompose } from "./compose-types.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import type { Unit, Workspace } from "../workspace.ts"
-// meta-allow: no-pattern-classifier -- pending the fact-based rebuild: a nullability regex and a string rule for type compatibility.
-// See docs/rule-coupling.md.
+import type { Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/field-type-drift"
 
@@ -44,14 +41,6 @@ const VIOLATIONS = { verdict: ["drift", "two_concepts"] } as const
 // (`compatible`) and a non-decisive answer is flagged rather than printed. See
 // `docs/type-resolution.md`.
 
-/**
- * Whether a type admits `null`, which is a value rather than absent.
- *
- * `undefined` is deliberately NOT counted: `T | undefined` and `T?` are the same
- * optionality.
- */
-const admitsNull = (text: string): boolean => /\bnull\b/.test(text)
-
 const related = (
   left: Declaration,
   right: Declaration,
@@ -70,93 +59,6 @@ const related = (
   const leftPackage = packageOf(left.file)
   return leftPackage !== "" && leftPackage === packageOf(right.file)
 }
-
-/** The words a name is built from: `supervisorRate` is two, `files` is one. */
-const wordsOf = (name: string): ReadonlyArray<string> =>
-  name
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .split(/[^A-Za-z0-9]+/)
-    .filter((word) => word !== "")
-
-/** Whether a declaration's name marks it as a raw mirror of something else. */
-const isRawName = (name: string): boolean =>
-  policy.fieldTypeDrift.rawPrefixes.some((prefix) => name.startsWith(prefix)) ||
-  policy.fieldTypeDrift.rawSuffixes.some((suffix) => name.endsWith(suffix))
-
-const normalizeType = (text: string): string =>
-  text.replace(/^\s*:\s*/, "").replace(/\s+/g, " ").trim()
-
-/** An indexed access, `T['k']`, which reads a field's type out of `T`. */
-const indexedPattern = /^([A-Za-z_$][\w$]*)\s*\[\s*['"]([^'"]+)['"]\s*\]$/
-
-const barePattern = /^[A-Za-z_$][\w$]*$/
-
-const aliasTargetOf = (text: string): string => {
-  const match = /^\s*(?:export\s+)?(?:declare\s+)?type\s+\w+(?:\s*<[^>]*>)?\s*=\s*([\s\S]*)$/.exec(
-    text,
-  )
-  const rhs = match?.[1]
-  return rhs === undefined ? "" : rhs.replace(/;\s*$/, "").trim()
-}
-
-/** Split on a top-level `|`, respecting nesting so `Array<A | B>` stays whole. */
-const unionParts = (text: string): ReadonlyArray<string> => {
-  const parts: Array<string> = []
-  let depth = 0
-  let start = 0
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index] ?? ""
-    if (character === "<" || character === "(" || character === "[" || character === "{") depth += 1
-    else if ((character === ">" || character === ")" || character === "]" || character === "}") && depth > 0) {
-      depth -= 1
-    } else if (depth === 0 && character === "|") {
-      parts.push(text.slice(start, index))
-      start = index + 1
-    }
-  }
-  parts.push(text.slice(start))
-  return parts.map((part) => part.trim()).filter((part) => part !== "")
-}
-
-const resolveType = (
-  text: string,
-  byName: ReadonlyMap<string, Unit>,
-  seen: Set<string>,
-  depth = 0,
-): string => {
-  const current = normalizeType(text)
-  if (depth >= 6 || seen.has(current)) return current
-  seen.add(current)
-
-  if (current.includes("|")) {
-    const parts = unionParts(current)
-    if (parts.length > 1) {
-      return parts.map((part) => resolveType(part, byName, new Set(seen), depth + 1)).join(" | ")
-    }
-  }
-
-  const indexed = indexedPattern.exec(current)
-  if (indexed !== null) {
-    const target = indexed[1] === undefined ? undefined : byName.get(indexed[1])
-    const annotation =
-      target === undefined || indexed[2] === undefined ? undefined : target.fieldTypes.get(indexed[2])
-    return annotation === undefined ? current : resolveType(annotation, byName, seen, depth + 1)
-  }
-
-  if (barePattern.test(current)) {
-    const target = byName.get(current)
-    const rhs = target === undefined ? "" : aliasTargetOf(target.text)
-    if (rhs !== "" && rhs !== current) return resolveType(rhs, byName, seen, depth + 1)
-  }
-  return current
-}
-
-/** True when a type is computed by the type system rather than written down. */
-const isDerivedType = (text: string): boolean =>
-  /\btypeof\b|\bkeyof\b|z\.infer|Schema\.Schema\.(Type|Encoded)/.test(text)
-
-/** True when a type is an indexed access the index could not follow. */
-const isUnresolvedIndexed = (text: string): boolean => indexedPattern.test(normalizeType(text))
 
 interface Declaration {
   readonly type: string
@@ -193,7 +95,7 @@ export const fieldTypeDrift: PlannedRule = {
     for (const unit of workspace.units) {
       if (unit.kind !== "interface" && unit.kind !== "type") continue
       for (const [field, annotation] of unit.fieldTypes) {
-        const type = annotation.trim()
+        const type = annotation.replace(/^\s*:\s*/, "").replace(/\s+/g, " ").trim()
         if (type === "" || type === field) continue
         const types = byField.get(field) ?? new Map<string, Array<Declaration>>()
         const declarations = types.get(type) ?? []
@@ -211,11 +113,6 @@ export const fieldTypeDrift: PlannedRule = {
       }
     }
 
-    const byName = new Map<string, Unit>()
-    for (const unit of workspace.units) {
-      if (unit.kind !== "interface" && unit.kind !== "type") continue
-      if (!byName.has(unit.name)) byName.set(unit.name, unit)
-    }
     const reachable = new Set<string>()
     for (const edge of workspace.imports.edges) {
       if (edge.resolved) reachable.add(edge.from + "\u0000" + edge.to)
@@ -227,37 +124,36 @@ export const fieldTypeDrift: PlannedRule = {
     const groups = new Map<string, { file: string; line: number; unit: string; drifts: Array<Drift> }>()
     let unrelated = 0
     let drifted = 0
+    // The fact this rule collects: one field name whose declared annotation
+    // differs between two declarations. Whether that difference is drift or a
+    // deliberate variant is the QUESTION -- this used to be decided in code, by a
+    // little text type-parser (a word-subset test for compatibility, a regex for
+    // `null`, name patterns for raw mirrors), which is meaning decided in code
+    // (docs/rule-coupling.md). The generator keeps the fact; the model keeps the
+    // judgement it was already being asked for.
     for (const [field, types] of byField) {
       if (types.size < 2) continue
-      if (wordsOf(field).length < policy.fieldTypeDrift.minWords) continue
-      const entries = [...types.entries()]
-      let pair: readonly [string, string] | undefined
-      for (let left = 0; left < entries.length && pair === undefined; left += 1) {
+      const entries = [...types.values()]
+        .map((declarations) => declarations[0])
+        .filter((declaration): declaration is Declaration => declaration !== undefined)
+      let chosen: readonly [Declaration, Declaration] | undefined
+      for (let left = 0; left < entries.length && chosen === undefined; left += 1) {
         for (let right = left + 1; right < entries.length; right += 1) {
           const one = entries[left]
           const two = entries[right]
           if (one === undefined || two === undefined) continue
-          const oneType = resolveType(one[0], byName, new Set())
-          const twoType = resolveType(two[0], byName, new Set())
-          if (isUnresolvedIndexed(oneType) || isUnresolvedIndexed(twoType)) continue
-          if (isDerivedType(oneType) && isDerivedType(twoType)) continue
-          if (admitsNull(oneType) !== admitsNull(twoType) || !canCompose(oneType, twoType)) {
-            pair = [one[0], two[0]]
-            break
+          if (one.file === two.file && one.unit === two.unit) continue
+          if (!related(one, two, workspace, reachable, isTest)) {
+            unrelated += 1
+            continue
           }
+          chosen = [one, two]
+          break
         }
       }
-      if (pair === undefined) continue
-      const byType = new Map(entries)
-      const left = byType.get(pair[0])?.[0]
-      const right = byType.get(pair[1])?.[0]
-      if (left === undefined || right === undefined) continue
-      if (left.file === right.file && left.unit === right.unit) continue
-      if (isRawName(left.unit) || isRawName(right.unit)) continue
-      if (!related(left, right, workspace, reachable, isTest)) {
-        unrelated += 1
-        continue
-      }
+      if (chosen === undefined) continue
+      const left = chosen[0]
+      const right = chosen[1]
       if (scope.changed !== undefined && !(scope.changed.has(left.file) || scope.changed.has(right.file))) {
         continue
       }

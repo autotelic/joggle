@@ -7,26 +7,21 @@ import { loadWorkspace } from "../src/workspace.ts"
 import { choice, modelStub } from "./support.ts"
 
 /**
- * The detection is deterministic; the meaning of a disagreement is the question.
- *
- * `PersonPayrollRecord["personId"]` and `PersonId` are one type, a raw mirror is
- * SUPPOSED to be unbranded, and two types computed from different consts cannot be
- * compared as text -- none of those are candidates. The genuine disagreements are,
- * and the model reads them as drift here.
+ * The fact is a field name declared two ways; the question is what the
+ * disagreement means. The generator used to decide that itself -- resolving an
+ * indexed access, skipping a raw mirror, testing compatibility with a word
+ * subset -- which is meaning decided in code (docs/rule-coupling.md). Now every
+ * differing declaration is a candidate and the model settles it.
  */
 const drift = { verdict: choice("drift", 0.95) }
 
-it.effect("resolves an indexed access, and leaves a raw mirror alone", () =>
+it.effect("a field declared two ways is a candidate, and the model decides", () =>
   Effect.gen(function* () {
     const workspace = yield* loadWorkspace("tests/fixtures/field-type-drift", ["src"])
     const result = yield* plannedDiagnosticsOf(fieldTypeDrift, workspace)
     const fields = result.diagnostics.map((entry) => entry.message)
-    expect(fields.some((message) => message.includes("personId"))).toBe(false)
-    expect(fields.some((message) => message.includes("treesPlanted"))).toBe(false)
-    expect(fields.some((message) => message.includes("teamRole"))).toBe(false)
     expect(fields.some((message) => message.includes("totalScore"))).toBe(true)
     expect(fields.some((message) => message.includes("ownerId"))).toBe(true)
-    expect(fields.some((message) => message.includes("labelText"))).toBe(false)
   }).pipe(Effect.provide(modelStub(drift)), Effect.provide(NodeServices.layer)),
 )
 
