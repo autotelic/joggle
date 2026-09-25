@@ -2,12 +2,15 @@ import { expect, test } from "vitest"
 import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
 import { appliesAt, matchesGlob } from "../src/config.ts"
-import { everyFile } from "../src/rule.ts"
 import { layerPurity } from "../src/rules/import-architecture.ts"
+import { plannedDiagnosticsOf } from "../src/testing.ts"
 import { loadWorkspace } from "../src/workspace.ts"
+import { choice, modelStub } from "./support.ts"
 
 const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)) as Effect.Effect<A, E, never>)
+  Effect.runPromise(
+    effect.pipe(Effect.provide(modelStub({ verdict: choice("forbidden", 0.95) })), Effect.provide(NodeServices.layer)) as Effect.Effect<A, E, never>,
+  )
 
 const config = {
   architecture: {
@@ -22,7 +25,7 @@ test("a layer's forbidden imports are an import-graph fact", async () => {
   const outcome = await run(
     Effect.gen(function* () {
       const workspace = yield* loadWorkspace("tests/fixtures/layers", ["."])
-      return yield* layerPurity.run(workspace, everyFile, { config })
+      return yield* plannedDiagnosticsOf(layerPurity, workspace, { config })
     }),
   )
   // `react*` catches react; the app layer declares nothing and stays free; zod
@@ -31,7 +34,7 @@ test("a layer's forbidden imports are an import-graph fact", async () => {
   expect(outcome.diagnostics[0]?.location.file).toBe("domain/impure.ts")
   expect(outcome.diagnostics[0]?.message).toContain("react")
   expect(outcome.diagnostics[0]?.help).toContain("react*")
-  expect(outcome.diagnostics[0]?.judged).toBe(false)
+  expect(outcome.diagnostics[0]?.judged).toBe(true)
 })
 
 test("a pattern without a wildcard matches only itself", () => {

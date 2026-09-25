@@ -158,8 +158,8 @@ test("both architecture rules are registered", () => {
   const ids = allRules.map((rule) => rule.id)
   expect(ids).toContain("joggle/layer-direction")
   expect(ids).toContain("joggle/import-cycle")
-  // Structural, so a run with no API key still produces them.
+  // Judged now: the edge is a fact, whether it is a violation is the question.
   for (const id of ["joggle/layer-direction", "joggle/import-cycle"]) {
-    expect(allRules.find((rule) => rule.id === id)?.judged).toBe(false)
+    expect(allRules.find((rule) => rule.id === id)?.judged).toBe(true)
   }
 })

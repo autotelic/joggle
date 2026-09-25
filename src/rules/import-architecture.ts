@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import { Decision } from "effect/unstable/ai"
 import {
   cyclesIn,
   directionViolations,
@@ -6,8 +7,20 @@ import {
   layersFrom,
   purityViolations,
 } from "../architecture.ts"
-import { defineRule, finding, inGraphScope, outcome, type Rule, type RunContext, type Scope } from "../rule.ts"
-import type { Diagnostic } from "../schema.ts"
+import { Atoms } from "../atoms.ts"
+import { verdictsOf, type Plan } from "../plans.ts"
+import {
+  finding,
+  inGraphScope,
+  marginOfAnswer,
+  outcome,
+  qualityOf,
+  type DecisionAnswers,
+  type PlannedRule,
+  type RunContext,
+  type Scope,
+} from "../rule.ts"
+import type { Diagnostic, Drop } from "../schema.ts"
 import type { ImportEdge } from "../imports.ts"
 import type { SourceFile, Workspace } from "../workspace.ts"
 
@@ -19,9 +32,7 @@ const PURITY_RULE = "joggle/layer-purity"
  * The line an import statement sits on.
  *
  * The import graph carries specifiers but not positions, and a finding with no
- * position is a finding a reader has to go looking for. The specifier is unique
- * enough to find in the file that contains it, so the position is recovered
- * rather than threaded through the parser.
+ * position is a finding a reader has to go looking for.
  */
 const lineOf = (files: ReadonlyMap<string, SourceFile>, edge: ImportEdge): { line: number; column: number } => {
   const file = files.get(edge.from)
@@ -31,10 +42,7 @@ const lineOf = (files: ReadonlyMap<string, SourceFile>, edge: ImportEdge): { lin
     const index = file.text.indexOf(needle)
     if (index === -1) continue
     const before = file.text.slice(0, index)
-    return {
-      line: before.split("\n").length,
-      column: index - before.lastIndexOf("\n"),
-    }
+    return { line: before.split("\n").length, column: index - before.lastIndexOf("\n") }
   }
   return { line: 1, column: 1 }
 }
@@ -43,93 +51,178 @@ const filesByPath = (workspace: Workspace): ReadonlyMap<string, SourceFile> =>
   new Map(workspace.files.map((file) => [file.path, file]))
 
 /**
+ * Read one verdict against its violating label.
+ *
+ * The band, not the rule: a decisive answer is a finding, a non-decisive one is
+ * recorded (`flagged: ...`), and any other label is a decline with its reason.
+ */
+const readVerdict = (
+  answer: DecisionAnswers[string] | undefined,
+  violating: string,
+  declineReason: (label: string) => string,
+): { readonly action: "report" } | { readonly action: "drop"; readonly stage: "declined" | "gated"; readonly reason: string } => {
+  if (answer === undefined || !("label" in answer)) {
+    return { action: "report" }
+  }
+  if (answer.label !== violating) {
+    return { action: "drop", stage: "declined", reason: declineReason(answer.label) }
+  }
+  const quality = qualityOf({
+    score: answer.probabilities[answer.label] ?? 0,
+    margin: marginOfAnswer(answer),
+    confidence: answer.confidence,
+  })
+  if (quality.quality !== "act") {
+    return {
+      action: "drop",
+      stage: "gated",
+      reason: quality.quality === "review" ? "flagged: " + quality.reason : quality.reason,
+    }
+  }
+  return { action: "report" }
+}
+
+/**
  * Dependencies point one way.
  *
- * Decidable from the import graph, so it needs no model, no key and no budget:
- * it runs on every repository that declares its layers, and every time.
+ * The upward edge is decidable from the import graph. Whether the layer
+ * assignment is what is wrong, or the import is a genuine mistake, is the
+ * question.
  */
-export const layerDirection = defineRule({
+export const layerDirection: PlannedRule = {
   id: LAYER_RULE,
   severity: "warn",
   description: "A module imports from a layer that sits above it.",
-  judged: false,
-  run: Effect.fn("joggle/layer-direction")(function* (
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/layer-direction")(function* (
     workspace: Workspace,
     scope: Scope,
     context: RunContext,
   ) {
     const layers = layersFrom(context.config)
     if (layers.length === 0) {
-      return outcome([], [
-        "no layers are declared in the config, so there is no direction to check -- not the same as finding none",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            "no layers are declared in the config, so there is no direction to check -- not the same as finding none",
+          ]),
+      }
     }
 
-    // Scoped like every other rule: an upward import is this run's business only
-    // when the importing file moved.
     const all = directionViolations(workspace.imports, layers)
     const violations =
       scope.changed === undefined ? all : all.filter((violation) => inGraphScope(scope, violation.from))
     const files = filesByPath(workspace)
-    const edgeAt = new Map(
-      workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.to, edge]),
-    )
+    const edgeAt = new Map(workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.to, edge]))
 
-    const diagnostics = violations.flatMap((violation): ReadonlyArray<Diagnostic> => {
+    const candidates = violations.flatMap((violation) => {
       const edge = edgeAt.get(violation.from + "\u0000" + violation.to)
-      if (edge === undefined) return []
-      return [
-        finding({
-          ruleId: LAYER_RULE,
-          severity: "warn",
-          message: `${violation.from} imports ${violation.to}, which sits in ${violation.toLayer} -- a layer above ${violation.fromLayer}.`,
-          help: `joggle.config.json declares the layers bottom-up, so ${violation.fromLayer} may not depend on ${violation.toLayer}. Move the shared piece down, or invert the dependency by passing it in.`,
-          location: { file: violation.from, ...lineOf(files, edge) },
-          identity: [LAYER_RULE, violation.from, violation.to].join("\u0000"),
-          judged: false,
-        }),
-      ]
+      return edge === undefined ? [] : [{ violation, edge }]
     })
 
-    // A file in no declared layer is not part of the architecture anyone
-    // described, so it is counted rather than guessed at.
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(candidates, (candidate) =>
+      Effect.gen(function* () {
+        const { violation, edge } = candidate
+        const id = yield* atoms.add({
+          from: violation.from,
+          to: violation.to,
+          fromLayer: violation.fromLayer,
+          toLayer: violation.toLayer,
+          specifier: edge.specifier,
+        })
+        const plan: Plan<DecisionAnswers> = {
+          ruleId: LAYER_RULE,
+          subject: violation.from + " -> " + violation.to,
+          concerns: [violation.from],
+          atoms: [id],
+          decisions: {
+            verdict: Decision.classify({
+              instructions: [
+                "`atoms[" + id + "].from` (" + violation.fromLayer + ") imports `atoms[" + id + "].to` (" + violation.toLayer + "), and the config declares " + violation.toLayer + " above " + violation.fromLayer + ", so this edge points upward.",
+                "Is that an upward dependency to break, or is the layer assignment itself what is wrong?",
+                "Answer `upward` when the dependency genuinely points the wrong way, so the shared piece should move down or be passed in.",
+                "Answer `misclassified` when the importing or imported file is in the wrong layer, so the config should change.",
+                "Answer `exception` when the upward edge is deliberate and acceptable.",
+              ].join("\n"),
+              criteria: {
+                upward: "A real upward dependency. Move the shared piece down, or invert it.",
+                misclassified: "The layer assignment is wrong, not the import.",
+                exception: "A deliberate, acceptable exception.",
+              },
+            }),
+          },
+          read: (answers) => answers,
+        }
+        return { candidate, id, plan }
+      }),
+      { concurrency: "unbounded" },
+    )
+
     const unranked = workspace.files.filter((file) => layerOf(layers, file.path) === undefined).length
     const ranked = workspace.files.length - unranked
 
-    // The counts are in the note on purpose. "0 problems" is only falsifiable if
-    // it says what it looked at: a layering where nothing matched looks exactly
-    // like a layering where everything obeyed.
-    return outcome(diagnostics, [
-      `${violations.length} upward import(s) among ${ranked} ranked file(s) in ${layers.length} declared layer(s); ${unranked} file(s) in no layer` +
-        (all.length > violations.length ? `; ${all.length - violations.length} outside the scope of this run` : ""),
-    ])
+    return {
+      plans: planned.map((value) => value.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = []
+        planned.forEach((value, index) => {
+          const { violation, edge } = value.candidate
+          const outcomeOf = readVerdict(verdicts[index]?.["verdict"], "upward", (label) =>
+            label === "misclassified" ? "the layer assignment is what is wrong" : "a deliberate exception",
+          )
+          if (outcomeOf.action === "drop") {
+            drops.push({
+              ruleId: LAYER_RULE,
+              subject: violation.from + " -> " + violation.to,
+              stage: outcomeOf.stage,
+              reason: outcomeOf.reason,
+            })
+            return
+          }
+          const verdict = verdicts[index]?.["verdict"]
+          const confidence = verdict !== undefined && "confidence" in verdict ? verdict.confidence : undefined
+          const input: Parameters<typeof finding>[0] = {
+            ruleId: LAYER_RULE,
+            severity: "warn",
+            message: violation.from + " imports " + violation.to + ", which sits in " + violation.toLayer + " -- a layer above " + violation.fromLayer + ".",
+            help: "joggle.config.json declares the layers bottom-up, so " + violation.fromLayer + " may not depend on " + violation.toLayer + ". Move the shared piece down, or invert the dependency by passing it in.",
+            location: { file: violation.from, ...lineOf(files, edge) },
+            identity: [LAYER_RULE, violation.from, violation.to].join("\u0000"),
+            judged: true,
+          }
+          diagnostics.push(confidence === undefined ? finding(input) : finding({ ...input, confidence }))
+        })
+        return outcome(diagnostics, [
+          `${violations.length} upward import(s) among ${ranked} ranked file(s) in ${layers.length} declared layer(s); ${unranked} file(s) in no layer` +
+            (all.length > violations.length ? `; ${all.length - violations.length} outside the scope of this run` : ""),
+        ], drops)
+      },
+    }
   }),
-})
+}
 
 /**
- * No module cycles.
+ * A module imports, directly or indirectly, from itself.
  *
- * Also decidable, and also free. A cycle is not a style opinion: it means two
- * modules cannot be understood, tested or loaded independently, which is the
- * one thing a layering exists to prevent.
+ * The cycle is decidable. Whether it is a real mutual dependency to break, or a
+ * false positive (a barrel, an erased type edge), is the question.
  */
-export const importCycle = defineRule({
+export const importCycle: PlannedRule = {
   id: CYCLE_RULE,
   severity: "warn",
   description: "A module imports, directly or indirectly, from itself.",
-  judged: false,
-  run: Effect.fn("joggle/import-cycle")(function* (workspace: Workspace, scope: Scope) {
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/import-cycle")(function* (workspace: Workspace, scope: Scope) {
     const cycles = cyclesIn(workspace.imports)
-    // A loop made entirely of `import type` is erased at build time, so it cannot
-    // cause the load-order problem this rule exists to catch. Named in the note
-    // rather than dropped: it is still a wart, just not one that can break.
     const runtime = cycles.filter((cycle) => cycle.runtime)
     const named = cycles.filter((cycle) => !cycle.runtime)
 
-    // A cycle is in scope only when one of its members moved, and the finding is
-    // anchored at a changed member so it points at the part of the loop the run
-    // is about. Without this, a scoped run reported every cycle in the
-    // repository while saying it had narrowed to the changed files.
     const inCycleScope = (files: ReadonlyArray<string>): boolean =>
       scope.changed === undefined || files.some((file) => inGraphScope(scope, file))
     const anchorOf = (files: ReadonlyArray<string>): string =>
@@ -143,37 +236,92 @@ export const importCycle = defineRule({
     const partlyErased = scopedNamed.length - erasedEntirely
     const outside = runtime.length - scopedRuntime.length
 
-    const diagnostics = scopedRuntime.map((cycle): Diagnostic => {
-      const first = anchorOf(cycle.files)
-      return finding({
-        ruleId: CYCLE_RULE,
-        severity: "warn",
-        message: `Import cycle: ${[...cycle.files, first].join(" -> ")}.`,
-        help: "Break the loop by moving the shared piece below both modules, or by passing the dependency in.",
-        location: { file: first, line: 1, column: 1 },
-        identity: [CYCLE_RULE, ...[...cycle.files].sort()].join("\u0000"),
-        judged: false,
-      })
-    })
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(scopedRuntime, (cycle) =>
+      Effect.gen(function* () {
+        const first = anchorOf(cycle.files)
+        const id = yield* atoms.add({ files: cycle.files, runtime: cycle.runtime, typeOnly: cycle.typeOnly })
+        const plan: Plan<DecisionAnswers> = {
+          ruleId: CYCLE_RULE,
+          subject: cycle.files.join(" -> "),
+          concerns: [...cycle.files],
+          atoms: [id],
+          decisions: {
+            verdict: Decision.classify({
+              instructions: [
+                `\`atoms[${id}].files\` is an import cycle: ${[...cycle.files, first].join(" -> ")}.`,
+                "Is that a real mutual dependency to break, or a false positive?",
+                "Answer `cycle` when the modules genuinely need each other, so the loop should be broken.",
+                "Answer `false_positive` when the cycle cannot cause the load-order problem -- a barrel, a re-export, or an edge that is erased at build time.",
+              ].join("\n"),
+              criteria: {
+                cycle: "A real loop. Move the shared piece below both, or pass it in.",
+                false_positive: "Not a real mutual dependency. Nothing to break.",
+              },
+            }),
+          },
+          read: (answers) => answers,
+        }
+        return { cycle, first, id, plan }
+      }),
+      { concurrency: "unbounded" },
+    )
 
-    return outcome(diagnostics, [
-      `${scopedRuntime.length} runtime cycle(s), ${erasedEntirely} type-only, ${partlyErased} partly erased, in ${workspace.imports.edges.length} import edge(s)` +
-        (outside > 0 ? `; ${outside} cycle(s) outside the scope of this run` : ""),
-      ...scopedNamed.map((cycle) =>
-        cycle.typeOnly
-          ? `type-only cycle, erased entirely at build time: ${cycle.files.join(" -> ")}`
-          : `cycle with an erased edge, so broken before it loads: ${cycle.files.join(" -> ")}`,
-      ),
-    ])
+    return {
+      plans: planned.map((value) => value.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = []
+        planned.forEach((value, index) => {
+          const { cycle, first } = value
+          const subject = cycle.files.join(" -> ")
+          const outcomeOf = readVerdict(verdicts[index]?.["verdict"], "cycle", () =>
+            "the cycle cannot cause a load-order problem",
+          )
+          if (outcomeOf.action === "drop") {
+            drops.push({ ruleId: CYCLE_RULE, subject, stage: outcomeOf.stage, reason: outcomeOf.reason })
+            return
+          }
+          const verdict = verdicts[index]?.["verdict"]
+          const confidence = verdict !== undefined && "confidence" in verdict ? verdict.confidence : undefined
+          const input: Parameters<typeof finding>[0] = {
+            ruleId: CYCLE_RULE,
+            severity: "warn",
+            message: `Import cycle: ${[...cycle.files, first].join(" -> ")}.`,
+            help: "Break the loop by moving the shared piece below both modules, or by passing the dependency in.",
+            location: { file: first, line: 1, column: 1 },
+            identity: [CYCLE_RULE, ...[...cycle.files].sort()].join("\u0000"),
+            judged: true,
+          }
+          diagnostics.push(confidence === undefined ? finding(input) : finding({ ...input, confidence }))
+        })
+        return outcome(
+          diagnostics,
+          [
+            `${scopedRuntime.length} runtime cycle(s), ${erasedEntirely} type-only, ${partlyErased} partly erased, in ${workspace.imports.edges.length} import edge(s)` +
+              (outside > 0 ? `; ${outside} cycle(s) outside the scope of this run` : ""),
+            ...scopedNamed.map((cycle) =>
+              cycle.typeOnly
+                ? `type-only cycle, erased entirely at build time: ${cycle.files.join(" -> ")}`
+                : `cycle with an erased edge, so broken before it loads: ${cycle.files.join(" -> ")}`,
+            ),
+          ],
+          drops,
+        )
+      },
+    }
   }),
-})
+}
 
-export const layerPurity = defineRule({
+/** A module imports something its layer forbids. */
+export const layerPurity: PlannedRule = {
   id: PURITY_RULE,
   severity: "warn",
   description: "A module imports something its layer forbids.",
-  judged: false,
-  run: Effect.fn("joggle/layer-purity")(function* (
+  judged: true,
+  onUnavailable: "report",
+  plan: Effect.fn("joggle/layer-purity")(function* (
     workspace: Workspace,
     scope: Scope,
     context: RunContext,
@@ -181,59 +329,118 @@ export const layerPurity = defineRule({
     const layers = layersFrom(context.config)
     const constrained = layers.filter((layer) => layer.forbid.length > 0)
     if (constrained.length === 0) {
-      return outcome([], [
-        "no layer declares a forbidden import, so there was nothing to check -- not the same as finding none",
-      ])
+      return {
+        plans: [],
+        read: () =>
+          outcome([], [
+            "no layer declares a forbidden import, so there was nothing to check -- not the same as finding none",
+          ]),
+      }
     }
 
     const all = purityViolations(workspace.imports, layers)
     const violations =
       scope.changed === undefined ? all : all.filter((violation) => inGraphScope(scope, violation.from))
     const files = filesByPath(workspace)
-    const edgeAt = new Map(
-      workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.specifier, edge]),
-    )
+    const edgeAt = new Map(workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.specifier, edge]))
 
-    const diagnostics = violations.flatMap((violation): ReadonlyArray<Diagnostic> => {
+    const candidates = violations.flatMap((violation) => {
       const edge = edgeAt.get(violation.from + "\u0000" + violation.specifier)
-      if (edge === undefined) return []
-      return [
-        finding({
-          ruleId: PURITY_RULE,
-          severity: "warn",
-          message:
-            violation.from +
-            " imports " +
-            violation.specifier +
-            ", which the " +
-            violation.layer +
-            " layer forbids.",
-          help:
-            "The " +
-            violation.layer +
-            " layer declares " +
-            violation.pattern +
-            " forbidden in joggle.config.json, so nothing inside it may reach for " +
-            violation.specifier +
-            ". Take what this needs as an argument, or move the file out of the layer.",
-          location: { file: violation.from, ...lineOf(files, edge) },
-          identity: [PURITY_RULE, violation.from, violation.specifier].join("\u0000"),
-          judged: false,
-        }),
-      ]
+      return edge === undefined ? [] : [{ violation, edge }]
     })
 
-    return outcome(diagnostics, [
-      violations.length +
-        " forbidden import(s) across " +
-        constrained.length +
-        " constrained layer(s)" +
-        (all.length > violations.length ? "; " + (all.length - violations.length) + " outside the scope of this run" : ""),
-    ])
-  }),
-})
+    const atoms = yield* Atoms
+    const planned = yield* Effect.forEach(candidates, (candidate) =>
+      Effect.gen(function* () {
+        const { violation } = candidate
+        const id = yield* atoms.add({
+          from: violation.from,
+          specifier: violation.specifier,
+          layer: violation.layer,
+          pattern: violation.pattern,
+        })
+        const plan: Plan<DecisionAnswers> = {
+          ruleId: PURITY_RULE,
+          subject: violation.from + " -> " + violation.specifier,
+          concerns: [violation.from],
+          atoms: [id],
+          decisions: {
+            verdict: Decision.classify({
+              instructions: [
+                "The " + violation.layer + " layer declares `atoms[" + id + "].pattern` forbidden, and `atoms[" + id + "].from` imports `atoms[" + id + "].specifier`, which matches it.",
+                "Is that a forbidden dependency, or a pattern that matched the wrong thing?",
+                "Answer `forbidden` when the import genuinely reaches for what the layer forbids.",
+                "Answer `false_match` when the pattern matched something the layer does not actually forbid.",
+              ].join("\n"),
+              criteria: {
+                forbidden: "A real forbidden dependency. Take it as an argument, or move the file out of the layer.",
+                false_match: "The pattern matched the wrong thing.",
+              },
+            }),
+          },
+          read: (answers) => answers,
+        }
+        return { candidate, id, plan }
+      }),
+      { concurrency: "unbounded" },
+    )
 
-export const importArchitectureRules: ReadonlyArray<Rule> = [
+    return {
+      plans: planned.map((value) => value.plan),
+      read: (answers) => {
+        const verdicts = verdictsOf<DecisionAnswers>(answers)
+        const diagnostics: Array<Diagnostic> = []
+        const drops: Array<Drop> = []
+        planned.forEach((value, index) => {
+          const { violation, edge } = value.candidate
+          const subject = violation.from + " -> " + violation.specifier
+          const outcomeOf = readVerdict(verdicts[index]?.["verdict"], "forbidden", () =>
+            "the pattern matched something the layer does not forbid",
+          )
+          if (outcomeOf.action === "drop") {
+            drops.push({ ruleId: PURITY_RULE, subject, stage: outcomeOf.stage, reason: outcomeOf.reason })
+            return
+          }
+          const verdict = verdicts[index]?.["verdict"]
+          const confidence = verdict !== undefined && "confidence" in verdict ? verdict.confidence : undefined
+          const input: Parameters<typeof finding>[0] = {
+            ruleId: PURITY_RULE,
+            severity: "warn",
+            message:
+              violation.from + " imports " + violation.specifier + ", which the " + violation.layer + " layer forbids.",
+            help:
+              "The " +
+              violation.layer +
+              " layer declares " +
+              violation.pattern +
+              " forbidden in joggle.config.json, so nothing inside it may reach for " +
+              violation.specifier +
+              ". Take what this needs as an argument, or move the file out of the layer.",
+            location: { file: violation.from, ...lineOf(files, edge) },
+            identity: [PURITY_RULE, violation.from, violation.specifier].join("\u0000"),
+            judged: true,
+          }
+          diagnostics.push(confidence === undefined ? finding(input) : finding({ ...input, confidence }))
+        })
+        return outcome(
+          diagnostics,
+          [
+            violations.length +
+              " forbidden import(s) across " +
+              constrained.length +
+              " constrained layer(s)" +
+              (all.length > violations.length
+                ? "; " + String(all.length - violations.length) + " outside the scope of this run"
+                : ""),
+          ],
+          drops,
+        )
+      },
+    }
+  }),
+}
+
+export const importArchitectureRules: ReadonlyArray<PlannedRule> = [
   layerDirection,
   layerPurity,
   importCycle,

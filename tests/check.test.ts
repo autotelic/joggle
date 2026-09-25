@@ -37,11 +37,9 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
     // A breach withholds every JUDGED rule, because their evidence would cross
     // repositories. The structural rules persist nothing, so they still run.
     // 11 -> 10 when `reimplemented-primitive` became judged, -> 11 when
-    // `nullability-drift` itself became judged, along with object-shape,
-    // name-the-primitive, compose-types, call-pattern, duplicate-call-run,
-    // field-type-drift and one-concept-one-type: judged rules are withheld, the
-    // deterministic ones (the import rules) still run.
-    expect(report.rules).toBe(3)
+    // every built-in rule is judged now (the import rules were the last three),
+    // so a breach runs none of them.
+    expect(report.rules).toBe(0)
     expect(report.diagnostics.every((entry) => !entry.judged)).toBe(true)
     expect(report.skipped.map((skip) => skip.ruleId).sort()).toEqual([
       "joggle/call-pattern",
@@ -54,7 +52,10 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
       "joggle/duplicate-meaning",
       "joggle/field-type-drift",
       "joggle/hoist-to-domain",
+      "joggle/import-cycle",
       "joggle/language-drift",
+      "joggle/layer-direction",
+      "joggle/layer-purity",
       "joggle/module-direction",
       "joggle/name-as-address",
       "joggle/name-the-primitive",
