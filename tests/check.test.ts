@@ -128,6 +128,41 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
   }),
 )
 
+it.effect("a run-wide count keeps unjudged candidates out of the report", () =>
+  Effect.gen(function* () {
+    const run = (config: object) =>
+      runCheck({
+        cwd: "tests/fixtures/unaccounted-drop",
+        paths: ["src"],
+        rules: ["joggle/unaccounted-drop"],
+        typecheck: false,
+        types: "off",
+        useTsgo: false,
+        cacheDirExplicit: true,
+        cacheDir: "/tmp/joggle-check-test",
+        replayUnchanged: false,
+        changed: false,
+        baselinePath: undefined,
+        updateBaselinePath: undefined,
+        config,
+      }).pipe(
+        Effect.provide(decisionLayer({ cacheDir, offline: false, apiKey: Option.none() })),
+        Effect.provide(tsgoStub),
+        Effect.provide(builtIn),
+        Effect.provide(nodeLayer),
+      )
+
+    // The default prints the candidate, marked unverified.
+    const reported = yield* run({})
+    expect(reported.diagnostics.map((entry) => entry.judged)).toEqual([false])
+
+    // `count` keeps it out and says how many there were.
+    const counted = yield* run({ unavailable: "count" })
+    expect(counted.diagnostics).toEqual([])
+    expect(counted.notes.some((note) => note.reason.includes("candidate(s) were not judged"))).toBe(true)
+  }),
+)
+
 it.effect("a rule filter runs exactly one rule and skips nothing", () =>
   Effect.gen(function* () {
     const report = yield* runCheck({

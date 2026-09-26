@@ -79,14 +79,19 @@ export const inferredOverRecorded: PlannedRule = {
       for (const unit of file.units) {
         if (unit.kind !== "function") continue
         if (unit.text.length > policy.evidence.maxSourceChars) continue
-        // A comparison, and a return: the unit computes a boolean and hands it
-        // back. Both are syntax.
-        if (!file.facts.comparisons.some((entry) => entry.start >= unit.start && entry.end <= unit.end)) {
-          continue
-        }
-        if (!file.facts.returns.some((entry) => entry.start >= unit.start && entry.end <= unit.end)) {
-          continue
-        }
+        // The comparison must be the value the unit RETURNS. A function that
+        // merely contains a comparison and then hands back a list or a number
+        // derives no boolean; `scriptsFrom`, `readIgnoreFile` and
+        // `timeoutMilliseconds` each did, and each was a false candidate.
+        const returnsTheComparison = file.facts.returns.some(
+          (returned) =>
+            returned.start >= unit.start &&
+            returned.end <= unit.end &&
+            file.facts.comparisons.some(
+              (comparison) => comparison.start >= returned.start && comparison.end <= returned.end,
+            ),
+        )
+        if (!returnsTheComparison) continue
         for (const type of new Set(unit.typeRefs)) {
           const fields = booleanFields.get(type)
           if (fields === undefined) continue

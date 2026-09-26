@@ -5,7 +5,7 @@ import { Atoms, layer as atomsLayer } from "./atoms.ts"
 import { unavailableFor } from "./config.ts"
 import { decisionError, isUnreachable } from "./decision.ts"
 import { answerPlans, PlanAnswers, type PlanAnswerStore } from "./plans.ts"
-import { everyFile, type PlannedRule, type Rule, type RuleOutcome, type RunContext } from "./rule.ts"
+import { countUnjudged, everyFile, type PlannedRule, type Rule, type RuleOutcome, type RunContext } from "./rule.ts"
 import type { Diagnostic } from "./schema.ts"
 import type { Workspace } from "./workspace.ts"
 
@@ -102,14 +102,18 @@ export const plannedDiagnosticsOf = (
   Effect.gen(function* () {
     const planned = yield* rule.plan(workspace, everyFile, context)
     const unavailable = unavailableFor(context.config, rule.id, rule.onUnavailable)
+    let unreachable = false
     const answers = yield* answerPlans(planned.plans).pipe(
-      Effect.catch((error) =>
-        unavailable === "report" || !isUnreachable(error)
-          ? Effect.succeed(planned.plans.map(() => undefined))
-          : Effect.fail(error),
-      ),
+      Effect.catch((error) => {
+        if (unavailable === "propagate" && isUnreachable(error)) return Effect.fail(error)
+        unreachable = isUnreachable(error)
+        return Effect.succeed(planned.plans.map(() => undefined))
+      }),
     )
-    return planned.read(answers)
+    const result = planned.read(answers)
+    return unreachable && unavailable === "count"
+      ? countUnjudged(result, "no judgement was available")
+      : result
   })
 
 /** A model that answers every decision from one table. */

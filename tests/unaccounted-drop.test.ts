@@ -52,6 +52,48 @@ it.effect("a repository can make an unavailable rule step aside", () =>
   ),
 )
 
+it.effect("a repository can count unjudged candidates instead of printing them", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(unaccountedDrop, workspace, {
+      config: { unavailable: "count" },
+    })
+    expect(result.diagnostics).toEqual([])
+    expect(result.notes.some((note) => note.includes("candidate(s) were not judged"))).toBe(true)
+  }).pipe(
+    Effect.provide(modelFailing("the model was unreachable")),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
+it.effect("a function that returns a boolean is not a data funnel when types ran", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(unaccountedDrop, workspace, {
+      config: {},
+      nodeTypes: (file) => (file.endsWith("rows.ts") ? "boolean" : undefined),
+    })
+    expect(result.diagnostics).toEqual([])
+  }).pipe(
+    Effect.provide(modelStub({ verdict: choice("unaccounted", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
+it.effect("a function that returns a collection stays a candidate when types ran", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(unaccountedDrop, workspace, {
+      config: {},
+      nodeTypes: (file) => (file.endsWith("rows.ts") ? "ReadonlyArray<Row>" : undefined),
+    })
+    expect(result.diagnostics.length).toBe(1)
+  }).pipe(
+    Effect.provide(modelStub({ verdict: choice("unaccounted", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
 it.effect("a skip the caller does not need to see is declined", () =>
   Effect.gen(function* () {
     const workspace = yield* fixture()

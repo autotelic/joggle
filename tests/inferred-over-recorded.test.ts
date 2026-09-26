@@ -26,6 +26,18 @@ it.effect("a derived boolean beside a recorded one is a candidate", () =>
   ),
 )
 
+it.effect("a function that returns a count, not the boolean, is not a candidate", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(inferredOverRecorded, workspace)
+    const messages = result.diagnostics.map((entry) => entry.message).join("\n")
+    expect(messages).not.toContain("countDayRate")
+  }).pipe(
+    Effect.provide(modelStub({ verdict: choice("inferred", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
 it.effect("a unit that names no such type is not a candidate", () =>
   Effect.gen(function* () {
     const workspace = yield* loadWorkspace("tests/fixtures/node-types", ["src"])

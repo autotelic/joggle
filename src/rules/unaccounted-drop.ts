@@ -11,8 +11,10 @@ import {
   qualityOf,
   type DecisionAnswers,
   type PlannedRule,
+  type RunContext,
   type Scope,
 } from "../rule.ts"
+import { mayYield, returnTypesOf } from "../result.ts"
 import { verdictOf } from "../verdict.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { Unit, Workspace } from "../workspace.ts"
@@ -38,6 +40,13 @@ const RULE_ID = "joggle/unaccounted-drop"
 // question -- is this a boundary, does it account? -- in code, coupled to one
 // repository's naming (docs/rule-coupling.md). The skip is syntax, the boundary is
 // the export, and whether the drop needs accounting is asked.
+//
+// A third fact narrows the candidates, when the type layer ran: what the function
+// HANDS BACK. A path that returns a flag or nothing does not shorten the data its
+// caller reads, whatever `continue` it contains. The list of non-data returns is a
+// declared convention in policy, not a vocabulary in this rule.
+const nonDataReturns = new Set<string>(policy.unaccountedDrop.nonDataReturns)
+
 export const unaccountedDrop: PlannedRule = {
   id: RULE_ID,
   severity: "warn",
@@ -49,7 +58,7 @@ export const unaccountedDrop: PlannedRule = {
     silent_drop_help:
       "Return what was left out -- a count, or the items -- and let the caller surface it, the way joggle's own funnel records every bound. A path that silently shortens its input produces a total that is wrong in a way nobody can see.{{unverified}}",
   }),
-  plan: Effect.fn("joggle/unaccounted-drop")(function* (workspace: Workspace, scope: Scope) {
+  plan: Effect.fn("joggle/unaccounted-drop")(function* (workspace: Workspace, scope: Scope, context: RunContext) {
     const report = reporter(unaccountedDrop, locator(workspace))
     const candidates: Array<Unit> = []
     for (const unit of workspace.units) {
@@ -60,10 +69,12 @@ export const unaccountedDrop: PlannedRule = {
       if (unit.test) continue
       if (unit.text.length > policy.evidence.maxSourceChars) continue
       if (scope.changed !== undefined && !inScope(scope, unit.file)) continue
-      const skipsInside = workspace.files
-        .find((file) => file.path === unit.file)
-        ?.facts.skips.some((skip) => skip.start >= unit.start && skip.end <= unit.end)
-      if (skipsInside !== true) continue
+      const source = workspace.files.find((file) => file.path === unit.file)
+      if (source === undefined) continue
+      if (!source.facts.skips.some((skip) => skip.start >= unit.start && skip.end <= unit.end)) continue
+      // A `continue` in a function that returns a flag or nothing is not a funnel
+      // that shortened the caller's data. Only a path that hands data back can be.
+      if (!mayYield(returnTypesOf(unit, source, context.nodeTypes), nonDataReturns)) continue
       candidates.push(unit)
     }
 

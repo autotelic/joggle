@@ -22,6 +22,7 @@ import { Rules } from "./rules/index.ts"
 import type { Loaded } from "./plugins.ts"
 import { funnelNotes, rankDiagnostics, type Report, type Skipped } from "./report.ts"
 import {
+  countUnjudged,
   everyFile,
   finding,
   inGraphScope,
@@ -664,14 +665,13 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       const asked = askedPerRule[index] ?? []
       const start = offset
       offset += asked.length
+      // The run's answer for this rule: the rule's own setting, the run's
+      // `unavailable`, or the rule's declaration. `propagate` steps the rule
+      // aside; `count` keeps it but counts the candidates no judgement reached.
+      const unavailable = unavailableFor(options.config, rule.id, rule.onUnavailable)
       // No judgement and a rule that cannot stand without one: the engine reports
       // it as skipped. A rule with no questions is IDLE, not skipped.
-      if (
-        asked.length > 0 &&
-        failure !== undefined &&
-        isUnreachable(failure) &&
-        unavailableFor(options.config, rule.id, rule.onUnavailable) === "propagate"
-      ) {
+      if (asked.length > 0 && failure !== undefined && isUnreachable(failure) && unavailable === "propagate") {
         plannedOutcomes.push({ rule, result: Result.fail(failure), ms })
         return
       }
@@ -680,7 +680,10 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       const askedValues = values.slice(start, start + asked.length)
       let cursor = 0
       const aligned = planned.plans.map((plan) => (inScopePlan(plan) ? askedValues[cursor++] : undefined))
-      const result = planned.read(aligned)
+      let result = planned.read(aligned)
+      if (asked.length > 0 && failure !== undefined && isUnreachable(failure) && unavailable === "count") {
+        result = countUnjudged(result, reasonOf(failure))
+      }
       // An out-of-scope plan reads as no answer to a rule that never had to know
       // the scope. That is the engine's bookkeeping, not a finding, so the drops
       // it produced are removed. A plan the budget skipped is a budget drop, not

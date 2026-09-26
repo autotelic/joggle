@@ -52,6 +52,16 @@ describe("a repository's answers", () => {
     expect(unavailableFor({}, "joggle/naming-drift", "propagate")).toBe("propagate")
   })
 
+  test("a run-wide answer for an unavailable model", () => {
+    // The run's answer applies to a rule whose own setting is silent.
+    expect(unavailableFor({ unavailable: "count" }, "joggle/naming-drift", "report")).toBe("count")
+    // The rule's own answer wins over the run's.
+    expect(unavailableFor(config, "joggle/unaccounted-drop", "report")).toBe("propagate")
+    expect(
+      unavailableFor({ ...config, unavailable: "count" }, "joggle/naming-drift", "report"),
+    ).toBe("count")
+  })
+
   test("an empty config changes nothing", () => {
     expect(severityFor({}, "joggle/duplicate-meaning", "warn")).toBe("warn")
     expect(isIgnored({}, "joggle/duplicate-meaning", "src/a.ts")).toBe(false)

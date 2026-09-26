@@ -53,6 +53,26 @@ export const outcome = (
 ): RuleOutcome => ({ diagnostics, notes, drops })
 
 /**
+ * Turn a rule's unjudged findings into a count.
+ *
+ * A repository without a model key can ask for `count`: the rule still ran and
+ * the candidates are real, but printing each one as an unverified warning is
+ * noise it does not want. The unverified findings become one note, so the funnel
+ * still says how many there were, and the judged findings (there are none when
+ * the whole run had no answer) stay. This is the repository's answer to "do not
+ * print the candidates", not a claim that the rule found nothing.
+ */
+export const countUnjudged = (result: RuleOutcome, reason: string): RuleOutcome => {
+  const unverified = result.diagnostics.filter((entry) => !entry.judged)
+  if (unverified.length === 0) return result
+  return {
+    diagnostics: result.diagnostics.filter((entry) => entry.judged),
+    notes: [...result.notes, unverified.length + " candidate(s) were not judged: " + reason],
+    drops: result.drops,
+  }
+}
+
+/**
  * How much of the workspace this run has to look at.
  *
  * Scoping is only sound for "what did this change introduce?". A new finding

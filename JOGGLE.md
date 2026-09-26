@@ -224,9 +224,21 @@ misses every cached verdict. Successful judgements are written to
 change a question's wording, and every cached answer for it is invalidated at
 once instead of silently replayed against newer questions.
 
-When the judge is unavailable a rule is reported as skipped, unless its answers
-are already cached and `--offline` replays them. A missing key degrades the gate;
-it does not disable it.
+When the judge is unavailable, the rule's own `onUnavailable` decides, and a
+repository may override it for the whole run with `unavailable`, or per rule with
+`onUnavailable`:
+
+| Answer | What happens |
+| --- | --- |
+| `report` (the default) | the rule still reports; each candidate is an unverified finding |
+| `propagate` | the rule steps aside and the engine reports it as skipped |
+| `count` | the candidates are counted in one note and not printed |
+
+A repository that runs without a key in CI sets `"unavailable": "count"` once and
+the whole judged layer becomes a count; a developer's machine with a key is
+unaffected. Answers already cached and replayed with `--offline` are judgements,
+so none of this applies to them. A missing key degrades the gate; it does not
+disable it.
 
 ### Where the key goes
 

@@ -14,9 +14,10 @@ import {
   type RunContext,
   type Scope,
 } from "../rule.ts"
+import { mayYield, returnTypesOf } from "../result.ts"
 import { verdictOf } from "../verdict.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import type { SourceFile, StringSite, Unit, Workspace } from "../workspace.ts"
+import type { StringSite, Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/single-path"
 
@@ -61,27 +62,6 @@ type Helper = {
  * one.
  */
 const nonStringReturns = new Set<string>(policy.singlePath.nonStringReturns)
-
-/**
- * Whether a declaration can ever hand back a string.
- *
- * Without the type layer, or without a recorded `return`, the declaration is
- * unknown and stays. That is the conservative direction: a filter that loses a
- * real path is worse than a candidate that costs a judgement.
- */
-const canYieldString = (
-  unit: Unit,
-  file: SourceFile | undefined,
-  nodeTypes: RunContext["nodeTypes"],
-): boolean => {
-  if (nodeTypes === undefined || file === undefined) return true
-  const returns = file.facts.returns.filter((site) => site.start >= unit.start && site.end <= unit.end)
-  if (returns.length === 0) return true
-  return returns.some((site) => {
-    const type = nodeTypes(unit.file, site.start)
-    return type === undefined || !nonStringReturns.has(type)
-  })
-}
 
 /** How many files call each declaration, from the resolved call graph. */
 const callersOf = (workspace: Workspace): ReadonlyMap<string, ReadonlySet<string>> => {
@@ -131,7 +111,7 @@ export const singlePath: PlannedRule = {
         if (callers === undefined || callers.size < 2) continue
         const declaration = byIdentity.get(identity)
         if (declaration === undefined) continue
-        if (!canYieldString(declaration, filesByPath.get(declaration.file), context.nodeTypes)) continue
+        if (!mayYield(returnTypesOf(declaration, filesByPath.get(declaration.file), context.nodeTypes), nonStringReturns)) continue
         helpers.push({
           name: declaration.name,
           file: declaration.file,

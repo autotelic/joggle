@@ -617,6 +617,20 @@ export const policy = {
     nonStringReturns: ["void", "undefined", "null", "number", "boolean", "bigint", "symbol", "never"],
   },
 
+  /**
+   * A shared path that discards items and does not say so.
+   *
+   * `nonDataReturns` is a DECLARED convention: the scalar types that cannot carry
+   * the items a caller reads. A function that returns only a flag or nothing does
+   * not shorten the caller's data, whatever `continue` it contains -- the review
+   * case returns a list, and the false candidate in this repository answers one
+   * boolean question. The filter only ever drops a declaration whose every
+   * recorded return is one of these; an array, a number or an unknown type stays.
+   */
+  unaccountedDrop: {
+    nonDataReturns: ["void", "undefined", "null", "boolean", "bigint", "symbol", "never"],
+  },
+
   /** Files and directories the workspace scan never enters. */
   ignoredDirectories: [
     "node_modules",
