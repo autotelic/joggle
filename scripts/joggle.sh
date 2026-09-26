@@ -7,8 +7,9 @@
 #
 # It runs this checkout's build, and supplies the TypeSafe key when the
 # environment does not already have one and the run needs the model. Sources,
-# in order: the environment, a gitignored `.env.local` beside this script, then
-# doppler (fetched from the joggle root, with HOME restored).
+# in order: the environment, a gitignored `.env.local`, a gitignored `.env`
+# (both beside this script), then doppler (fetched from the joggle root, with
+# HOME restored).
 set -eu
 
 # Resolve the symlink chain to the real script, then its repository.
@@ -64,6 +65,9 @@ esac
 key=${TYPESAFE_API_KEY:-}
 if [ "$needs_key" = true ] && [ -z "$key" ]; then
   key=$(env_value "$root/.env.local" TYPESAFE_API_KEY) || key=""
+fi
+if [ "$needs_key" = true ] && [ -z "$key" ]; then
+  key=$(env_value "$root/.env" TYPESAFE_API_KEY) || key=""
 fi
 
 if [ "$needs_key" = true ] && [ -z "$key" ] && command -v doppler >/dev/null 2>&1; then
