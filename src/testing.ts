@@ -2,6 +2,7 @@ import { Effect, Layer, Option } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { DecisionModel } from "effect/unstable/ai"
 import { Atoms, layer as atomsLayer } from "./atoms.ts"
+import { unavailableFor } from "./config.ts"
 import { decisionError, isUnreachable } from "./decision.ts"
 import { answerPlans, PlanAnswers, type PlanAnswerStore } from "./plans.ts"
 import { everyFile, type PlannedRule, type Rule, type RuleOutcome, type RunContext } from "./rule.ts"
@@ -100,9 +101,10 @@ export const plannedDiagnosticsOf = (
 > =>
   Effect.gen(function* () {
     const planned = yield* rule.plan(workspace, everyFile, context)
+    const unavailable = unavailableFor(context.config, rule.id, rule.onUnavailable)
     const answers = yield* answerPlans(planned.plans).pipe(
       Effect.catch((error) =>
-        rule.onUnavailable === "report" || !isUnreachable(error)
+        unavailable === "report" || !isUnreachable(error)
           ? Effect.succeed(planned.plans.map(() => undefined))
           : Effect.fail(error),
       ),

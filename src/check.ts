@@ -31,7 +31,7 @@ import {
   type RuleOutcome,
   type Scope,
 } from "./rule.ts"
-import { appliesAt, isEnabled, isIgnored, severityFor, type JoggleConfig } from "./config.ts"
+import { appliesAt, isEnabled, isIgnored, severityFor, unavailableFor, type JoggleConfig } from "./config.ts"
 import {
   StoredRun,
   WorkspaceError,
@@ -666,7 +666,12 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       offset += asked.length
       // No judgement and a rule that cannot stand without one: the engine reports
       // it as skipped. A rule with no questions is IDLE, not skipped.
-      if (asked.length > 0 && failure !== undefined && isUnreachable(failure) && rule.onUnavailable === "propagate") {
+      if (
+        asked.length > 0 &&
+        failure !== undefined &&
+        isUnreachable(failure) &&
+        unavailableFor(options.config, rule.id, rule.onUnavailable) === "propagate"
+      ) {
         plannedOutcomes.push({ rule, result: Result.fail(failure), ms })
         return
       }

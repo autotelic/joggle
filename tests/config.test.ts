@@ -1,10 +1,11 @@
 import { describe, expect, test } from "vitest"
-import { isEnabled, isIgnored, severityFor, type JoggleConfig } from "../src/config.ts"
+import { isEnabled, isIgnored, severityFor, unavailableFor, type JoggleConfig } from "../src/config.ts"
 
 const config: JoggleConfig = {
   rules: {
     "joggle/duplicate-meaning": "off",
     "joggle/bundle-dot-notation": "error",
+    "joggle/unaccounted-drop": { severity: "warn", onUnavailable: "propagate" },
   },
   ignore: [
     { rule: "joggle/bundle-*", path: "services/ui/app/routes/legacy/**", reason: "being deleted" },
@@ -42,6 +43,13 @@ describe("a repository's answers", () => {
 
   test("except every rule at a path when no rule is named", () => {
     expect(isIgnored(config, "joggle/anything", "app/components/a.stories.tsx")).toBe(true)
+  })
+
+  test("choose what a rule does when no judgement reaches it", () => {
+    expect(unavailableFor(config, "joggle/unaccounted-drop", "report")).toBe("propagate")
+    // A rule the config does not mention keeps its own declaration.
+    expect(unavailableFor(config, "joggle/naming-drift", "report")).toBe("report")
+    expect(unavailableFor({}, "joggle/naming-drift", "propagate")).toBe("propagate")
   })
 
   test("an empty config changes nothing", () => {

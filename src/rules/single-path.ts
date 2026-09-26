@@ -11,11 +11,12 @@ import {
   qualityOf,
   type DecisionAnswers,
   type PlannedRule,
+  type RunContext,
   type Scope,
 } from "../rule.ts"
 import { verdictOf } from "../verdict.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import type { StringSite, Unit, Workspace } from "../workspace.ts"
+import type { SourceFile, StringSite, Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/single-path"
 
@@ -36,10 +37,50 @@ const RULE_ID = "joggle/single-path"
 // source and kept a list of formatter names. That decided the question Jev is
 // for, and it was coupled to one repository's naming (docs/rule-coupling.md).
 // The site is syntax, the helpers are the graph, and what it MEANS is asked.
+//
+// A third fact narrows the helpers, when the type layer ran: the checker's type
+// at a helper's return. A helper that returns only `void`, `number` or another
+// non-string scalar cannot be the single string path, so it is not offered. The
+// filter never drops a helper whose return type is unknown.
 type Helper = {
   readonly name: string
   readonly file: string
   readonly source: string
+}
+
+/**
+ * Return types that cannot produce a string, from policy.
+ *
+ * The list is a DECLARED convention, not a fact about one repository, so it
+ * lives in `policy.singlePath` where it is reviewable and overridable -- the same
+ * place `temporalCoupling.pairs` lives. The node-type layer answers the checker's
+ * type at a return expression's argument; a helper whose every recorded return is
+ * one of these provably cannot be the single path for a string, so it is not a
+ * candidate. `string`, a union and `Promise<string>` all keep the helper: the
+ * filter must never lose a real path, only the paths that provably cannot build
+ * one.
+ */
+const nonStringReturns = new Set<string>(policy.singlePath.nonStringReturns)
+
+/**
+ * Whether a declaration can ever hand back a string.
+ *
+ * Without the type layer, or without a recorded `return`, the declaration is
+ * unknown and stays. That is the conservative direction: a filter that loses a
+ * real path is worse than a candidate that costs a judgement.
+ */
+const canYieldString = (
+  unit: Unit,
+  file: SourceFile | undefined,
+  nodeTypes: RunContext["nodeTypes"],
+): boolean => {
+  if (nodeTypes === undefined || file === undefined) return true
+  const returns = file.facts.returns.filter((site) => site.start >= unit.start && site.end <= unit.end)
+  if (returns.length === 0) return true
+  return returns.some((site) => {
+    const type = nodeTypes(unit.file, site.start)
+    return type === undefined || !nonStringReturns.has(type)
+  })
 }
 
 /** How many files call each declaration, from the resolved call graph. */
@@ -68,12 +109,13 @@ export const singlePath: PlannedRule = {
     inline_derivation_help:
       "Call the helper instead of building the string here, if it produces the same value. Two spellings of one display value drift: the second rounds differently, keeps a sign on a zero, or uses another locale, and the difference is invisible until two screens are compared.{{unverified}}",
   }),
-  plan: Effect.fn("joggle/single-path")(function* (workspace: Workspace, scope: Scope) {
+  plan: Effect.fn("joggle/single-path")(function* (workspace: Workspace, scope: Scope, context: RunContext) {
     const report = reporter(singlePath, locator(workspace))
     const callerFiles = callersOf(workspace)
     const byIdentity = new Map<string, Unit>()
     for (const unit of workspace.units) byIdentity.set(unit.file + "#" + unit.name, unit)
     const textOf = new Map(workspace.files.map((file) => [file.path, file.text]))
+    const filesByPath = new Map(workspace.files.map((file) => [file.path, file]))
 
     const candidates: Array<{ unit: Unit; file: string; site: StringSite; helpers: ReadonlyArray<Helper> }> = []
     for (const file of workspace.files) {
@@ -89,6 +131,7 @@ export const singlePath: PlannedRule = {
         if (callers === undefined || callers.size < 2) continue
         const declaration = byIdentity.get(identity)
         if (declaration === undefined) continue
+        if (!canYieldString(declaration, filesByPath.get(declaration.file), context.nodeTypes)) continue
         helpers.push({
           name: declaration.name,
           file: declaration.file,

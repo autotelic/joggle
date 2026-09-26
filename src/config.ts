@@ -46,6 +46,16 @@ export const JoggleConfig = Schema.Struct({
           severity: Schema.Literals(["error", "warn", "info", "off"]),
           /** Globs, relative to the analysed root. Absent means everywhere. */
           paths: Schema.optionalKey(Schema.Array(Schema.String)),
+          /**
+           * What the rule does when no judgement reaches it.
+           *
+           * A rule declares this, and the declaration is right for a developer
+           * with a model key. A repository that runs joggle in CI without one
+           * may disagree: `propagate` steps the rule aside instead of printing
+           * its unjudged candidates, so the run stays deterministic. Absent
+           * means the rule's own declaration stands.
+           */
+          onUnavailable: Schema.optionalKey(Schema.Literals(["report", "propagate"])),
         }),
       ]),
     ),
@@ -171,14 +181,15 @@ export const isIgnored = (
 export interface RuleSetting {
   readonly severity: Severity | "off"
   readonly paths: ReadonlyArray<string> | undefined
+  readonly onUnavailable: "report" | "propagate" | undefined
 }
 
 const settingFor = (config: JoggleConfig, ruleId: string): RuleSetting | undefined => {
   const configured = config.rules?.[ruleId]
   if (configured === undefined) return undefined
   return typeof configured === "string"
-    ? { severity: configured, paths: undefined }
-    : { severity: configured.severity, paths: configured.paths }
+    ? { severity: configured, paths: undefined, onUnavailable: undefined }
+    : { severity: configured.severity, paths: configured.paths, onUnavailable: configured.onUnavailable }
 }
 
 /** The severity to use for a rule: the config's, or the rule's own. */
@@ -187,6 +198,20 @@ export const severityFor = (
   ruleId: string,
   fallback: Severity,
 ): Severity | "off" => settingFor(config, ruleId)?.severity ?? fallback
+
+/**
+ * What a rule does when no judgement reaches it: the config's answer, or the
+ * rule's own.
+ *
+ * A repository without a model key can now say "step aside" for the rules whose
+ * unjudged candidates it does not want, while a developer's machine keeps the
+ * rule's own declaration.
+ */
+export const unavailableFor = (
+  config: JoggleConfig,
+  ruleId: string,
+  fallback: "report" | "propagate",
+): "report" | "propagate" => settingFor(config, ruleId)?.onUnavailable ?? fallback
 
 /**
  * Whether a rule's configuration lets it speak about this file.

@@ -26,6 +26,37 @@ it.effect("a string built beside a helper the file already calls is a finding", 
   ),
 )
 
+it.effect("a helper whose every return is a number is not the string path", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(singlePath, workspace, {
+      config: {},
+      // The checker answers the type at a return expression. This stub says the
+      // helper returns a number, so it cannot be the path for a string.
+      nodeTypes: (file) => (file.endsWith("money.ts") ? "number" : undefined),
+    })
+    expect(result.diagnostics).toEqual([])
+  }).pipe(
+    Effect.provide(modelStub({ verdict: choice("reimplements", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
+it.effect("a helper that returns a string stays a candidate when types ran", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(singlePath, workspace, {
+      config: {},
+      nodeTypes: (file) => (file.endsWith("money.ts") ? "string" : undefined),
+    })
+    expect(result.diagnostics.length).toBeGreaterThan(0)
+    expect(result.diagnostics[0]?.message).toContain("formatDollar")
+  }).pipe(
+    Effect.provide(modelStub({ verdict: choice("reimplements", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
 it.effect("a local case no helper covers is declined", () =>
   Effect.gen(function* () {
     const workspace = yield* fixture()

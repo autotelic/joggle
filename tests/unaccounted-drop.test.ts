@@ -4,7 +4,7 @@ import { NodeServices } from "@effect/platform-node"
 import { unaccountedDrop } from "../src/rules/unaccounted-drop.ts"
 import { plannedDiagnosticsOf } from "../src/testing.ts"
 import { loadWorkspace } from "../src/workspace.ts"
-import { choice, modelStub } from "./support.ts"
+import { choice, modelFailing, modelStub } from "./support.ts"
 
 /**
  * Two facts: an exported function, and a `continue` inside it. Nothing decides
@@ -22,6 +22,32 @@ it.effect("an exported path that skips items is a candidate", () =>
     expect(result.diagnostics[0]?.move).toBeUndefined()
   }).pipe(
     Effect.provide(modelStub({ verdict: choice("unaccounted", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
+it.effect("a test helper that skips is not a boundary", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const result = yield* plannedDiagnosticsOf(unaccountedDrop, workspace)
+    expect(result.diagnostics.some((entry) => entry.message.includes("testRows"))).toBe(false)
+  }).pipe(
+    Effect.provide(modelStub({ verdict: choice("unaccounted", 0.95) })),
+    Effect.provide(NodeServices.layer),
+  ),
+)
+
+it.effect("a repository can make an unavailable rule step aside", () =>
+  Effect.gen(function* () {
+    const workspace = yield* fixture()
+    const error = yield* plannedDiagnosticsOf(unaccountedDrop, workspace, {
+      config: {
+        rules: { "joggle/unaccounted-drop": { severity: "warn", onUnavailable: "propagate" } },
+      },
+    }).pipe(Effect.flip)
+    expect(String(error)).toContain("unreachable")
+  }).pipe(
+    Effect.provide(modelFailing("the model was unreachable")),
     Effect.provide(NodeServices.layer),
   ),
 )

@@ -602,6 +602,21 @@ export const policy = {
    */
   testFiles: /(?:^|\/)(?:tests?|__tests__|specs?)(?:\/|$)|\.(?:spec|test)\.[cm]?[jt]sx?$/,
 
+  /**
+   * A value built longhand beside the helper that builds it.
+   *
+   * `nonStringReturns` is a DECLARED convention, not a fact about a repository:
+   * the language's scalar types that can never be the string a site builds. It
+   * lives here, reviewable and overridable, rather than as a vocabulary inside
+   * the rule (the meta-rule `no-pattern-classifier` forbids the second). The
+   * filter only ever DROPS a helper it can prove cannot return a string; a union,
+   * a generic or an `any` stays, because the type layer is exact and the rule is
+   * not allowed to lose a real path to save a judgement.
+   */
+  singlePath: {
+    nonStringReturns: ["void", "undefined", "null", "number", "boolean", "bigint", "symbol", "never"],
+  },
+
   /** Files and directories the workspace scan never enters. */
   ignoredDirectories: [
     "node_modules",

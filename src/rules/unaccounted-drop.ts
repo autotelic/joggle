@@ -54,6 +54,10 @@ export const unaccountedDrop: PlannedRule = {
     const candidates: Array<Unit> = []
     for (const unit of workspace.units) {
       if (unit.kind !== "function" || !unit.exported) continue
+      // A test helper that skips is scaffolding for an assertion, not a boundary
+      // other files read: the same reason the duplicate rules keep test
+      // declarations out of the candidate set.
+      if (unit.test) continue
       if (unit.text.length > policy.evidence.maxSourceChars) continue
       if (scope.changed !== undefined && !inScope(scope, unit.file)) continue
       const skipsInside = workspace.files

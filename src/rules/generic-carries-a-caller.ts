@@ -37,6 +37,12 @@ const RULE_ID = "joggle/generic-carries-a-caller"
 // belongs is `parameter` -- the review's own words, "pass the label in". The
 // literal is syntax, the sharing is the graph, and whether it names a caller is
 // asked.
+//
+// The literal filter is broad on purpose, so it admits tokens that are not copy
+// at all ('utf8', a format string). Tightening it would re-import the
+// caller-naming vocabulary this rule gave up, so the fix is not a filter: a
+// repository that runs without a model sets `onUnavailable: "propagate"` (see
+// src/config.ts) and the unjudged candidates leave the report.
 type Caller = { readonly file: string }
 
 export const genericCarriesACaller: PlannedRule = {
