@@ -4,13 +4,13 @@
   "type": "module",
   "description": "Cross-file patterns and idioms for TypeScript — the layer above the linter and the typechecker.",
   "license": "MIT",
-  "homepage": "https://github.com/tognmund/mess#readme",
+  "homepage": "https://github.com/autotelic/joggle#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tognmund/mess.git"
+    "url": "git+https://github.com/autotelic/joggle.git"
   },
   "bugs": {
-    "url": "https://github.com/tognmund/mess/issues"
+    "url": "https://github.com/autotelic/joggle/issues"
   },
   "keywords": [
     "typescript",

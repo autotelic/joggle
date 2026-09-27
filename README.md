@@ -4,7 +4,7 @@
 
 **Cross-file judgements for a TypeScript codebase, enforced like a linter.**
 
-[![CI](https://github.com/tognmund/mess/actions/workflows/joggle.yml/badge.svg)](https://github.com/tognmund/mess/actions/workflows/joggle.yml)
+[![CI](https://github.com/autotelic/joggle/actions/workflows/joggle.yml/badge.svg)](https://github.com/autotelic/joggle/actions/workflows/joggle.yml)
 
 </div>
 
