@@ -463,8 +463,8 @@ const calibrateCommand = Command.make(
           if (requests.length > 0) {
             const found = yield* Effect.tryPromise(() =>
               typesAtPositions({ cwd, tsconfig: "tsconfig.json", requests } satisfies NodeTypeQuery),
-            ).pipe(Effect.orElseSucceed(() => []))
-            nodeTypes = indexOfNodeTypes(found)
+            ).pipe(Effect.orElseSucceed(() => ({ found: [], unresolved: 0 })))
+            nodeTypes = indexOfNodeTypes(found.found)
           }
         }
         const out: Array<{ readonly rule: string; readonly decision: string; readonly summary: CalibrationSummary; readonly note: string; readonly sample: ReadonlyArray<string> }> = []

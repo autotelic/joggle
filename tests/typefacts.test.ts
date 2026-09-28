@@ -17,8 +17,8 @@ it(
       tsconfig: "tests/fixtures/node-types/tsconfig.json",
       requests: [{ file, position }],
     })
-    expect(found.length).toBe(1)
-    expect(found[0]?.type).toBe("number")
+    expect(found.found.length).toBe(1)
+    expect(found.found[0]?.type).toBe("number")
   },
   120000,
 )

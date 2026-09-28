@@ -396,8 +396,8 @@ export const checkRepository = Effect.fn("joggle.check")(function* (options: Opt
     if (requests.length > 0) {
       const found = yield* Effect.tryPromise(() =>
         typesAtPositions({ cwd: options.cwd, tsconfig: "tsconfig.json", requests } satisfies NodeTypeQuery),
-      ).pipe(Effect.orElseSucceed(() => []))
-      nodeTypes = indexOfNodeTypes(found)
+      ).pipe(Effect.orElseSucceed(() => ({ found: [], unresolved: 0 })))
+      nodeTypes = indexOfNodeTypes(found.found)
     }
   }
   const timings: Array<{ phase: string; ms: number }> = [

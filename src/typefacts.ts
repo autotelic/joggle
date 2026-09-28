@@ -54,32 +54,46 @@ export interface NodeTypeQuery {
   readonly requests: ReadonlyArray<NodeTypeRequest>
 }
 
+/** What the checker resolved, and the positions it had nothing for. */
+export interface NodeTypeResult {
+  readonly found: ReadonlyArray<NodeType>
+  /** Positions with no project or no type: a miss a caller can see, not silence. */
+  readonly unresolved: number
+}
+
 /**
  * Ask the checker for the type at each position, in one program.
  *
  * @param input - the project root, the tsconfig to open, and the positions.
- * @returns one entry per position the checker resolved, in request order.
+ * @returns the resolved entries, in request order, and how many positions the
+ *   checker had no project or no type for.
  */
-export const typesAtPositions = async (input: NodeTypeQuery): Promise<ReadonlyArray<NodeType>> => {
-  if (input.requests.length === 0) return []
+export const typesAtPositions = async (input: NodeTypeQuery): Promise<NodeTypeResult> => {
+  if (input.requests.length === 0) return { found: [], unresolved: 0 }
   const api = new API({ cwd: input.cwd })
   // The identifier is a PATH, and it must be absolute: a relative one is not found.
   const absolute = (file: string): string => resolve(input.cwd, file)
-  const collect = async (): Promise<ReadonlyArray<NodeType>> => {
+  const collect = async (): Promise<NodeTypeResult> => {
     const snapshot = await api.updateSnapshot({ openProjects: [absolute(input.tsconfig)] })
     const found: Array<NodeType> = []
+    let unresolved = 0
     for (const request of input.requests) {
       const project = await snapshot.getDefaultProjectForFile(absolute(request.file))
-      if (project === undefined) continue
-      const type = await project.checker.getTypeAtPosition(absolute(request.file), request.position)
-      if (type === undefined) continue
+      const type =
+        project === undefined
+          ? undefined
+          : await project.checker.getTypeAtPosition(absolute(request.file), request.position)
+      if (project === undefined || type === undefined) {
+        unresolved += 1
+        continue
+      }
       found.push({
         file: request.file,
         position: request.position,
         type: await project.checker.typeToString(type),
       })
     }
-    return found
+    return { found, unresolved }
   }
   // `.finally`, not `try/finally`: the checker is a child process and it must be
   // closed whatever happens, and `.finally` does not swallow the failure.
