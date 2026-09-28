@@ -42,27 +42,27 @@ const VIOLATIONS = { verdict: ["drift", "two_concepts"] } as const
 // `docs/type-resolution.md`.
 
 const related = (
-  left: Declaration,
-  right: Declaration,
+  one: Declaration,
+  two: Declaration,
   workspace: Workspace,
   reachable: ReadonlySet<string>,
   isTest: (file: string) => boolean,
 ): boolean => {
-  if (left.file === right.file) return true
-  if (isTest(left.file) !== isTest(right.file)) return false
-  if (reachable.has(left.file + "\u0000" + right.file)) return true
-  if (reachable.has(right.file + "\u0000" + left.file)) return true
+  if (one.file === two.file) return true
+  if (isTest(one.file) !== isTest(two.file)) return false
+  if (reachable.has(one.file + "\u0000" + two.file)) return true
+  if (reachable.has(two.file + "\u0000" + one.file)) return true
   const packageOf = (file: string): string => {
     const cut = file.lastIndexOf("/")
     return workspace.manifests.get(cut === -1 ? "." : file.slice(0, cut))?.name ?? ""
   }
-  const leftPackage = packageOf(left.file)
-  return leftPackage !== "" && leftPackage === packageOf(right.file)
+  const leftPackage = packageOf(one.file)
+  return leftPackage !== "" && leftPackage === packageOf(two.file)
 }
 
 interface Declaration {
   readonly type: string
-  readonly unit: string
+  readonly unitName: string
   readonly file: string
   readonly line: number
 }
@@ -70,8 +70,8 @@ interface Declaration {
 /** One field whose two declarations disagree. */
 interface Drift {
   readonly field: string
-  readonly left: Declaration
-  readonly right: Declaration
+  readonly one: Declaration
+  readonly two: Declaration
 }
 
 export const fieldTypeDrift: PlannedRule = {
@@ -99,7 +99,7 @@ export const fieldTypeDrift: PlannedRule = {
         if (type === "" || type === field) continue
         const types = byField.get(field) ?? new Map<string, Array<Declaration>>()
         const declarations = types.get(type) ?? []
-        declarations.push({ type, unit: unit.name, file: unit.file, line: unit.location.line })
+        declarations.push({ type, unitName: unit.name, file: unit.file, line: unit.location.line })
         types.set(type, declarations)
         byField.set(field, types)
       }
@@ -121,7 +121,7 @@ export const fieldTypeDrift: PlannedRule = {
 
     // Group by the declaration the finding is anchored to: a type with five
     // drifting fields is one thing a reader has to decide, not five.
-    const groups = new Map<string, { file: string; line: number; unit: string; drifts: Array<Drift> }>()
+    const groups = new Map<string, { file: string; line: number; unitName: string; drifts: Array<Drift> }>()
     let unrelated = 0
     let drifted = 0
     // The fact this rule collects: one field name whose declared annotation
@@ -142,7 +142,7 @@ export const fieldTypeDrift: PlannedRule = {
           const one = entries[left]
           const two = entries[right]
           if (one === undefined || two === undefined) continue
-          if (one.file === two.file && one.unit === two.unit) continue
+          if (one.file === two.file && one.unitName === two.unitName) continue
           if (!related(one, two, workspace, reachable, isTest)) {
             unrelated += 1
             continue
@@ -159,8 +159,8 @@ export const fieldTypeDrift: PlannedRule = {
       }
       drifted += 1
       const key = left.file + "\u0000" + String(left.line)
-      const group = groups.get(key) ?? { file: left.file, line: left.line, unit: left.unit, drifts: [] }
-      group.drifts.push({ field, left, right })
+      const group = groups.get(key) ?? { file: left.file, line: left.line, unitName: left.unitName, drifts: [] }
+      group.drifts.push({ field, one: left, two: right })
       groups.set(key, group)
     }
 
@@ -183,7 +183,7 @@ export const fieldTypeDrift: PlannedRule = {
       .slice(policy.fieldTypeDrift.maxFindings)
       .map((group) => ({
         ruleId: RULE_ID,
-        subject: group.unit + " (" + group.file + ":" + String(group.line) + ")",
+        subject: group.unitName + " (" + group.file + ":" + String(group.line) + ")",
         stage: "budget" as const,
         reason: "past the budget of " + String(policy.fieldTypeDrift.maxFindings) + " declarations",
       }))
@@ -195,14 +195,14 @@ export const fieldTypeDrift: PlannedRule = {
         // declarations and the resolved types, which is what the question needs.
         const drifts = group.drifts.slice(0, 5).map((drift) => ({
           field: drift.field,
-          left: { unit: drift.left.unit, file: drift.left.file, line: drift.left.line, type: drift.left.type },
-          right: { unit: drift.right.unit, file: drift.right.file, line: drift.right.line, type: drift.right.type },
+          left: { unit: drift.one.unitName, file: drift.one.file, line: drift.one.line, type: drift.one.type },
+          right: { unit: drift.two.unitName, file: drift.two.file, line: drift.two.line, type: drift.two.type },
         }))
-        const id = yield* atoms.add({ declaration: { unit: group.unit, file: group.file, line: group.line }, drifts })
+        const id = yield* atoms.add({ declaration: { unit: group.unitName, file: group.file, line: group.line }, drifts })
         const plan: Plan<DecisionAnswers> = {
           ruleId: RULE_ID,
-          subject: group.unit + " (" + group.file + ":" + String(group.line) + ")",
-          concerns: [...new Set(group.drifts.flatMap((drift) => [drift.left.file, drift.right.file]))],
+          subject: group.unitName + " (" + group.file + ":" + String(group.line) + ")",
+          concerns: [...new Set(group.drifts.flatMap((drift) => [drift.one.file, drift.two.file]))],
           atoms: [id],
           violations: VIOLATIONS,
           decisions: {
@@ -236,7 +236,7 @@ export const fieldTypeDrift: PlannedRule = {
         const drops: Array<Drop> = [...overBudget]
         planned.forEach((value, index) => {
           const { group } = value
-          const subject = group.unit + " (" + group.file + ":" + String(group.line) + ")"
+          const subject = group.unitName + " (" + group.file + ":" + String(group.line) + ")"
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
@@ -281,12 +281,12 @@ export const fieldTypeDrift: PlannedRule = {
                 ]
               : []),
             ...budgetNote({
-              kind: "declarations",
+              unitKind: "declarations",
               judged: policy.fieldTypeDrift.maxFindings,
               candidates: candidates.length,
               sample: candidates
                 .slice(policy.fieldTypeDrift.maxFindings)
-                .map((group) => group.unit),
+                .map((group) => group.unitName),
             }),
           ],
           drops,
@@ -298,7 +298,7 @@ export const fieldTypeDrift: PlannedRule = {
 
 const findingFor = (
   report: Report,
-  group: { readonly file: string; readonly line: number; readonly unit: string; readonly drifts: ReadonlyArray<Drift> },
+  group: { readonly file: string; readonly line: number; readonly unitName: string; readonly drifts: ReadonlyArray<Drift> },
   confidence: number | undefined,
   unverifiedReason: string | undefined,
   renamed = false,
@@ -309,7 +309,7 @@ const findingFor = (
     return report({
       at: { file: group.file, line: group.line, column: 1 },
       messageId: "two_types",
-      data: { unit: group.unit },
+      data: { unit: group.unitName },
       judged: false,
     })
   }
@@ -318,33 +318,33 @@ const findingFor = (
       (drift) =>
         drift.field +
         ": " +
-        drift.left.file +
+        drift.one.file +
         ":" +
-        String(drift.left.line) +
+        String(drift.one.line) +
         " and " +
-        drift.right.file +
+        drift.two.file +
         ":" +
-        String(drift.right.line),
+        String(drift.two.line),
     )
     .join("; ")
   const listed =
     group.drifts
       .slice(0, 3)
-      .map((drift) => "`" + drift.field + "` (`" + drift.left.type + "` vs `" + drift.right.type + "`)")
+      .map((drift) => "`" + drift.field + "` (`" + drift.one.type + "` vs `" + drift.two.type + "`)")
       .join(", ") +
     (group.drifts.length > 3 ? ", and " + String(group.drifts.length - 3) + " more" : "")
   return report({
     at: { file: group.file, line: group.line, column: 1 },
     messageId: group.drifts.length === 1 ? "single_drift" : "many_drifts",
     data: {
-      unit: group.unit,
+      unit: group.unitName,
       count: group.drifts.length,
       fields: listed,
       field: first.field,
-      leftType: first.left.type,
-      leftUnit: first.left.unit,
-      rightType: first.right.type,
-      rightUnit: first.right.unit,
+      leftType: first.one.type,
+      leftUnit: first.one.unitName,
+      rightType: first.two.type,
+      rightUnit: first.two.unitName,
       lead: renamed
         ? "One name, two different things. Rename one of them so each field name means one thing. "
         : "One field name, two incompatible types. If they are one concept, share one declaration of it; if they are two concepts, give them two names. ",

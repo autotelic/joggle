@@ -221,7 +221,7 @@ export interface Planned {
 
 /** A rule's candidate budget: the kind, the counts, and the largest unjudged. */
 interface BudgetNote {
-  readonly kind: string
+  readonly unitKind: string
   readonly judged: number
   readonly candidates: number
   readonly sample: ReadonlyArray<string>
@@ -231,11 +231,11 @@ interface BudgetNote {
  * Standard wording for a bound a rule hit, so that no rule invents its own and
  * no reader has to guess whether silence meant "nothing there".
  */
-export const budgetNote = ({ kind, judged, candidates, sample }: BudgetNote): ReadonlyArray<string> =>
+export const budgetNote = ({ unitKind, judged, candidates, sample }: BudgetNote): ReadonlyArray<string> =>
   candidates <= judged
     ? []
     : [
-        `${candidates - judged} of ${candidates} ${kind} were not judged (budget ${judged}). Largest unjudged: ${sample.join("; ")}`,
+        `${candidates - judged} of ${candidates} ${unitKind} were not judged (budget ${judged}). Largest unjudged: ${sample.join("; ")}`,
       ]
 
 /** A count of bundles and how many of them broke the pattern. */

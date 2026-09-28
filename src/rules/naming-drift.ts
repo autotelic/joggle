@@ -345,7 +345,7 @@ export const namingDrift: PlannedRule = {
     const layers = layersFrom(context.config)
     const unjudged = clusters.slice(budget)
     const notes = budgetNote({
-      kind: "pairs",
+      unitKind: "pairs",
       judged: budget,
       candidates: clusters.length,
       sample: unjudged.slice(0, 3).map((cluster) => nameList(cluster)),

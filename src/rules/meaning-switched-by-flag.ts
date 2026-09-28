@@ -199,7 +199,7 @@ export const meaningSwitchedByFlag: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "flag branches",
+            unitKind: "flag branches",
             judged: budget,
             candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),

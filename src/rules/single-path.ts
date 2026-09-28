@@ -246,7 +246,7 @@ export const singlePath: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "string sites",
+            unitKind: "string sites",
             judged: budget,
             candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),

@@ -261,7 +261,7 @@ export const objectShape: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "shapes",
+            unitKind: "shapes",
             judged: maxFindings,
             candidates: repeated.length,
             sample: repeated.slice(maxFindings).map(([signature]) => signature.split("\u0000").join("; ")),

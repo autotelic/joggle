@@ -506,7 +506,7 @@ export const dataErrorAsOutage: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "handlers",
+            unitKind: "handlers",
             judged: budget,
             candidates: all.length,
             sample: all.slice(budget).map(labelOf),

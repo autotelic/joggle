@@ -249,7 +249,7 @@ export const duplicateCallRun: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "runs",
+            unitKind: "runs",
             judged: maxFindings,
             candidates: reported.length,
             sample: reported.slice(maxFindings).map((run) => run.left.name + "/" + run.right.name),

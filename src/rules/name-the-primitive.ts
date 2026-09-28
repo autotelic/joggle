@@ -240,7 +240,7 @@ export const nameThePrimitive: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "groups",
+            unitKind: "groups",
             judged: maxFindings,
             candidates: candidates.length,
             sample: candidates.slice(maxFindings).map((entry) => entry.fields.join(", ")),

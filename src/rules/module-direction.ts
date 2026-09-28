@@ -239,7 +239,7 @@ export const moduleDirection: PlannedRule = {
               diagnostics.length +
               " reported",
             ...budgetNote({
-              kind: "module pairs",
+              unitKind: "module pairs",
               judged: candidates.length,
               candidates: candidates.length,
               sample: [],

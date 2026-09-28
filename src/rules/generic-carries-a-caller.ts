@@ -212,7 +212,7 @@ export const genericCarriesACaller: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "shared literals",
+            unitKind: "shared literals",
             judged: budget,
             candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),

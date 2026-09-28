@@ -205,7 +205,7 @@ export const unboundedDefaultRead: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "reads",
+            unitKind: "reads",
             judged: budget,
             candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),

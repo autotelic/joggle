@@ -214,7 +214,7 @@ export const typesOverLogic: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "guards",
+            unitKind: "guards",
             judged: budget,
             candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),

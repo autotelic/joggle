@@ -234,7 +234,7 @@ export const languageDrift: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "files with prose words",
+            unitKind: "files with prose words",
             judged: budget,
             candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.source.path),

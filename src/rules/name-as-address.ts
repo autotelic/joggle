@@ -238,7 +238,7 @@ export const nameAsAddress: PlannedRule = {
         return outcome(
           diagnostics,
           budgetNote({
-            kind: "common names",
+            unitKind: "common names",
             judged: maxFiles,
             candidates: candidates.length,
             sample: candidates.slice(maxFiles).map((c) => c.unit.name),

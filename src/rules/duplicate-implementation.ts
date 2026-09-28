@@ -94,7 +94,7 @@ export const duplicateImplementation: PlannedRule = {
       .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
     const notes = [
       ...budgetNote({
-        kind: "clusters",
+        unitKind: "clusters",
         judged: budget,
         candidates: clusters.length,
         sample: largestOf(clusters.slice(budget)),

@@ -201,7 +201,7 @@ export const oneConceptOneType: PlannedRule = {
               divergent +
               " resolve to more than one",
             ...budgetNote({
-              kind: "names",
+              unitKind: "names",
               judged: policy.oneConceptOneType.maxFindings,
               candidates: candidates.length,
               sample: candidates.slice(policy.oneConceptOneType.maxFindings).map((candidate) => candidate.name),

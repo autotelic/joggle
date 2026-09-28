@@ -205,7 +205,7 @@ export const duplicateMeaning: PlannedRule = {
 
     const notes = [
       ...budgetNote({
-        kind: "clusters",
+        unitKind: "clusters",
         judged: budget,
         candidates: clusters.length,
         sample: largest,
