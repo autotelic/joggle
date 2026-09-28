@@ -255,8 +255,8 @@ export const importCycle: PlannedRule = {
         ? files[0] ?? ""
         : files.find((file) => inGraphScope(scope, file)) ?? files[0] ?? ""
 
-    const scopedRuntime = runtime.filter((cycle) => inCycleScope(cycle.files))
-    const scopedNamed = named.filter((cycle) => inCycleScope(cycle.files))
+    const scopedRuntime = runtime.filter((cycle) => inCycleScope(cycle.loop))
+    const scopedNamed = named.filter((cycle) => inCycleScope(cycle.loop))
     const erasedEntirely = scopedNamed.filter((cycle) => cycle.typeOnly).length
     const partlyErased = scopedNamed.length - erasedEntirely
     const outside = runtime.length - scopedRuntime.length
@@ -264,24 +264,24 @@ export const importCycle: PlannedRule = {
     const atoms = yield* Atoms
     const planned = yield* Effect.forEach(scopedRuntime, (cycle) =>
       Effect.gen(function* () {
-        const first = anchorOf(cycle.files)
-        const members = new Set(cycle.files)
+        const first = anchorOf(cycle.loop)
+        const members = new Set(cycle.loop)
         // The edges that make the loop, so the question can tell a real mutual
         // dependency from a barrel or a re-export instead of reading file names.
         const edges = workspace.imports.edges
           .filter((edge) => members.has(edge.importer) && members.has(edge.to))
           .map((edge) => ({ from: edge.importer, to: edge.to, specifier: edge.specifier }))
-        const id = yield* atoms.add({ files: cycle.files, runtime: cycle.runtime, typeOnly: cycle.typeOnly, edges })
+        const id = yield* atoms.add({ files: cycle.loop, runtime: cycle.runtime, typeOnly: cycle.typeOnly, edges })
         const plan: Plan<DecisionAnswers> = {
           ruleId: CYCLE_RULE,
-          subject: cycle.files.join(" -> "),
-          concerns: [...cycle.files],
+          subject: cycle.loop.join(" -> "),
+          concerns: [...cycle.loop],
           atoms: [id],
           violations: { verdict: ["cycle"] },
           decisions: {
             verdict: Decision.classify({
               instructions: [
-                `\`atoms[${id}].files\` is an import cycle: ${[...cycle.files, first].join(" -> ")}.`,
+                `\`atoms[${id}].files\` is an import cycle: ${[...cycle.loop, first].join(" -> ")}.`,
                 `\`atoms[${id}].edges\` is the import statements that close the loop, with the specifier each one uses.`,
                 "Is that a real mutual dependency to break, or a false positive?",
                 "Answer `cycle` when two or more of the modules genuinely need each other, so the loop should be broken.",
@@ -308,7 +308,7 @@ export const importCycle: PlannedRule = {
         const drops: Array<Drop> = []
         planned.forEach((value, index) => {
           const { cycle, first } = value
-          const subject = cycle.files.join(" -> ")
+          const subject = cycle.loop.join(" -> ")
           const outcomeOf = readVerdict(verdicts[index]?.["verdict"], "cycle", () =>
             "the cycle cannot cause a load-order problem",
           )
@@ -322,9 +322,9 @@ export const importCycle: PlannedRule = {
           report({
             at: { file: first, start: 0 },
             messageId: "import_cycle",
-            data: { files: [...cycle.files, first].join(" -> ") },
+            data: { files: [...cycle.loop, first].join(" -> ") },
             helpId: "import_cycle_help",
-            identity: [CYCLE_RULE, ...[...cycle.files].sort(Order.String)].join("\u0000"),
+            identity: [CYCLE_RULE, ...[...cycle.loop].sort(Order.String)].join("\u0000"),
             judged: true,
             confidence,
             severity: outcomeOf.review ? "info" : "warn",
@@ -338,8 +338,8 @@ export const importCycle: PlannedRule = {
               (outside > 0 ? `; ${outside} cycle(s) outside the scope of this run` : ""),
             ...scopedNamed.map((cycle) =>
               cycle.typeOnly
-                ? `type-only cycle, erased entirely at build time: ${cycle.files.join(" -> ")}`
-                : `cycle with an erased edge, so broken before it loads: ${cycle.files.join(" -> ")}`,
+                ? `type-only cycle, erased entirely at build time: ${cycle.loop.join(" -> ")}`
+                : `cycle with an erased edge, so broken before it loads: ${cycle.loop.join(" -> ")}`,
             ),
           ],
           drops,

@@ -192,7 +192,7 @@ const canonicalCycle = (cycle: ReadonlyArray<string>): string => {
 
 export interface Cycle {
   /** The loop, in walk order, without repeating the entry point. */
-  readonly files: ReadonlyArray<string>
+  readonly loop: ReadonlyArray<string>
   /**
    * True when EVERY edge of the loop is a runtime import.
    *
@@ -253,7 +253,7 @@ export const cyclesIn = (imports: ImportGraph): ReadonlyArray<Cycle> => {
           if (isErased(from, to)) runtime = false
           else typeOnly = false
         }
-        found.push({ files: cycle, runtime, typeOnly })
+        found.push({ loop: cycle, runtime, typeOnly })
       }
       return
     }

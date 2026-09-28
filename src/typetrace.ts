@@ -289,7 +289,7 @@ export interface LoadedTypes {
   readonly index: TypeIndex
   /** Why a cache file or a trace document could not be read. Reported, not hidden. */
   readonly issues: ReadonlyArray<string>
-  readonly from: "cache" | "trace"
+  readonly loadedFrom: "cache" | "trace"
 }
 
 /**
@@ -335,7 +335,7 @@ export const loadTypeFacts = (input: TypeFactRequest): Effect.Effect<
           return {
             index: indexOf(cached.entries),
             issues,
-            from: "cache" as const,
+            loadedFrom: "cache" as const,
           }
         }
       } else if (body.trim() !== "") {
@@ -378,5 +378,5 @@ export const loadTypeFacts = (input: TypeFactRequest): Effect.Effect<
       yield* Effect.orElseSucceed(fs.makeDirectory(input.cacheDir, { recursive: true }), () => undefined)
       yield* Effect.orElseSucceed(fs.writeFileString(store, body), () => undefined)
     }
-    return { index, issues, from: "trace" as const }
+    return { index, issues, loadedFrom: "trace" as const }
   })

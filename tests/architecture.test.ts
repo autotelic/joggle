@@ -69,7 +69,7 @@ describe("module cycles", () => {
       ]),
     )
     expect(cycles.length).toBe(1)
-    expect([...(cycles[0]?.files ?? [])].sort()).toEqual(["a.ts", "b.ts", "c.ts"])
+    expect([...(cycles[0]?.loop ?? [])].sort()).toEqual(["a.ts", "b.ts", "c.ts"])
   })
 
   test("the same loop entered elsewhere is the same loop", () => {

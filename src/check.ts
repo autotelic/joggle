@@ -149,7 +149,7 @@ const typecheckFindings = (output: ReadonlyArray<{ readonly file: string; readon
  */
 interface SinceStored {
   readonly changed: ReadonlyArray<string>
-  readonly moved: ReadonlyArray<string>
+  readonly renamed: ReadonlyArray<string>
 }
 
 const changedSince = (stored: StoredRun, hashOf: ReadonlyMap<string, string>): SinceStored => {
@@ -174,7 +174,7 @@ const changedSince = (stored: StoredRun, hashOf: ReadonlyMap<string, string>): S
   for (const file of before.keys()) {
     if (!hashOf.has(file)) changed.add(file)
   }
-  return { changed: [...changed], moved: [...moved] }
+  return { changed: [...changed], renamed: [...moved] }
 }
 
 /** Exported declaration names by root-relative path. */
@@ -368,7 +368,7 @@ export const checkRepository = Effect.fn("joggle.check")(function* (options: Opt
       manifest,
     } satisfies TypeFactRequest)
     types = loaded.index
-    typesFrom = loaded.from
+    typesFrom = loaded.loadedFrom
     typeIssues.push(...loaded.issues)
   }
 
@@ -474,14 +474,14 @@ export const checkRepository = Effect.fn("joggle.check")(function* (options: Opt
         beforeExports,
         exportsOf(workspace),
       )
-      scope = { changed: affected, moved: new Set(since.moved) }
+      scope = { changed: affected, moved: new Set(since.renamed) }
       notes.push({
         ruleId: "joggle",
         reason:
           `scoped to ${affected.size} file(s) that moved` +
-          (since.moved.length === 0
+          (since.renamed.length === 0
             ? ""
-            : ` and ${since.moved.length} pure rename(s), which the content rules skip`) +
+            : ` and ${since.renamed.length} pure rename(s), which the content rules skip`) +
           ": this answers what the change introduced, not what is wrong with the repository",
       })
     }
