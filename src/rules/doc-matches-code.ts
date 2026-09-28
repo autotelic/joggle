@@ -214,7 +214,7 @@ export const docMatchesCode: PlannedRule = {
           budgetNote({
             kind: "documented declarations",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map(label),
           }),
           drops,

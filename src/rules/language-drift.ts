@@ -236,7 +236,7 @@ export const languageDrift: PlannedRule = {
           budgetNote({
             kind: "files with prose words",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.source.path),
           }),
           drops,

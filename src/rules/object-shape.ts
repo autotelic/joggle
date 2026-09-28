@@ -263,7 +263,7 @@ export const objectShape: PlannedRule = {
           budgetNote({
             kind: "shapes",
             judged: maxFindings,
-            found: repeated.length,
+            candidates: repeated.length,
             sample: repeated.slice(maxFindings).map(([signature]) => signature.split("\u0000").join("; ")),
           }),
           drops,

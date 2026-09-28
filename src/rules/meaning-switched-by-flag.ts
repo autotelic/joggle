@@ -201,7 +201,7 @@ export const meaningSwitchedByFlag: PlannedRule = {
           budgetNote({
             kind: "flag branches",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),
           }),
           drops,

@@ -366,7 +366,7 @@ export const dependencyFit: PlannedRule = {
           budgetNote({
             kind: "dependencies",
             judged: budget,
-            found: dependencies.length,
+            candidates: dependencies.length,
             sample: dependencies.slice(budget).map(label),
           }),
           drops,

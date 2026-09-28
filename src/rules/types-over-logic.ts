@@ -216,7 +216,7 @@ export const typesOverLogic: PlannedRule = {
           budgetNote({
             kind: "guards",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),
           }),
           drops,

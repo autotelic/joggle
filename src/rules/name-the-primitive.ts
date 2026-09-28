@@ -242,7 +242,7 @@ export const nameThePrimitive: PlannedRule = {
           budgetNote({
             kind: "groups",
             judged: maxFindings,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(maxFindings).map((entry) => entry.fields.join(", ")),
           }),
           drops,

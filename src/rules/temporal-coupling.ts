@@ -226,7 +226,7 @@ export const temporalCoupling: PlannedRule = {
           budgetNote({
             kind: "paired-operation candidates",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map(label),
           }),
           drops,

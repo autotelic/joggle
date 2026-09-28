@@ -214,7 +214,7 @@ export const shallowModule: PlannedRule = {
           budgetNote({
             kind: "wide, thin files",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map((file) => file.path),
           }),
           drops,

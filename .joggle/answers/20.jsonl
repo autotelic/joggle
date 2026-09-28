@@ -1,3 +1,4 @@
+201d27bb4affb49d	1790634993	{"confidence":0.85,"kind":"Classify","label":"legitimate_local","probabilities":{"legitimate_local":0.9,"not_a_derivation":0.07,"reimplements":0.03}}
 20217e0896f5ca99	1790624340	{"confidence":0.72,"kind":"Classify","label":"same_module","probabilities":{"different_deployables":0,"same_module":0.79,"same_package":0.21,"sibling_packages":0}}
 202838b5645ba92c	1790631747	{"confidence":0.91,"kind":"Classify","label":"not_applicable","probabilities":{"independent":0.05,"inferred":0.01,"not_applicable":0.94}}
 204a92881f822a83	1790624340	{"kind":"Probability","probability":0.34}

@@ -91,7 +91,7 @@ const unbounded = (payload: string): boolean =>
  * found by reading.
  */
 export interface Coupling {
-  readonly kind: "regex" | "vocabulary"
+  readonly couplingKind: "regex" | "vocabulary"
   readonly detail: string
 }
 
@@ -129,11 +129,11 @@ const balanced = (source: string, from: number): string => {
 export const couplingIn = (source: string): ReadonlyArray<Coupling> => {
   const found: Array<Coupling> = []
   if (source.includes("new RegExp(")) {
-    found.push({ kind: "regex", detail: "builds a RegExp" })
+    found.push({ couplingKind: "regex", detail: "builds a RegExp" })
   }
   const literal = REGEX_LINE.exec(source) ?? REGEX_ARROW.exec(source) ?? REGEX_APPLIED.exec(source)
   if (literal !== null) {
-    found.push({ kind: "regex", detail: "a regex literal: " + literal[0].trim().slice(0, 70) })
+    found.push({ couplingKind: "regex", detail: "a regex literal: " + literal[0].trim().slice(0, 70) })
   }
   const open = VOCABULARY_OPEN.exec(source)
   if (open !== null) {
@@ -146,7 +146,7 @@ export const couplingIn = (source: string): ReadonlyArray<Coupling> => {
     const words = balanced(source, at).match(/["'][a-z][A-Za-z0-9_]*["']/g) ?? []
     if (words.length >= 3) {
       found.push({
-        kind: "vocabulary",
+        couplingKind: "vocabulary",
         detail: "a literal vocabulary of " + String(words.length) + ": " + words.slice(0, 6).join(", "),
       })
     }
@@ -225,7 +225,7 @@ export const metaFindings = (input: {
     // How the rule DECIDES, not what it declares: a regex or a literal
     // vocabulary that classifies meaning belongs to Jev (docs/rule-coupling.md).
     for (const coupling of couplingIn(rule.text)) {
-      push("no-pattern-classifier", coupling.kind + " -- " + coupling.detail)
+      push("no-pattern-classifier", coupling.couplingKind + " -- " + coupling.detail)
     }
   }
   return found

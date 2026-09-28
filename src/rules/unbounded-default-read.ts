@@ -207,7 +207,7 @@ export const unboundedDefaultRead: PlannedRule = {
           budgetNote({
             kind: "reads",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),
           }),
           drops,

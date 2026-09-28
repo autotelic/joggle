@@ -312,7 +312,7 @@ export const hoistToDomain: PlannedRule = {
           budgetNote({
             kind: "declarations",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map(label),
           }),
           drops,

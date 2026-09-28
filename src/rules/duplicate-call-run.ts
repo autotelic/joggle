@@ -251,7 +251,7 @@ export const duplicateCallRun: PlannedRule = {
           budgetNote({
             kind: "runs",
             judged: maxFindings,
-            found: reported.length,
+            candidates: reported.length,
             sample: reported.slice(maxFindings).map((run) => run.left.name + "/" + run.right.name),
           }),
           drops,

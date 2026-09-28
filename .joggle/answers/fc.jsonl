@@ -10,3 +10,4 @@ fca350d74feaf4a9	1790624340	{"confidence":0.58,"kind":"Classify","label":"no_iss
 fcb665a34f161432	1790631747	{"confidence":0.97,"kind":"Classify","label":"general","probabilities":{"general":0.98,"names_a_caller":0.01,"shared_vocabulary":0.01}}
 fcc467a88361db73	1790631747	{"confidence":0.7,"kind":"Classify","label":"domain_concept","probabilities":{"domain_concept":0.77,"framework_glue":0.02,"implementation_detail":0.01,"wire_contract":0.2}}
 fcd2081a236a7176	1790631747	{"confidence":0.96,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.96,"stale_reference":0.02,"wrong_behavior":0.01,"wrong_contract":0.01}}
+fce365ba73b49eec	1790635035	{"confidence":0.27,"kind":"Classify","label":"two_concepts","probabilities":{"compatible":0.02,"drift":0.47,"two_concepts":0.51}}

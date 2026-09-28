@@ -200,7 +200,7 @@ export const callPattern: PlannedRule = {
           budgetNote({
             kind: "groups",
             judged: maxFindings,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(maxFindings).map(([, units]) => units.map((unit) => unit.name).join(", ")),
           }),
           drops,

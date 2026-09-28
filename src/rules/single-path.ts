@@ -248,7 +248,7 @@ export const singlePath: PlannedRule = {
           budgetNote({
             kind: "string sites",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),
           }),
           drops,

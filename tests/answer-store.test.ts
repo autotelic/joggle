@@ -20,7 +20,7 @@ import { nodeLayer } from "./support.ts"
 
 const probability = (value: number): StoredAnswer => ({ kind: "Probability", probability: value })
 
-const entry = (key: string, at: number, value: number): Entry => ({ key, at, answer: probability(value) })
+const entry = (key: string, at: number, value: number): Entry => ({ key, writtenAt: at, answer: probability(value) })
 
 const fresh = (name: string): string => mkdtempSync(join(tmpdir(), name))
 

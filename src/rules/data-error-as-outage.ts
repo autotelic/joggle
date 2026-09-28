@@ -167,11 +167,11 @@ export interface Outage {
   readonly handler: string
   /** How the 5xx is reached: a nullish guard, or a catch. */
   readonly reached: "guard" | "catch"
-  /** A description of the branch: the guarded binding, or the try's first call. */
+  /** A description of the branch: the guarded binding, or the try s first call. */
   readonly trigger: string
-  readonly code: number
-  /** The handler's source, bounded, which is the state the questions read. */
-  readonly source: string
+  readonly statusCode: number
+  /** The handler s source, bounded, which is the state the questions read. */
+  readonly handlerSource: string
 }
 
 /**
@@ -257,8 +257,8 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
           handler: handlerName,
           reached: "guard",
           trigger: guarded,
-          code,
-          source,
+          statusCode: code,
+          handlerSource: source,
         }
       })
       // Wider: a catch that answers a 5xx. Whether the try read a row is the
@@ -276,8 +276,8 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
             handler: handlerName,
             reached: "catch",
             trigger: "",
-            code,
-            source,
+            statusCode: code,
+            handlerSource: source,
           }
         })
       }
@@ -309,7 +309,7 @@ const findingFor = (report: Report, outage: Outage, unverified: string | undefin
     messageId: "outage",
     data: {
       handler: outage.handler,
-      code: outage.code,
+      code: outage.statusCode,
       describe: describe(outage),
       closing:
         unverified === undefined
@@ -317,7 +317,7 @@ const findingFor = (report: Report, outage: Outage, unverified: string | undefin
           : "Not verified: " + unverified + ".",
     },
     helpId: "outage_help",
-    identity: [RULE_ID, outage.file, outage.handler, String(outage.code)].join("\u0000"),
+    identity: [RULE_ID, outage.file, outage.handler, String(outage.statusCode)].join("\u0000"),
     judged: unverified === undefined,
     severity: "warn",
   })
@@ -362,9 +362,9 @@ export const dataErrorAsOutage: PlannedRule = {
       const id = yield* atoms.add({
         handler: outage.handler,
         reached: outage.reached,
-        status: outage.code,
+        status: outage.statusCode,
         trigger: outage.trigger,
-        source: outage.source,
+        source: outage.handlerSource,
       })
       // The predicate the candidate used to guess at, now asked. Each shape gets
       // the question it needs: a guard tests a VALUE (is it a row?), a catch wraps
@@ -508,7 +508,7 @@ export const dataErrorAsOutage: PlannedRule = {
           budgetNote({
             kind: "handlers",
             judged: budget,
-            found: all.length,
+            candidates: all.length,
             sample: all.slice(budget).map(labelOf),
           }),
           drops,

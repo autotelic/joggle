@@ -240,7 +240,7 @@ export const nameAsAddress: PlannedRule = {
           budgetNote({
             kind: "common names",
             judged: maxFiles,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(maxFiles).map((c) => c.unit.name),
           }),
           drops,

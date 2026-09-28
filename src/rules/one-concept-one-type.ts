@@ -203,7 +203,7 @@ export const oneConceptOneType: PlannedRule = {
             ...budgetNote({
               kind: "names",
               judged: policy.oneConceptOneType.maxFindings,
-              found: candidates.length,
+              candidates: candidates.length,
               sample: candidates.slice(policy.oneConceptOneType.maxFindings).map((candidate) => candidate.name),
             }),
           ],

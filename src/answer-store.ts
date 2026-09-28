@@ -52,7 +52,7 @@ const ATTRIBUTES =
 export interface Entry {
   readonly key: string
   /** Unix seconds, for `cache prune --max-age`. */
-  readonly at: number
+  readonly writtenAt: number
   readonly answer: StoredAnswer
 }
 
@@ -69,7 +69,7 @@ const decodeAnswer = Schema.fromJsonString(StoredAnswer)
  * any of the three fields, so the split is unambiguous.
  */
 export const renderEntry = (entry: Entry): string =>
-  entry.key + "\t" + entry.at + "\t" + canonical(entry.answer)
+  entry.key + "\t" + entry.writtenAt + "\t" + canonical(entry.answer)
 
 /** Parse a shard. A line that does not decode is skipped, never fatal. */
 export const parseLines = (text: string): ReadonlyArray<Entry> => {
@@ -79,10 +79,10 @@ export const parseLines = (text: string): ReadonlyArray<Entry> => {
     const first = line.indexOf("\t")
     const second = line.indexOf("\t", first + 1)
     if (first < 0 || second < 0) continue
-    const at = Number(line.slice(first + 1, second))
+    const writtenAt = Number(line.slice(first + 1, second))
     const answer = Result.getOrUndefined(SchemaParser.decodeResult(decodeAnswer)(line.slice(second + 1)))
-    if (answer === undefined || !Number.isFinite(at)) continue
-    out.push({ key: line.slice(0, first), at, answer })
+    if (answer === undefined || !Number.isFinite(writtenAt)) continue
+    out.push({ key: line.slice(0, first), writtenAt, answer })
   }
   return out
 }
@@ -111,7 +111,7 @@ export const mergeEntries = (
   for (const entry of ours) merged.set(entry.key, entry)
   for (const entry of theirs) {
     const existing = merged.get(entry.key)
-    if (existing === undefined || entry.at > existing.at) merged.set(entry.key, entry)
+    if (existing === undefined || entry.writtenAt > existing.writtenAt) merged.set(entry.key, entry)
   }
   return [...merged.values()]
 }
@@ -206,7 +206,7 @@ export const make = (fs: FileSystem.FileSystem, path: Path.Path, dir: string): E
       const text = yield* readText(fs, single)
       const decoded = Result.getOrUndefined(SchemaParser.decodeResult(Schema.fromJsonString(SingleFile))(text))
       if (decoded !== undefined) {
-        for (const [key, answer] of Object.entries(decoded.entries)) loaded = add(loaded, { key, at: now, answer })
+        for (const [key, answer] of Object.entries(decoded.entries)) loaded = add(loaded, { key, writtenAt: now, answer })
       }
     }
     const shardNames = yield* fs.readDirectory(answersDir(path, dir)).pipe(Effect.orElseSucceed(() => []))
@@ -258,7 +258,7 @@ export const make = (fs: FileSystem.FileSystem, path: Path.Path, dir: string): E
         }),
       put: (key, answer) =>
         Effect.gen(function* () {
-          const entry: Entry = { key, at: seconds(yield* Clock.currentTimeMillis), answer }
+          const entry: Entry = { key, writtenAt: seconds(yield* Clock.currentTimeMillis), answer }
           yield* Ref.update(shards, (current) => add(current, entry))
           yield* Ref.update(dirty, (current) => {
             const next = new Set(current)
@@ -324,7 +324,7 @@ export const prune = (
       const shard = name.slice(0, -".jsonl".length)
       const text = yield* readText(fs, path.join(target, name))
       for (const entry of parseLines(text)) {
-        if (cutoff !== undefined && entry.at < cutoff) dropped.push({ shard, entry })
+        if (cutoff !== undefined && entry.writtenAt < cutoff) dropped.push({ shard, entry })
         else {
           const kept = keptByShard.get(shard) ?? []
           kept.push(entry)
@@ -340,7 +340,7 @@ export const prune = (
         // A total order: oldest first, ties by key, so the result does not
         // depend on directory iteration.
         const ordered = [...keptByShard.values()].flat().sort(byKey)
-        ordered.sort(Order.mapInput(Order.Number, (entry: Entry) => entry.at))
+        ordered.sort(Order.mapInput(Order.Number, (entry: Entry) => entry.writtenAt))
         const removedKeys = new Set<string>()
         for (const entry of ordered) {
           if (total <= options.maxBytes) break

@@ -292,7 +292,7 @@ export const classifyModules = (
         ...budgetNote({
           kind: "modules",
           judged: policy.moduleRoles.maxModules,
-          found: modules.size,
+          candidates: modules.size,
           sample: [...modules.keys()].slice(policy.moduleRoles.maxModules),
         }),
       ],

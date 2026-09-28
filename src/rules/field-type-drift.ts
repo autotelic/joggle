@@ -283,7 +283,7 @@ export const fieldTypeDrift: PlannedRule = {
             ...budgetNote({
               kind: "declarations",
               judged: policy.fieldTypeDrift.maxFindings,
-              found: candidates.length,
+              candidates: candidates.length,
               sample: candidates
                 .slice(policy.fieldTypeDrift.maxFindings)
                 .map((group) => group.unit),

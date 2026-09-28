@@ -178,7 +178,7 @@ export const unaccountedDrop: PlannedRule = {
           budgetNote({
             kind: "skipping paths",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map((unit) => unit.name),
           }),
           drops,

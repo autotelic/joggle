@@ -14,7 +14,7 @@ export interface Bundle {
   readonly dir: string
   /** PascalCase name derived from the directory, for messages. */
   readonly name: string
-  readonly files: ReadonlyArray<SourceFile>
+  readonly sources: ReadonlyArray<SourceFile>
   /** The file that calls `createContext`. The pattern's signature. */
   readonly contextFile: SourceFile | undefined
   /** The file that renders `*.Provider`. */
@@ -173,7 +173,7 @@ export const findBundles = (workspace: Workspace): ReadonlyArray<Bundle> => {
     bundles.push({
       dir,
       name: bundleNameOf(dir),
-      files,
+      sources: files,
       contextFile,
       providerFile,
       indexFile,

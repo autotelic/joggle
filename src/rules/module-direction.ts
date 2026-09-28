@@ -241,7 +241,7 @@ export const moduleDirection: PlannedRule = {
             ...budgetNote({
               kind: "module pairs",
               judged: candidates.length,
-              found: candidates.length,
+              candidates: candidates.length,
               sample: [],
             }),
           ],

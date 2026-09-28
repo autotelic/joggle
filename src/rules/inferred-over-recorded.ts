@@ -206,7 +206,7 @@ export const inferredOverRecorded: PlannedRule = {
           budgetNote({
             kind: "derivations",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.unit.name),
           }),
           drops,

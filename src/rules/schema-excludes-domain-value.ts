@@ -208,7 +208,7 @@ export const schemaExcludesDomainValue: PlannedRule = {
           budgetNote({
             kind: "schema fields",
             judged: budget,
-            found: candidates.length,
+            candidates: candidates.length,
             sample: candidates.slice(budget).map((candidate) => candidate.field),
           }),
           drops,

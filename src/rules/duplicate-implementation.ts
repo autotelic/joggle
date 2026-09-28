@@ -96,7 +96,7 @@ export const duplicateImplementation: PlannedRule = {
       ...budgetNote({
         kind: "clusters",
         judged: budget,
-        found: clusters.length,
+        candidates: clusters.length,
         sample: largestOf(clusters.slice(budget)),
       }),
       // Visibility for the missing type signal. In a `.js` codebase every

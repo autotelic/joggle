@@ -347,7 +347,7 @@ export const namingDrift: PlannedRule = {
     const notes = budgetNote({
       kind: "pairs",
       judged: budget,
-      found: clusters.length,
+      candidates: clusters.length,
       sample: unjudged.slice(0, 3).map((cluster) => nameList(cluster)),
     })
     return {
