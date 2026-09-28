@@ -71,20 +71,34 @@ const decodeAnswer = Schema.fromJsonString(StoredAnswer)
 export const renderEntry = (entry: Entry): string =>
   entry.key + "\t" + entry.writtenAt + "\t" + canonical(entry.answer)
 
-/** Parse a shard. A line that does not decode is skipped, never fatal. */
-export const parseLines = (text: string): ReadonlyArray<Entry> => {
-  const out: Array<Entry> = []
+/** What a shard held, and how many lines were not an entry. */
+export interface ParsedShard {
+  readonly entries: ReadonlyArray<Entry>
+  /** Lines that did not decode, so a caller can see what it ignored. */
+  readonly skipped: number
+}
+
+/** Parse a shard. A line that does not decode is skipped and COUNTED, never fatal. */
+export const parseLines = (text: string): ParsedShard => {
+  const entries: Array<Entry> = []
+  let skipped = 0
   for (const line of text.split("\n")) {
     if (line === "") continue
     const first = line.indexOf("\t")
     const second = line.indexOf("\t", first + 1)
-    if (first < 0 || second < 0) continue
+    if (first < 0 || second < 0) {
+      skipped += 1
+      continue
+    }
     const writtenAt = Number(line.slice(first + 1, second))
     const answer = Result.getOrUndefined(SchemaParser.decodeResult(decodeAnswer)(line.slice(second + 1)))
-    if (answer === undefined || !Number.isFinite(writtenAt)) continue
-    out.push({ key: line.slice(0, first), writtenAt, answer })
+    if (answer === undefined || !Number.isFinite(writtenAt)) {
+      skipped += 1
+      continue
+    }
+    entries.push({ key: line.slice(0, first), writtenAt, answer })
   }
-  return out
+  return { entries, skipped }
 }
 
 const byKey: Order.Order<Entry> = Order.mapInput(Order.String, (entry: Entry) => entry.key)
@@ -139,8 +153,8 @@ export const mergeShardText = (text: {
   readonly theirs: string
 }): Effect.Effect<string, NotAShard> =>
   Effect.gen(function* () {
-    const ourEntries = parseLines(text.ours)
-    const theirEntries = parseLines(text.theirs)
+    const ourEntries = parseLines(text.ours).entries
+    const theirEntries = parseLines(text.theirs).entries
     if (text.ours.trim() !== "" && ourEntries.length === 0) return yield* NotAShard.make({ side: "ours" })
     if (text.theirs.trim() !== "" && theirEntries.length === 0) {
       return yield* NotAShard.make({ side: "theirs" })
@@ -215,7 +229,7 @@ export const make = (fs: FileSystem.FileSystem, path: Path.Path, dir: string): E
       const text = yield* readText(fs, path.join(answersDir(path, dir), name))
       // The sharded store is newer than the single file, so it wins on a key
       // both carry.
-      for (const entry of parseLines(text)) loaded = add(loaded, entry)
+      for (const entry of parseLines(text).entries) loaded = add(loaded, entry)
     }
 
     const shards = yield* Ref.make(loaded)
@@ -323,7 +337,7 @@ export const prune = (
       if (!name.endsWith(".jsonl")) continue
       const shard = name.slice(0, -".jsonl".length)
       const text = yield* readText(fs, path.join(target, name))
-      for (const entry of parseLines(text)) {
+      for (const entry of parseLines(text).entries) {
         if (cutoff !== undefined && entry.writtenAt < cutoff) dropped.push({ shard, entry })
         else {
           const kept = keptByShard.get(shard) ?? []

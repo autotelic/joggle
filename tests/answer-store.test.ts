@@ -31,11 +31,11 @@ test("a shard is sorted by key and newline-terminated", () => {
 
 test("a shard round-trips through its lines", () => {
   const entries = [entry("ab", 1, 0.1), entry("cd", 2, 0.2)]
-  expect(parseLines(renderShard(entries))).toEqual(entries)
+  expect(parseLines(renderShard(entries)).entries).toEqual(entries)
 })
 
 test("a malformed line is skipped, not fatal", () => {
-  expect(parseLines("garbage\n\nab\t1\tnot json\n")).toEqual([])
+  expect(parseLines("garbage\n\nab\t1\tnot json\n")).toEqual({ entries: [], skipped: 2 })
 })
 
 test("the shard is the first two characters of the key", () => {
@@ -66,7 +66,7 @@ it.effect("writes one shard, and a fresh store replays it", () =>
     yield* store.put(key, probability(0.42))
 
     const shard = yield* fs.readFileString(join(dir, "answers", "ab.jsonl"))
-    const parsed = parseLines(shard)
+    const parsed = parseLines(shard).entries
     expect(parsed.map((line) => line.key)).toEqual([key])
     expect(parsed[0]?.answer).toEqual(probability(0.42))
 
@@ -126,7 +126,7 @@ it.effect("prunes by age, rewriting only the shard that changed", () =>
 
     expect(result.removed).toBe(1)
     expect(result.kept).toBe(1)
-    expect(parseLines(yield* fs.readFileString(join(dir, "answers", "ab.jsonl"))).map((line) => line.key)).toEqual([
+    expect(parseLines(yield* fs.readFileString(join(dir, "answers", "ab.jsonl"))).entries.map((line) => line.key)).toEqual([
       recent,
     ])
   }).pipe(Effect.provide(nodeLayer)),
@@ -151,7 +151,7 @@ it.effect("prunes oldest-first until the store fits", () =>
     const result = yield* prune(fs, path, dir, { maxBytes: one * 2, now: 10_000 })
 
     expect(result.removed).toBe(1)
-    expect(parseLines(yield* fs.readFileString(join(dir, "answers", "ab.jsonl"))).map((line) => line.key)).toEqual([
+    expect(parseLines(yield* fs.readFileString(join(dir, "answers", "ab.jsonl"))).entries.map((line) => line.key)).toEqual([
       middle,
       newest,
     ])

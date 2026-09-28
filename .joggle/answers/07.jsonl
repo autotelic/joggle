@@ -11,4 +11,5 @@
 079e838d934ac4c8	1790634168	{"confidence":0.85,"kind":"Classify","label":"meaning","probabilities":{"meaning":0.9,"unclear":0,"value":0.1}}
 07b75f9d4d9a384d	1790635161	{"confidence":0.8,"kind":"Classify","label":"independent","probabilities":{"appropriate":0.13,"independent":0.87,"meaning_switched":0}}
 07bb1f9c95d0a50b	1790631748	{"consistency":1,"kind":"Probability","probability":0.24666666666666667}
+07d4667ba750cffc	1790635870	{"confidence":0.58,"kind":"Classify","label":"orchestration","probabilities":{"domain_logic":0.04,"infrastructure":0.01,"input_adaptation":0.14,"mechanical":0.01,"not_applicable":0.12,"orchestration":0.63,"rendering":0.02,"request_validation":0,"transport_concern":0.03}}
 07dec4e90faee56b	1790631748	{"confidence":0.4,"kind":"Classify","label":"already_there","probabilities":{"already_there":0.55,"component_or_feature":0.2,"not_applicable":0.14,"route_or_handler":0.11}}
