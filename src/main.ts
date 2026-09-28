@@ -13,7 +13,7 @@ import { layer as gitLayer, Service as Git } from "./git.ts"
 import { loadPlugins, withDefaults } from "./plugins.ts"
 import { policy } from "./policy.ts"
 import { exitCodeFor, render } from "./report.ts"
-import { loadWorkspace } from "./workspace.ts"
+import { isRecord, loadWorkspace } from "./workspace.ts"
 import { answerPlansRaw, chunkPlans, type Plan, type PlanAnswers } from "./plans.ts"
 import { layer as atomsLayer, type Atoms } from "./atoms.ts"
 import { summarizeCalibration, type CalibrationState, type CalibrationSummary } from "./calibration.ts"
@@ -228,9 +228,13 @@ const check = Command.make(
         baselinePath: Option.getOrUndefined(config.baseline),
         updateBaselinePath: Option.getOrUndefined(config.updateBaseline),
       }).pipe(
-        Effect.provide(rulesLayer),
-        Effect.provide(decisionLayer({ cacheDir, wireCacheDir: machineCache, offline: config.offline, apiKey })),
-        Effect.provide(tsgoLayer(cwd)),
+        Effect.provide(
+          Layer.mergeAll(
+            rulesLayer,
+            decisionLayer({ cacheDir, wireCacheDir: machineCache, offline: config.offline, apiKey }),
+            tsgoLayer(cwd),
+          ),
+        ),
       )
 
       yield* write(render(report, config.format, { color: process.stdout.isTTY === true }))
@@ -741,18 +745,18 @@ const program = Command.run(cli, { version: policy.version }).pipe(Effect.provid
  * matters ends up buried under the machinery that produced it.
  */
 const describeFailure = (failure: unknown): string | undefined => {
-  if (typeof failure !== "object" || failure === null) return undefined
-  const record = failure as Record<string, unknown>
+  if (!isRecord(failure)) return undefined
+  const record = failure
   const tag = record["_tag"]
   if (tag === "joggle/WorkspaceError") {
     const cause = record["cause"]
-    const detail = cause instanceof Error ? cause.message : String(cause ?? "")
+    const detail = cause instanceof Error ? cause.message : Predicate.isString(cause) ? cause : ""
     return String(record["operation"]) + ": " + detail
   }
   // Git and tsgo already carry the one sentence that matters: the command and
   // what it said. A stack trace here buries it.
   if (tag === "joggle/GitError" || tag === "joggle/TsgoError") {
-    return String(record["operation"]) + ": " + String(record["detail"] ?? "")
+    return String(record["operation"]) + ": " + (Predicate.isString(record["detail"]) ? record["detail"] : "")
   }
   // Any other typed failure -- AiError, ConfigError -- has a message, and that
   // sentence is what a person needs. The stack is for a defect.

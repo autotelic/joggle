@@ -3,7 +3,7 @@ import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { describeOperation, permitted, settle } from "../operation.ts"
 import { policy } from "../policy.ts"
-import { makeCluster, nameList, type Cluster } from "../cluster.ts"
+import { clusterOf, nameList, type Cluster } from "../cluster.ts"
 import {
   budgetNote,
   declined,
@@ -316,7 +316,7 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
       const one = units[pair.left]
       const two = units[pair.right]
       if (one === undefined || two === undefined) return []
-      return [makeCluster([one, two], false, pair.score)]
+      return [clusterOf([one, two], false, pair.score)]
     })
 }
 

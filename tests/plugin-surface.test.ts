@@ -28,7 +28,7 @@ const SURFACE = [
   "declineNames",
   // the code under analysis
   "loadWorkspace",
-  "makeCluster",
+  "clusterOf",
   "components",
   // shape helpers
   "policy",

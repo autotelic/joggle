@@ -243,10 +243,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
 
   const discovered =
     options.paths.length === 0 && options.useTsgo
-      ? yield* Effect.gen(function* () {
-          const tsgo = yield* Tsgo
-          return yield* tsgo.listFiles(options.cwd).pipe(Effect.orElseSucceed(() => undefined))
-        })
+      ? yield* (yield* Tsgo).listFiles(options.cwd).pipe(Effect.orElseSucceed(() => undefined))
       : undefined
 
   const discoverStarted = yield* Clock.currentTimeMillis

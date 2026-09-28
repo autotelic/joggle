@@ -1,4 +1,4 @@
-import type { Effect } from "effect"
+import type { Effect, Predicate } from "effect"
 import type { Atoms } from "./atoms.ts"
 import type { Plan, PlanAnswers } from "./plans.ts"
 import { policy } from "./policy.ts"
@@ -376,7 +376,7 @@ export const declineNames: ReadonlyArray<string> = [decline.noIssue, decline.not
  * differently downstream -- a decline means the rule looked and found nothing,
  * silence means the rule never got an answer.
  */
-export const declined = (choice: string | undefined): boolean =>
+export const declined: Predicate.Predicate<string | undefined> = (choice) =>
   choice === decline.noIssue || choice === decline.notApplicable
 
 /**

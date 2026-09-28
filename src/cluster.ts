@@ -79,7 +79,7 @@ const byPath = (a: Unit, b: Unit): number =>
  * Build a cluster: its members in path order, whether they are identical, how
  * much they overlap, and whether any member carries a type.
  */
-export const makeCluster = (
+export const clusterOf = (
   members: ReadonlyArray<Unit>,
   identical: boolean,
   overlap: number,

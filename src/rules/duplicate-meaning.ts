@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { policy } from "../policy.ts"
-import { components, makeCluster, type Cluster } from "../cluster.ts"
+import { components, clusterOf, type Cluster } from "../cluster.ts"
 import { budgetNote, inScope, outcome, type PlannedRule, type Scope } from "../rule.ts"
 import { allPairs, type ScoredPair } from "../similarity.ts"
 import { collapseQuestionnaire, planClusters, readClusters, type ClusterRule } from "./cluster-verdict.ts"
@@ -111,7 +111,7 @@ const find = (workspace: Workspace, scope: Scope): Candidates => {
 
   const groups = components(
     workspace.units.length,
-    pairs.map((pair) => [pair.left, pair.right] as const),
+    pairs.map((pair): readonly [number, number] => [pair.left, pair.right]),
   )
 
   let chained = 0
@@ -149,7 +149,7 @@ const find = (workspace: Workspace, scope: Scope): Candidates => {
         if (score > overlap) overlap = score
       }
     }
-    clusters.push(makeCluster(members, false, overlap))
+    clusters.push(clusterOf(members, false, overlap))
   }
   // A cluster bigger than the evidence panel cannot be a question. Only
   // `policy.evidence.maxMembers` of its members are ever shown, so the model is

@@ -1,3 +1,4 @@
+import { Match } from "effect"
 import type { Diagnostic, Drop, Note, Severity, Structure } from "./schema.ts"
 import { moveOrder, moveVocabulary, type Move } from "./moves.ts"
 
@@ -462,7 +463,11 @@ const github = (report: Report): string => {
   const lines: Array<string> = []
   for (const diagnostic of report.diagnostics) {
     const level =
-      diagnostic.severity === "error" ? "error" : diagnostic.severity === "warn" ? "warning" : "notice"
+      Match.value(diagnostic.severity).pipe(
+        Match.when("error", () => "error"),
+        Match.when("warn", () => "warning"),
+        Match.orElse(() => "notice"),
+      )
     const { file, line, column } = diagnostic.location
     const body = diagnostic.help === undefined ? diagnostic.message : `${diagnostic.message} ${diagnostic.help}`
     lines.push(

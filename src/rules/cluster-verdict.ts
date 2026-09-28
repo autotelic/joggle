@@ -365,7 +365,11 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         prescribed !== undefined && "label" in prescribed ? prescribed.label : undefined
       const prescription =
         prescribed !== undefined && "label" in prescribed
-          ? duplicateVocabulary.prescription[
+          ? // SAFETY: the label is the model's choice among this vocabulary's own
+            // criteria, which DecisionModel validated before returning it, so the
+            // index is always a key of the table. `?? undefined` keeps an outside
+            // label a miss rather than a defect.
+            duplicateVocabulary.prescription[
               prescribed.label as keyof typeof duplicateVocabulary.prescription
             ] ?? undefined
           : role === undefined || !("label" in role) || relationship === undefined || !("label" in relationship)

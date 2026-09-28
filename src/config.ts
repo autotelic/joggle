@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Result, Schema, SchemaParser } from "effect"
+import { Effect, FileSystem, Predicate, Result, Schema, SchemaParser } from "effect"
 import { globSource } from "./glob.ts"
 import type { Severity } from "./schema.ts"
 
@@ -192,7 +192,7 @@ export interface RuleSetting {
 const settingFor = (config: JoggleConfig, ruleId: string): RuleSetting | undefined => {
   const configured = config.rules?.[ruleId]
   if (configured === undefined) return undefined
-  return typeof configured === "string"
+  return Predicate.isString(configured)
     ? { severity: configured, paths: undefined, onUnavailable: undefined }
     : { severity: configured.severity, paths: configured.paths, onUnavailable: configured.onUnavailable }
 }

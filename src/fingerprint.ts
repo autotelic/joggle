@@ -29,8 +29,8 @@ import { shortHash } from "./state.ts"
  * the runtime does not expose it, in which case the declared version is used.
  */
 const sourceDirectory = (): string | undefined => {
-  const here = (import.meta as { dirname?: string }).dirname
-  return typeof here === "string" && here.length > 0 ? here : undefined
+  const here = import.meta.dirname
+  return here.length > 0 ? here : undefined
 }
 
 /**

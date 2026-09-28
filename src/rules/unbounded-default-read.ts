@@ -232,7 +232,12 @@ const findingFor = (
   unverifiedReason: string | undefined,
   review = false,
 ): Diagnostic => {
-  const passed = entry.candidate.argumentCount === 0 ? "no arguments" : entry.candidate.argumentKeys.join(", ") || "an object"
+  const passed =
+    entry.candidate.argumentCount === 0
+      ? "no arguments"
+      : entry.candidate.argumentKeys.length === 0
+        ? "an object"
+        : entry.candidate.argumentKeys.join(", ")
   return report({
     at: { file: entry.candidate.unit.file, start: entry.candidate.start },
     messageId: "unbounded",

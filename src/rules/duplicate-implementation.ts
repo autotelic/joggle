@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { policy } from "../policy.ts"
-import { makeCluster, type Cluster } from "../cluster.ts"
+import { clusterOf, type Cluster } from "../cluster.ts"
 import { budgetNote, inScope, outcome, type PlannedRule, type Scope } from "../rule.ts"
 import {
   clusterReporter,
@@ -54,7 +54,7 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
     // A new duplicate always has at least one changed member: nothing else can
     // have created it, so a group nobody touched cannot produce a new finding.
     if (!group.some((unit) => inScope(scope, unit.file))) continue
-    clusters.push(makeCluster(group, true, 1))
+    clusters.push(clusterOf(group, true, 1))
   }
   return clusters
 }
