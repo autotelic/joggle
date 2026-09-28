@@ -858,10 +858,10 @@ export const checkRepository = Effect.fn("joggle.check")(function* (options: Opt
         " not analysed",
     })
   }
-  if (discovery.skipped.length > 0) {
-    const total = discovery.skipped.reduce((sum, entry) => sum + entry.count, 0)
-    const shown = discovery.skipped.slice(0, 4).map((entry) => entry.extension + " " + entry.count)
-    const rest = discovery.skipped.length - shown.length
+  if (discovery.skippedExtensions.length > 0) {
+    const total = discovery.skippedExtensions.reduce((sum, entry) => sum + entry.count, 0)
+    const shown = discovery.skippedExtensions.slice(0, 4).map((entry) => entry.extension + " " + entry.count)
+    const rest = discovery.skippedExtensions.length - shown.length
     notes.push({
       ruleId: "joggle",
       reason:

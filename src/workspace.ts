@@ -1691,7 +1691,7 @@ export interface Discovery {
    * fifth of it, and an entire API written in JavaScript was invisible for as
    * long as the extension list stayed the way it was.
    */
-  readonly skipped: ReadonlyArray<SkippedExtension>
+  readonly skippedExtensions: ReadonlyArray<SkippedExtension>
   /** True when the walk stopped at its own limit rather than at the end. */
   readonly truncated: boolean
   /** Files skipped because a .gitignore says so. */
@@ -1840,7 +1840,7 @@ const walk = ({ dir, root, inherited = [] }: WalkRequest): Effect.Effect<Discove
     // analysed part of the tree and said nothing about the rest.
     return {
       files: found.sort(Order.String),
-      skipped: summarise(skipped),
+      skippedExtensions: summarise(skipped),
       truncated: found.length >= walkLimits.files || seen.size >= walkLimits.directories,
       ignored: ignoredCount,
       ignoredDirectories: ignoredDirs,
@@ -1884,11 +1884,11 @@ const resolveInputs = (
       truncated = truncated || nested.truncated
       ignored += nested.ignored
       ignoredDirectories += nested.ignoredDirectories
-      for (const entry of nested.skipped) {
+      for (const entry of nested.skippedExtensions) {
         skipped.set(entry.extension, (skipped.get(entry.extension) ?? 0) + entry.count)
       }
     }
-    return { files, skipped: summarise(skipped), truncated, ignored, ignoredDirectories }
+    return { files, skippedExtensions: summarise(skipped), truncated, ignored, ignoredDirectories }
   })
 
 /**
@@ -1906,7 +1906,7 @@ export const discoverFiles = (
   discovered !== undefined
     ? Effect.succeed({
         files: discovered,
-        skipped: [],
+        skippedExtensions: [],
         truncated: false,
         ignored: 0,
         ignoredDirectories: 0,
