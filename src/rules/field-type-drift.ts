@@ -70,8 +70,8 @@ interface Declaration {
 /** One field whose two declarations disagree. */
 interface Drift {
   readonly field: string
-  readonly one: Declaration
-  readonly two: Declaration
+  readonly oneDecl: Declaration
+  readonly twoDecl: Declaration
 }
 
 export const fieldTypeDrift: PlannedRule = {
@@ -160,7 +160,7 @@ export const fieldTypeDrift: PlannedRule = {
       drifted += 1
       const key = left.file + "\u0000" + String(left.line)
       const group = groups.get(key) ?? { file: left.file, line: left.line, unitName: left.unitName, drifts: [] }
-      group.drifts.push({ field, one: left, two: right })
+      group.drifts.push({ field, oneDecl: left, twoDecl: right })
       groups.set(key, group)
     }
 
@@ -195,14 +195,14 @@ export const fieldTypeDrift: PlannedRule = {
         // declarations and the resolved types, which is what the question needs.
         const drifts = group.drifts.slice(0, 5).map((drift) => ({
           field: drift.field,
-          left: { unit: drift.one.unitName, file: drift.one.file, line: drift.one.line, type: drift.one.type },
-          right: { unit: drift.two.unitName, file: drift.two.file, line: drift.two.line, type: drift.two.type },
+          left: { unit: drift.oneDecl.unitName, file: drift.oneDecl.file, line: drift.oneDecl.line, type: drift.oneDecl.type },
+          right: { unit: drift.twoDecl.unitName, file: drift.twoDecl.file, line: drift.twoDecl.line, type: drift.twoDecl.type },
         }))
         const id = yield* atoms.add({ declaration: { unit: group.unitName, file: group.file, line: group.line }, drifts })
         const plan: Plan<DecisionAnswers> = {
           ruleId: RULE_ID,
           subject: group.unitName + " (" + group.file + ":" + String(group.line) + ")",
-          concerns: [...new Set(group.drifts.flatMap((drift) => [drift.one.file, drift.two.file]))],
+          concerns: [...new Set(group.drifts.flatMap((drift) => [drift.oneDecl.file, drift.twoDecl.file]))],
           atoms: [id],
           violations: VIOLATIONS,
           decisions: {
@@ -318,19 +318,19 @@ const findingFor = (
       (drift) =>
         drift.field +
         ": " +
-        drift.one.file +
+        drift.oneDecl.file +
         ":" +
-        String(drift.one.line) +
+        String(drift.oneDecl.line) +
         " and " +
-        drift.two.file +
+        drift.twoDecl.file +
         ":" +
-        String(drift.two.line),
+        String(drift.twoDecl.line),
     )
     .join("; ")
   const listed =
     group.drifts
       .slice(0, 3)
-      .map((drift) => "`" + drift.field + "` (`" + drift.one.type + "` vs `" + drift.two.type + "`)")
+      .map((drift) => "`" + drift.field + "` (`" + drift.oneDecl.type + "` vs `" + drift.twoDecl.type + "`)")
       .join(", ") +
     (group.drifts.length > 3 ? ", and " + String(group.drifts.length - 3) + " more" : "")
   return report({
@@ -341,10 +341,10 @@ const findingFor = (
       count: group.drifts.length,
       fields: listed,
       field: first.field,
-      leftType: first.one.type,
-      leftUnit: first.one.unitName,
-      rightType: first.two.type,
-      rightUnit: first.two.unitName,
+      leftType: first.oneDecl.type,
+      leftUnit: first.oneDecl.unitName,
+      rightType: first.twoDecl.type,
+      rightUnit: first.twoDecl.unitName,
       lead: renamed
         ? "One name, two different things. Rename one of them so each field name means one thing. "
         : "One field name, two incompatible types. If they are one concept, share one declaration of it; if they are two concepts, give them two names. ",

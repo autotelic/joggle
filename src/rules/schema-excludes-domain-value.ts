@@ -39,7 +39,7 @@ const RULE_ID = "joggle/schema-excludes-domain-value"
 // question.
 type DomainField = {
   readonly field: string
-  readonly unit: string
+  readonly unitName: string
   readonly file: string
   readonly annotation: string
 }
@@ -66,7 +66,7 @@ export const schemaExcludesDomainValue: PlannedRule = {
         const declared = annotation.replace(/\s+/g, " ").trim()
         if (!declared.includes("number")) continue
         const fields = domainFields.get(field) ?? []
-        fields.push({ field, unit: unit.name, file: unit.file, annotation: declared })
+        fields.push({ field, unitName: unit.name, file: unit.file, annotation: declared })
         domainFields.set(field, fields)
       }
     }
@@ -146,7 +146,7 @@ export const schemaExcludesDomainValue: PlannedRule = {
               verdict: Decision.classify({
                 instructions: [
                   `The wire schema declares \`atoms[${id}].field\` as \`atoms[${id}].schema.chain\` (\`atoms[${id}].schema.file\`): \`atoms[${id}].schema.context\`.`,
-                  `The domain declares the same field as \`atoms[${id}].domain.annotation\` in \`atoms[${id}].domain.unit\`.`,
+                  `The domain declares the same field as \`atoms[${id}].domain.annotation\` in \`atoms[${id}].domain.unitName\`.`,
                   "`number` admits Infinity and NaN; `Finite` and `Int` do not. Does the code that produces this field yield a value the schema rejects?",
                   "Answer `excludes` when the producer can yield Infinity, NaN or a fraction the schema rejects, so an encode of it dies at the boundary.",
                   "Answer `agrees` when the producer cannot: the value is guarded, computed from finite inputs, or a `number` that is always finite.",
@@ -240,7 +240,7 @@ const findingFor = (
       field: entry.candidate.field,
       schema: entry.candidate.chain.join(" > "),
       annotation: entry.candidate.domain.annotation,
-      unit: entry.candidate.domain.unit,
+      unit: entry.candidate.domain.unitName,
       unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
     },
     helpId: "excludes_help",
