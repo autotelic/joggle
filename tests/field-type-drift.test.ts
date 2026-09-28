@@ -46,3 +46,19 @@ it.effect("a disagreement the model reads as deliberate is dropped, not reported
     Effect.provide(NodeServices.layer),
   ),
 )
+
+it.effect("a single-word field is a generic slot, not a concept that drifted", () =>
+  Effect.gen(function* () {
+    // `paths` is a `ReadonlyArray<string>` in one declaration and a `string` in
+    // another. A generic slot means whatever its declaration says, so the pair is
+    // not a candidate -- the policy's `minWords: 2` says so, and the planner read
+    // the map without it until this test. The two-word `totalScore` pair is
+    // still a candidate, which is what proves the filter is a threshold and not
+    // an off switch.
+    const workspace = yield* loadWorkspace("tests/fixtures/field-type-drift", ["src"])
+    const result = yield* plannedDiagnosticsOf(fieldTypeDrift, workspace)
+    const messages = result.diagnostics.map((entry) => entry.message)
+    expect(messages.some((message) => message.includes("totalScore"))).toBe(true)
+    expect(messages.some((message) => message.includes("paths"))).toBe(false)
+  }).pipe(Effect.provide(modelStub(drift)), Effect.provide(NodeServices.layer)),
+)

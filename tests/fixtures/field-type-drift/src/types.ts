@@ -74,3 +74,18 @@ export interface OptionalA {
 export interface OptionalB {
   labelText: string | undefined
 }
+
+/**
+ * A single-word field is a generic slot: `paths` here and `paths` there mean
+ * different things and are not one concept that drifted. The policy says a name
+ * needs two words before its type is compared, and this pair is the case that
+ * pins it -- without the filter these ARE compared, which is what put eight
+ * suppressions in joggle.config.json.
+ */
+export interface GenericA {
+  paths: ReadonlyArray<string>
+}
+
+export interface GenericB {
+  paths: string
+}

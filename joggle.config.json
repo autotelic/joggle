@@ -1,6 +1,8 @@
 {
   "$schema": "./schema/config.json",
-  "presets": ["@autotelic/joggle/presets/composition"],
+  "presets": [
+    "@autotelic/joggle/presets/composition"
+  ],
   "unavailable": "count",
   "rules": {
     "joggle/bundle-dot-notation": "warn",
@@ -18,36 +20,6 @@
       "rule": "joggle/bundle-*",
       "path": "tests/fixtures/**",
       "reason": "fixtures are deliberately broken"
-    },
-    {
-      "rule": "joggle/field-type-drift",
-      "path": "src/check.ts",
-      "reason": "Options is a bag of independent run inputs; paths, rules and typecheck each mean what they mean here, and renaming them to dodge an upstream field of the same name would make them worse names"
-    },
-    {
-      "rule": "joggle/field-type-drift",
-      "path": "src/config.ts",
-      "reason": "IgnoreRule is the on-disk config format; its rule/path/reason field names are the contract every repository writes, so they are not renamed for a review notice"
-    },
-    {
-      "rule": "joggle/field-type-drift",
-      "path": "src/plans.ts",
-      "reason": "Test doubles and the plan engine are parallel interfaces by design; Questionnaire.read and Planned.read are each read by their own caller, and plan/plans/id name the seam the engine is built on"
-    },
-    {
-      "rule": "joggle/field-type-drift",
-      "path": "src/answer-store.ts",
-      "reason": "Store and PlanAnswers are two views of one cache; get and put are the same operations over different stored shapes, and the parallelism is what makes them checkable against each other"
-    },
-    {
-      "rule": "joggle/field-type-drift",
-      "path": "src/report.ts",
-      "reason": "Report is the stored-run wire schema; files (a count) and notes (rule notes) would need a version bump to rename, for a name that reads correctly in the report it describes"
-    },
-    {
-      "rule": "joggle/field-type-drift",
-      "path": "src/reporting.ts",
-      "reason": "ReportInput.score and ClusterVerdict.score are one concept the rule wants shared; reconciling them is a required-key change across forty call sites, which is a real refactor and not a rename"
     }
   ],
   "architecture": {
@@ -83,12 +55,24 @@
       },
       {
         "name": "rules",
-        "include": ["src/rules/**", "src/presets/**"]
+        "include": [
+          "src/rules/**",
+          "src/presets/**"
+        ]
       },
-      { "name": "engine", "include": ["src/check.ts", "src/report.ts"] },
+      {
+        "name": "engine",
+        "include": [
+          "src/check.ts",
+          "src/report.ts"
+        ]
+      },
       {
         "name": "entry",
-        "include": ["src/main.ts", "src/plugin.ts"]
+        "include": [
+          "src/main.ts",
+          "src/plugin.ts"
+        ]
       }
     ]
   },

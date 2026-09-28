@@ -15,6 +15,7 @@ import {
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { Workspace } from "../workspace.ts"
+import { words } from "./naming-drift.ts"
 
 const RULE_ID = "joggle/field-type-drift"
 
@@ -118,6 +119,7 @@ export const fieldTypeDrift: PlannedRule = {
       if (edge.resolution === "resolved") reachable.add(edge.importer + "\u0000" + edge.to)
     }
     const isTest = (file: string): boolean => policy.testFiles.test(file)
+    const minWords = policy.fieldTypeDrift.minWords
 
     // Group by the declaration the finding is anchored to: a type with five
     // drifting fields is one thing a reader has to decide, not five.
@@ -133,6 +135,14 @@ export const fieldTypeDrift: PlannedRule = {
     // judgement it was already being asked for.
     for (const [field, types] of byField) {
       if (types.size < 2) continue
+      // A single-word field is a generic slot: `id`, `name`, `type`, `files`
+      // mean whatever their declaration says, and two of them with different
+      // types are two concepts, not one that drifted. A name of two words or
+      // more is a concept -- `supervisorRate`, `regularPayTotal` -- and one
+      // concept with two types is the defect. The policy says this; the rule
+      // read the map and forgot it, so every `paths`, `id` and `plan` in the
+      // tree was compared as if it named a concept.
+      if (words(field).length < minWords) continue
       const entries = [...types.values()]
         .map((declarations) => declarations[0])
         .filter((declaration): declaration is Declaration => declaration !== undefined)
