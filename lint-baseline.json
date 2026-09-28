@@ -1,15 +1,10 @@
 {
   "note": "Known plumb findings, by identity and count. `pnpm lint:update` accepts the current state; `pnpm lint` fails when a count rises or a new identity appears.",
-  "total": 13,
+  "total": 6,
   "census": {
-    "effecttsgo(async-function)\u0000src/typefacts.ts\u0000This code declares an async function, consider representing this async control flow with Effect values and `Effect.gen`.": 2,
-    "effecttsgo(node-builtin-import)\u0000src/state.ts\u0000This module reference uses the `crypto` module, the corresponding Effect API is `Crypto` from `effect`.": 1,
-    "effecttsgo(node-builtin-import)\u0000src/tsgo.ts\u0000This module reference uses the `path` module, the corresponding Effect API is `Path` from `effect`.": 1,
-    "effecttsgo(node-builtin-import)\u0000src/typefacts.ts\u0000This module reference uses the `path` module, the corresponding Effect API is `Path` from `effect`.": 1,
     "plumb(no-boolean-field-signals)\u0000src/check.ts\u0000`Options` carries 5 boolean flags admitting invalid combinations. Classify once into a named union over that state so impossible combinations can't be represented, and derive any predicates from it.": 1,
     "plumb(no-boolean-field-signals)\u0000src/workspace.ts\u0000`Unit` carries 3 boolean flags admitting invalid combinations. Classify once into a named union over that state so impossible combinations can't be represented, and derive any predicates from it.": 1,
-    "plumb(no-optional-function-parameters)\u0000src/report.ts\u0000Optional parameters hide `undefined` from callers. Annotate the parameter as `T | undefined` so the possibility is spelled out in the type.": 1,
-    "plumb(no-optional-function-parameters)\u0000src/workspace.ts\u0000Optional parameters hide `undefined` from callers. Annotate the parameter as `T | undefined` so the possibility is spelled out in the type.": 3,
+    "plumb(no-optional-function-parameters)\u0000src/workspace.ts\u0000Optional parameters hide `undefined` from callers. Annotate the parameter as `T | undefined` so the possibility is spelled out in the type.": 2,
     "plumb(no-redundant-derived-field)\u0000src/workspace.ts\u0000`fields` mirrors the keys of `fieldTypes` as a second source of truth that can drift. Encode the canonical form (e.g. ordering) in the collection itself instead of a parallel array.": 2
   }
 }

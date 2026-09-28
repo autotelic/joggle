@@ -458,5 +458,21 @@ export default {
       files: ["src/workspace.ts"],
       rules: { "plumb/no-exported-mutable-state": "off" },
     },
+    {
+      // The Effect `Crypto` and `Path` are services, and these are synchronous
+      // boundaries with no Effect context: the content hash in the canonical
+      // cache key, and path arithmetic inside sync helpers. The service is used
+      // wherever a run has one; the platform module is what is left at the edge.
+      files: ["src/state.ts", "src/tsgo.ts", "src/typefacts.ts"],
+      rules: { "effecttsgo/node-builtin-import": "off" },
+    },
+    {
+      // The TypeScript compiler API is async, so this boundary is too, and its
+      // caller already wraps the whole call in Effect.tryPromise -- which is
+      // where the Effect value is made. Making the implementation itself Effect
+      // would put tryPromise around each await and change the export for no gain.
+      files: ["src/typefacts.ts"],
+      rules: { "effecttsgo/async-function": "off" },
+    },
   ],
 };

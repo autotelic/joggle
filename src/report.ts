@@ -482,7 +482,7 @@ const github = (report: Report): string => {
 export const render = (
   report: Report,
   format: Format,
-  options?: { readonly color?: boolean | undefined },
+  options: { readonly color?: boolean | undefined } = {},
 ): string => {
   switch (format) {
     case "json":

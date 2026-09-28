@@ -1872,7 +1872,7 @@ const resolveInputs = (
 export const discoverFiles = (
   root: string,
   inputs: ReadonlyArray<string>,
-  discovered?: ReadonlyArray<string>,
+  discovered: ReadonlyArray<string> | undefined,
 ): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   discovered !== undefined
     ? Effect.succeed({

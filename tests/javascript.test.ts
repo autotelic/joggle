@@ -40,7 +40,7 @@ test("a file the parser rejects is reported, not silently empty", async () => {
 
 test("a .gitignore is honoured, including a nested one", async () => {
   const found = await Effect.runPromise(
-    discoverFiles("tests/fixtures/gitignored", ["."]).pipe(Effect.provide(NodeServices.layer)),
+    discoverFiles("tests/fixtures/gitignored", ["."], undefined).pipe(Effect.provide(NodeServices.layer)),
   )
   // `generated/` and `*.min.js` from the root, `local.ts` from the nested file.
   expect(found.files.map((file) => file.replace(/.*fixtures\/gitignored\//, ""))).toEqual([
@@ -55,7 +55,7 @@ test("a .gitignore is honoured, including a nested one", async () => {
 
 test("discovery reports what it did not parse", async () => {
   const found = await Effect.runPromise(
-    discoverFiles(fixtures, ["."]).pipe(Effect.provide(NodeServices.layer)),
+    discoverFiles(fixtures, ["."], undefined).pipe(Effect.provide(NodeServices.layer)),
   )
   // Three source files are discovered; one of them then fails to parse, which is
   // a different report. A non-source file is counted here instead.
