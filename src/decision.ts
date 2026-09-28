@@ -183,7 +183,7 @@ export const layer = (
         const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
         if (text.trim() === "") return empty
         const decoded = Result.getOrUndefined(
-          SchemaParser.decodeUnknownResult(Schema.fromJsonString(CacheFile))(text),
+          SchemaParser.decodeResult(Schema.fromJsonString(CacheFile))(text),
         )
         return decoded === undefined ? empty : decoded.entries
       })

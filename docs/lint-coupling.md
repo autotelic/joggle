@@ -94,3 +94,21 @@ pipeable overload. That is right for a library whose functions compose through
 `.pipe`; joggle's exported functions are data-first and called directly, so the
 rule describes a shape this is not. It is off in `oxlint.config.ts` with that
 sentence beside it.
+
+## Documented exceptions, not suppressions
+
+Four more rules disagree with the code rather than with each other, and each is
+off exactly where it does, with the reason beside it in `oxlint.config.ts`:
+
+- `strict-effect-provide` for the three entry points — the rule's own carve-out.
+- `no-conditional-empty-object-spread` where a config key must be *absent*, not
+  present-and-undefined, which is the distinction `exactOptionalPropertyTypes`
+  makes and the conditional spread preserves.
+- `no-known-value-widening` for lookup tables indexed by a runtime string, where
+  the annotation is the index signature the table needs.
+- `prefer-schema-over-json` where canonical JSON is the identity — the same
+  decision plumb's `require-canonical-stringify-for-identity` requires from the
+  other side.
+
+`no-shape-in-symbol-names`'s exception grew to every file that uses `shape` as
+the domain word, which is the reason it was already excepted for five files.

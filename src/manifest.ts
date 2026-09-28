@@ -52,7 +52,7 @@ export const manifestAt = (
     if (!exists) return undefined
     const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
     const decoded = Result.getOrUndefined(
-      SchemaParser.decodeUnknownResult(Schema.fromJsonString(PackageManifestJson))(text),
+      SchemaParser.decodeResult(Schema.fromJsonString(PackageManifestJson))(text),
     )
     if (decoded === undefined) return undefined
     // Every kind of dependency, because the question this answers is "has the

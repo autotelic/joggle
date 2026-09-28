@@ -68,7 +68,7 @@ export const readStored = (
     if (!exists) return undefined
     const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
     if (text.trim() === "") return undefined
-    return Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(StoredRun))(text))
+    return Result.getOrUndefined(SchemaParser.decodeResult(Schema.fromJsonString(StoredRun))(text))
   })
 
 /**
@@ -124,14 +124,14 @@ export const readBaseline = (
       for (const name of names) {
         if (!name.endsWith(".json")) continue
         const text = yield* fs.readFileString(path.join(target, name)).pipe(Effect.orElseSucceed(() => ""))
-        const decoded = Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(Fragment))(text))
+        const decoded = Result.getOrUndefined(SchemaParser.decodeResult(Schema.fromJsonString(Fragment))(text))
         if (decoded !== undefined) identities.add(decoded.identity)
       }
       return identities.size === 0 ? undefined : identities
     }
 
     const text = yield* fs.readFileString(target).pipe(Effect.orElseSucceed(() => ""))
-    const decoded = Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(Baseline))(text))
+    const decoded = Result.getOrUndefined(SchemaParser.decodeResult(Schema.fromJsonString(Baseline))(text))
     return decoded === undefined ? undefined : new Set(decoded.identities)
   })
 

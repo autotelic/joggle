@@ -203,6 +203,11 @@ export default {
         "src/parsecache.ts",
         "src/rules/compose-types.ts",
         "src/rules/cluster-verdict.ts",
+        "src/rules/object-shape.ts",
+        "src/rules/duplicate-implementation.ts",
+        "src/rules/call-pattern.ts",
+        "src/rules/index.ts",
+        "src/policy.ts",
       ],
       rules: { "plumb/no-shape-in-symbol-names": "off" },
     },
@@ -341,6 +346,55 @@ export default {
       // the 28 it reports are work rather than disagreement.
       files: ["src/**", "scripts/**"],
       rules: { "plumb/no-stray-inline-comments": "off" },
+    },
+    {
+      // The rule wants every layer composed and provided once, at the entry
+      // point. These three ARE the entry points, and each builds the layers its
+      // own command needs: main.ts is the CLI root, check.ts composes the
+      // per-run layers, and testing.ts is a test's. There is no earlier place to
+      // provide them, which is the exception the rule itself names.
+      files: ["src/main.ts", "src/check.ts", "src/testing.ts"],
+      rules: { "effecttsgo/strict-effect-provide": "off" },
+    },
+    {
+      // A key that is ABSENT and a key present-and-undefined are different
+      // shapes under exactOptionalPropertyTypes, and the conditional spread is
+      // how one is omitted. The alternatives set the key to undefined, which is
+      // the other shape. This is the rule and the code disagreeing about which
+      // of the two a config merge should produce, and the code's answer is
+      // written beside it.
+      files: ["src/plugins.ts", "src/parsecache.ts"],
+      rules: { "plumb/no-conditional-empty-object-spread": "off" },
+    },
+    {
+      // Lookup tables indexed by a runtime string. The annotation is what gives
+      // them an index signature; `satisfies` would keep the literal's keys and
+      // then reject the dynamic lookup the table exists for. Here the widening
+      // is the type, not evidence thrown away.
+      files: [
+        "src/vocabulary.ts",
+        "src/report.ts",
+        "src/rules/naming-drift.ts",
+        "src/rules/language-drift.ts",
+        "src/workspace.ts",
+      ],
+      rules: { "plumb/no-known-value-widening": "off" },
+    },
+    {
+      // joggle writes its caches with canonical JSON on purpose: identity is a
+      // canonical string, and plumb's own
+      // require-canonical-stringify-for-identity is the same decision from the
+      // other side. Every read already decodes with a Schema. Re-encoding the
+      // writes through Schema would change the on-disk bytes and buy nothing
+      // the canonical form does not.
+      files: [
+        "src/typetrace.ts",
+        "src/decision.ts",
+        "src/run-cache.ts",
+        "src/parsecache.ts",
+        "src/main.ts",
+      ],
+      rules: { "effecttsgo/prefer-schema-over-json": "off" },
     },
   ],
 };

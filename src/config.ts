@@ -250,5 +250,5 @@ export const loadConfig = (
     const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
     if (!exists) return emptyConfig
     const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
-    return Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(JoggleConfig))(text)) ?? emptyConfig
+    return Result.getOrUndefined(SchemaParser.decodeResult(Schema.fromJsonString(JoggleConfig))(text)) ?? emptyConfig
   })

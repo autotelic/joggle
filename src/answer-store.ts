@@ -80,7 +80,7 @@ export const parseLines = (text: string): ReadonlyArray<Entry> => {
     const second = line.indexOf("\t", first + 1)
     if (first < 0 || second < 0) continue
     const at = Number(line.slice(first + 1, second))
-    const answer = Result.getOrUndefined(SchemaParser.decodeUnknownResult(decodeAnswer)(line.slice(second + 1)))
+    const answer = Result.getOrUndefined(SchemaParser.decodeResult(decodeAnswer)(line.slice(second + 1)))
     if (answer === undefined || !Number.isFinite(at)) continue
     out.push({ key: line.slice(0, first), at, answer })
   }
@@ -204,7 +204,7 @@ export const make = (fs: FileSystem.FileSystem, path: Path.Path, dir: string): E
     let loaded: Shards = new Map()
     if (migrating) {
       const text = yield* readText(fs, single)
-      const decoded = Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(SingleFile))(text))
+      const decoded = Result.getOrUndefined(SchemaParser.decodeResult(Schema.fromJsonString(SingleFile))(text))
       if (decoded !== undefined) {
         for (const [key, answer] of Object.entries(decoded.entries)) loaded = add(loaded, { key, at: now, answer })
       }
