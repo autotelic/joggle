@@ -114,7 +114,7 @@ const ModuleEvidence = Schema.Struct({
   repository: Schema.optionalKey(Schema.String),
   module: Schema.Struct({
     path: Schema.String,
-    declarations: Schema.Finite,
+    declarations: Schema.Number,
     examples: Schema.Array(Schema.String),
     imports: Schema.Array(Schema.String),
     shares_a_name_with_a_dependency: Schema.NullOr(Schema.String),

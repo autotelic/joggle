@@ -12,10 +12,10 @@ export type Severity = typeof Severity.Type
 /** A resolvable place in the source. `line` and `column` are 1-based. */
 export const SourceLocation = Schema.Struct({
   file: Schema.String,
-  line: Schema.Finite,
-  column: Schema.Finite,
-  endLine: Schema.optionalKey(Schema.Finite),
-  endColumn: Schema.optionalKey(Schema.Finite),
+  line: Schema.Number,
+  column: Schema.Number,
+  endLine: Schema.optionalKey(Schema.Number),
+  endColumn: Schema.optionalKey(Schema.Number),
 })
 
 export interface SourceLocation extends Schema.Schema.Type<typeof SourceLocation> {}
@@ -35,8 +35,8 @@ export type Operation = typeof Operation.Type
 export const Edit = Schema.Struct({
   file: Schema.String,
   /** 1-based, like every other location in this program. */
-  line: Schema.Finite,
-  column: Schema.Finite,
+  line: Schema.Number,
+  column: Schema.Number,
   /** One sentence a person or an agent can act on. */
   instruction: Schema.String,
 })
@@ -76,12 +76,12 @@ export interface Repair extends Schema.Schema.Type<typeof Repair> {}
  */
 export const Structure = Schema.Struct({
   /** Distinct declared names, as the index counts them. */
-  concepts: Schema.Finite,
-  declarations: Schema.Finite,
+  concepts: Schema.Number,
+  declarations: Schema.Number,
   /** Declarations sharing a name with another declaration. */
-  duplicated: Schema.Finite,
+  duplicated: Schema.Number,
   /** Names resolving to more than one type. */
-  overloaded: Schema.Finite,
+  overloaded: Schema.Number,
 })
 
 export interface Structure extends Schema.Schema.Type<typeof Structure> {}
@@ -110,14 +110,14 @@ export const Diagnostic = Schema.Struct({
    * Present only when a judgement produced this diagnostic. Absent means the
    * rule was deterministic, which is itself useful information for a reader.
    */
-  confidence: Schema.optionalKey(Schema.Finite),
+  confidence: Schema.optionalKey(Schema.Number),
   /**
    * How strongly the judgement says this is real, as a Noul probability. Unlike
    * `confidence` (which summarises how peaked the Choice distribution was, and
    * measured uninformative) this is comparable across every finding in a run,
    * so it is what the report sorts by.
    */
-  score: Schema.optionalKey(Schema.Finite),
+  score: Schema.optionalKey(Schema.Number),
   /**
    * A stable name for this finding, for comparing runs.
    *
@@ -188,12 +188,12 @@ export const Drop = Schema.Struct({
 export interface Drop extends Schema.Schema.Type<typeof Drop> {}
 
 export const DecisionTotals = Schema.Struct({
-  requests: Schema.Finite,
-  replayed: Schema.Finite,
-  calls: Schema.Finite,
-  unavailable: Schema.Finite,
-  inputTokens: Schema.Finite,
-  outputTokens: Schema.Finite,
+  requests: Schema.Number,
+  replayed: Schema.Number,
+  calls: Schema.Number,
+  unavailable: Schema.Number,
+  inputTokens: Schema.Number,
+  outputTokens: Schema.Number,
 })
 
 export interface DecisionTotals extends Schema.Schema.Type<typeof DecisionTotals> {}
@@ -227,8 +227,8 @@ export const StoredRun = Schema.Struct({
       exports: Schema.Array(Schema.String),
     }),
   ),
-  files: Schema.Finite,
-  rules: Schema.Finite,
+  files: Schema.Number,
+  rules: Schema.Number,
   /**
    * The shape of the codebase this run measured.
    *
@@ -247,7 +247,7 @@ export const StoredRun = Schema.Struct({
    */
   drops: Schema.optionalKey(Schema.Array(Drop)),
   decision: DecisionTotals,
-  elapsedMs: Schema.Finite,
+  elapsedMs: Schema.Number,
 })
 
 export interface StoredRun extends Schema.Schema.Type<typeof StoredRun> {}

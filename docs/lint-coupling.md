@@ -33,7 +33,6 @@ automatically duplication — the scopes differ — but a reader should know the
 ## Where they disagree
 
 Two pairs do not merely overlap; they pull opposite ways.
-
 - **Schema classes.** plumb's `no-schema-class-modeling` says do not reach for
   `Schema.Class`/`TaggedClass` as a default; model records with `Schema.Struct`,
   variants with `TaggedUnion`, errors with `TaggedError`. effect-tsgo's
@@ -47,6 +46,14 @@ Two pairs do not merely overlap; they pull opposite ways.
   "if you mean to, say so with the named combinator". The house rule is stricter
   and wins; effect-tsgo's is the refactor you make when you have decided to
   swallow and want it visible.
+- **A wire schema's width.** `effecttsgo/schema-number` wants a domain number
+  written `Schema.Finite`. joggle's own `schema-excludes-domain-value` then fires:
+  the narrower schema no longer admits what a `: number` domain field can
+  produce, and joggle reported the mismatch 29 times. Resolved against
+  effect-tsgo, because joggle's rule is about correctness at the wire and
+  effect-tsgo's is a style preference: the schemas stay `Schema.Number`, and
+  `effecttsgo/schema-number` is off in `oxlint.config.ts` with that reason.
+
 
 - **A schema's type, spelled twice.** Within the Effect rulebook itself,
   `prefer-schema-type-property` and `unnecessary-typeof-type` pull both ways on

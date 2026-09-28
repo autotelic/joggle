@@ -5,7 +5,7 @@ import { Atoms } from "../atoms.ts"
 import { isUnreachable } from "../decision.ts"
 import { cascadeOf } from "../cascade.ts"
 import { derivedOperation, describeOperation, permitted, settle } from "../operation.ts"
-import { answerPlans, PlanAnswers, type Plan } from "../plans.ts"
+import { answerPlans, PlanAnswers, type Plan, type Questionnaire } from "../plans.ts"
 import { locator, messages, reporter, type Report } from "../reporting.ts"
 import type { Move } from "../moves.ts"
 import { policy } from "../policy.ts"
@@ -15,7 +15,6 @@ import {
   everyFile,
   marginOfAnswer,
   qualityOf,
-  type DecisionAnswers,
   type Quality,
   type Scope,
 } from "../rule.ts"
@@ -92,27 +91,6 @@ export interface ClusterVerdict {
  * Each cluster is its own `DecisionModel.decide`, so the input is that
  * cluster's own evidence and there is no marker to rewrite.
  */
-export interface Questionnaire {
-  /**
-   * The atoms this questionnaire's decisions reference, by id.
-   *
-   * A list rather than a state object, because the engine merges every plan's
-   * atoms into one state and the decisions point into it by id. A plan-local
-   * state could not be merged without rewriting every instruction.
-   */
-  readonly atoms: ReadonlyArray<string>
-  readonly decisions: Record<string, Decision.Any>
-  /** Per decision, the labels that mean the cluster is a violation. */
-  readonly violations?: Readonly<Record<string, ReadonlyArray<string>>> | undefined
-  /**
-   * Read the answer, or return undefined when the response did not contain one
-   * that can be used. That is not the same as "leave it alone": an unreadable
-   * response cannot be claimed as a judgement, and for a fact-based rule it means
-   * the finding is reported unverified rather than quietly dropped.
-   */
-  readonly read: (answers: DecisionAnswers) => ClusterVerdict | undefined
-}
-
 export interface ClusterRule {
   readonly ruleId: string
   readonly severity: Severity
@@ -134,7 +112,7 @@ export interface ClusterRule {
     cluster: Cluster,
     described: ReadonlyArray<Unit>,
     workspace: Workspace,
-  ) => Effect.Effect<Questionnaire, never, Atoms>
+  ) => Effect.Effect<Questionnaire<ClusterVerdict>, never, Atoms>
 }
 
 /**

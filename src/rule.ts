@@ -6,7 +6,7 @@ import type { JoggleConfig } from "./config.ts"
 import type * as AiError from "effect/unstable/ai/AiError"
 import type { Decision, DecisionModel } from "effect/unstable/ai"
 import type { Diagnostic, Drop, Operation, Repair, Severity, SourceLocation } from "./schema.ts"
-import type { Messages } from "./reporting.ts"
+import type { ReportedRule } from "./reporting.ts"
 import type { Move } from "./moves.ts"
 import type { Workspace } from "./workspace.ts"
 
@@ -141,21 +141,15 @@ export interface RunContext {
   readonly nodeTypes?: ((file: string, position: number) => string | undefined) | undefined
 }
 
-export interface Rule {
-  readonly id: string
-  readonly severity: Severity
+/**
+ * A rule, with the fields a reporter needs taken from `ReportedRule`.
+ *
+ * The composition is not cosmetic: it is what keeps a reporter's view of a rule
+ * and a rule's own declaration the same shape, so a shared field is added in one
+ * place.
+ */
+export interface Rule extends ReportedRule {
   readonly description: string
-  /** Whether this rule needs the model. Deterministic rules must run without it. */
-  readonly judged: boolean
-  /**
-   * The rule's messages, keyed by id, so the wording lives in one place.
-   *
-   * Referenced through {@link reporter}, which refuses to report a message id
-   * that is not declared here.
-   */
-  readonly messages?: Messages | undefined
-  /** The entropy reversal this rule proposes, when it proposes one. */
-  readonly move?: Move | undefined
   /**
    * The operations this rule can propose. Absent means it only warns.
    *
@@ -194,15 +188,10 @@ export const defineRule = (rule: Rule): Rule => rule
  * A rule that does not need batching stays a plain `Rule` and answers its own
  * questions. The engine runs both kinds in one pass.
  */
-export interface PlannedRule {
-  readonly id: string
-  readonly severity: Severity
+export interface PlannedRule extends ReportedRule {
   readonly description: string
+  /** A planned rule always needs the model; the plan half asks its questions. */
   readonly judged: true
-  /** The rule's messages, keyed by id, so the wording lives in one place. */
-  readonly messages?: Messages | undefined
-  /** The entropy reversal this rule proposes, when it proposes one. */
-  readonly move?: Move | undefined
   /** The operations this rule can propose. Absent means it only warns. */
   readonly operations?: ReadonlyArray<Operation> | undefined
   /**

@@ -169,6 +169,13 @@ export default {
     // Oxlint options, so it is off with the reason rather than renamed to please
     // it.
     "effecttsgo/deterministic-keys": "off",
+    // joggle's own schema-excludes-domain-value rule requires a wire schema to
+    // admit what the domain produces, and the domain's offsets, counts and
+    // probabilities are `number`. `Schema.Finite` narrows the wire format below
+    // the domain and joggle reports the mismatch, so the schema stays
+    // `Schema.Number` and this rule -- a style preference -- is the one that
+    // yields. The house rule wins.
+    "effecttsgo/schema-number": "off",
     //
     // effecttsgo/missing-pipeable-signature wants every exported fixed-arity
     // function to also carry a pipeable overload. That is right for a library

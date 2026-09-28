@@ -14,17 +14,38 @@ import type { Consistency, DecisionAnswers } from "./rule.ts"
 /**
  * One candidate's questions, and how to read the answers.
  *
- * A plan carries atoms and decisions, not state and questions, and that is what
- * makes it mergeable. The decisions reference the atoms by id, as
+ * A questionnaire carries atoms and decisions, not state and questions, and that
+ * is what makes it mergeable. The decisions reference the atoms by id, as
  * `atoms[a1b2].source` -- the TypeSafe docs' "reference specific fields" rule with
- * a content-addressed path -- so any set of plans can be answered against the
- * union of their atoms without rewriting an instruction.
+ * a content-addressed path -- so any set of questionnaires can be answered
+ * against the union of their atoms without rewriting an instruction.
+ *
+ * This is the half the engine batches. `Plan` adds the fields a rule names a
+ * candidate with, and those are the same shape in every rule that builds one.
+ */
+export interface Questionnaire<A> {
+  /** The atoms every decision here references. */
+  readonly atoms: ReadonlyArray<string>
+  readonly decisions: Record<string, Decision.Any>
+  /**
+   * Per decision, the labels that mean "this rule is violated".
+   *
+   * The same declaration the read uses via `verdictOf`, made data so calibration
+   * can reduce an answer without re-deriving the rule's intent. A Noul needs no
+   * entry: its probability is already the violation.
+   */
+  readonly violations?: Readonly<Record<string, ReadonlyArray<string>>> | undefined
+  readonly read: (answers: DecisionAnswers) => A | undefined
+}
+
+/**
+ * A questionnaire plus what names the candidate it is about.
  *
  * The plan is the seam between deciding what to ask and asking it. A rule builds
  * plans from the shared atoms; the engine answers them, batched, and hands each
  * plan its own answers back.
  */
-export interface Plan<A> {
+export interface Plan<A> extends Questionnaire<A> {
   readonly ruleId: string
   /** How the rule names this candidate, for a drop. */
   readonly subject: string
@@ -37,18 +58,6 @@ export interface Plan<A> {
    * plan is never sent and its answer is never read.
    */
   readonly concerns: ReadonlyArray<string>
-  /** The atoms every decision in this plan references. */
-  readonly atoms: ReadonlyArray<string>
-  readonly decisions: Record<string, Decision.Any>
-  /**
-   * Per decision, the labels that mean "this rule is violated".
-   *
-   * The same declaration the read uses via `verdictOf`, made data so calibration
-   * can reduce an answer without re-deriving the rule's intent. A Noul needs no
-   * entry: its probability is already the violation.
-   */
-  readonly violations?: Readonly<Record<string, ReadonlyArray<string>>> | undefined
-  readonly read: (answers: DecisionAnswers) => A | undefined
 }
 
 /* -------------------------------------------------------------------------- */
@@ -74,21 +83,21 @@ export class PlanAnswers extends Context.Service<PlanAnswers, PlanAnswerStore>()
 export const StoredAnswer = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("Rate"),
-    rating: Schema.Finite,
+    rating: Schema.Number,
     label: Schema.String,
-    probabilities: Schema.Record(Schema.String, Schema.Finite),
-    confidence: Schema.optionalKey(Schema.Finite),
+    probabilities: Schema.Record(Schema.String, Schema.Number),
+    confidence: Schema.optionalKey(Schema.Number),
   }),
   Schema.Struct({
     kind: Schema.Literal("Classify"),
     label: Schema.String,
-    probabilities: Schema.Record(Schema.String, Schema.Finite),
-    confidence: Schema.optionalKey(Schema.Finite),
+    probabilities: Schema.Record(Schema.String, Schema.Number),
+    confidence: Schema.optionalKey(Schema.Number),
   }),
   Schema.Struct({
     kind: Schema.Literal("Probability"),
-    probability: Schema.Finite,
-    consistency: Schema.optionalKey(Schema.Finite),
+    probability: Schema.Number,
+    consistency: Schema.optionalKey(Schema.Number),
   }),
 ])
 

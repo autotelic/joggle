@@ -148,7 +148,7 @@ export interface Unit {
 /** One object literal: what it holds, and where it is. */
 export const ObjectSite = Schema.Struct({
   keys: Schema.Array(Schema.String),
-  start: Schema.Finite,
+  start: Schema.Number,
   /**
    * True when the literal IS a type declaration, such as the field object of a
    * `Schema.Struct`. A declaration is not a shape that needs a name; it is the
@@ -200,20 +200,20 @@ export const ColumnFact = Schema.Struct({
   column: Schema.String,
   nullable: Schema.Boolean,
   /** The offset of the `table.<type>('<column>')` call, for the line. */
-  start: Schema.Finite,
+  start: Schema.Number,
 })
 
 /** One call, where it is, what it names, and the shape of its arguments. */
 export const CallSite = Schema.Struct({
   /** Callee name, dotted for member calls: `createContext`, `React.useState`. */
   name: Schema.String,
-  start: Schema.Finite,
-  end: Schema.Finite,
+  start: Schema.Number,
+  end: Schema.Number,
   /**
    * How many arguments the call passes. A call whose default path passes none is
    * the shape a data-access question needs.
    */
-  argumentCount: Schema.Finite,
+  argumentCount: Schema.Number,
   /**
    * The keys of the call's one object-literal argument, when it has exactly one.
    *
@@ -233,8 +233,8 @@ export const CallSite = Schema.Struct({
  * the string means asks, instead of matching the text for known shapes.
  */
 export const StringSite = Schema.Struct({
-  start: Schema.Finite,
-  end: Schema.Finite,
+  start: Schema.Number,
+  end: Schema.Number,
   /** The references interpolated into it, dotted: `row.amount`, `total`. */
   refs: Schema.Array(Schema.String),
 })
@@ -249,8 +249,8 @@ export interface StringSite extends Schema.Schema.Type<typeof StringSite> {}
  * `if (!x)` against the source.
  */
 export const GuardSite = Schema.Struct({
-  start: Schema.Finite,
-  end: Schema.Finite,
+  start: Schema.Number,
+  end: Schema.Number,
   /** The references the test names, dotted. */
   refs: Schema.Array(Schema.String),
   /** True when the consequent returns or throws: a guard clause. */
@@ -266,8 +266,8 @@ export interface GuardSite extends Schema.Schema.Type<typeof GuardSite> {}
  * NOT say the skip is a data loss the caller must know about. That is a question.
  */
 export const SkipSite = Schema.Struct({
-  start: Schema.Finite,
-  end: Schema.Finite,
+  start: Schema.Number,
+  end: Schema.Number,
 })
 
 export interface SkipSite extends Schema.Schema.Type<typeof SkipSite> {}
@@ -280,24 +280,24 @@ export interface SkipSite extends Schema.Schema.Type<typeof SkipSite> {}
  */
 export const LiteralSite = Schema.Struct({
   value: Schema.String,
-  start: Schema.Finite,
-  end: Schema.Finite,
+  start: Schema.Number,
+  end: Schema.Number,
 })
 
 export interface LiteralSite extends Schema.Schema.Type<typeof LiteralSite> {}
 
 /** A `return`, where it is. The expression it returns is what a type question asks about. */
 export const ReturnSite = Schema.Struct({
-  start: Schema.Finite,
-  end: Schema.Finite,
+  start: Schema.Number,
+  end: Schema.Number,
 })
 
 export interface ReturnSite extends Schema.Schema.Type<typeof ReturnSite> {}
 
 /** A comparison, its operator and span. A language construct, not a repository idiom. */
 export const ComparisonSite = Schema.Struct({
-  start: Schema.Finite,
-  end: Schema.Finite,
+  start: Schema.Number,
+  end: Schema.Number,
   operator: Schema.String,
 })
 
@@ -686,10 +686,20 @@ type Lang = "js" | "jsx" | "ts" | "tsx"
  * JSX when the first one reports errors, rather than guessing from the contents.
  */
 const langOf = (file: string): Lang => {
-  if (file.endsWith(".tsx")) return "tsx"
-  if (file.endsWith(".jsx")) return "jsx"
-  if (file.endsWith(".ts") || file.endsWith(".mts") || file.endsWith(".cts")) return "ts"
-  return "js"
+  const dot = file.lastIndexOf(".")
+  const extension = dot < 0 ? "" : file.slice(dot)
+  switch (extension) {
+    case ".tsx":
+      return "tsx"
+    case ".jsx":
+      return "jsx"
+    case ".ts":
+    case ".mts":
+    case ".cts":
+      return "ts"
+    default:
+      return "js"
+  }
 }
 
 interface DeclarationSite extends Span {
@@ -1114,7 +1124,7 @@ const structureIn = (root: unknown, allOptionalFunctions: ReadonlyArray<string>)
    * A field value's `Schema` chain, including a bare member.
    *
    * `chainOf` follows CALL chains (`Schema.NullOr(Schema.String)`), so it misses
-   * `Schema.Finite`, which is a member and not a call -- and a bare `Finite` is
+   * `Schema.Number`, which is a member and not a call -- and a bare `Finite` is
    * exactly the field a value has to satisfy.
    */
   const schemasOf = (value: unknown): ReadonlyArray<string> => {
@@ -1613,7 +1623,7 @@ export type ParseOutcome =
   | { readonly ok: false; readonly reason: string }
 
 /** A file's path and text, the pair the parser reads. */
-interface FileText {
+export interface FileText {
   readonly file: string
   readonly text: string
 }

@@ -7,6 +7,7 @@ import {
   StructureFacts,
   tokenize,
   UnitKind,
+  type FileText,
   type Parses,
   type SourceFile,
   type Unit,
@@ -45,12 +46,6 @@ import {
  * algorithms harm incrementality" -- that such a system brings with it.
  */
 export const CACHE_VERSION = "8"
-
-/** A file's text: the pair a parse's cache key is built from. */
-interface FileText {
-  readonly file: string
-  readonly text: string
-}
 
 /** One parse's key: which file, and what it said. */
 export const keyOf = ({ file, text }: FileText): string =>
@@ -98,8 +93,8 @@ const encodeSourceFile = (file: SourceFile): typeof EncodedFile.Type => ({
 const EncodedUnit = Schema.Struct({
   kind: UnitKind,
   name: Schema.String,
-  start: Schema.Finite,
-  end: Schema.Finite,
+  start: Schema.Number,
+  end: Schema.Number,
   location: SourceLocation,
   exported: Schema.Boolean,
   shape: Schema.String,
@@ -136,19 +131,6 @@ const CacheFile = Schema.Struct({
 const decodeCache = SchemaParser.decodeUnknownResult(Schema.fromJsonString(CacheFile))
 
 /**
- * The file a parse belongs to: which one, and what it said.
- *
- * One value rather than two adjacent strings, because `unitFrom(entry, text,
- * file)` compiles and would produce a parse of the wrong file with the right
- * contents. plumb reported exactly that against the two-string version, which is
- * the ratchet catching code written the same hour.
- */
-interface Source {
-  readonly file: string
-  readonly text: string
-}
-
-/**
  * A unit, rebuilt from a decoded entry and the text the caller already has.
  *
  * The text is a slice of the file, and the tokens and shingles are functions of
@@ -160,7 +142,7 @@ interface Source {
  */
 const unitFrom = (
   entry: typeof EncodedUnit.Type,
-  source: Source,
+  source: FileText,
 ): Unit | undefined => {
   const { file, text } = source
   // A span that does not fit the file it claims to come from is a corrupt entry,
@@ -201,7 +183,7 @@ const unitFrom = (
 /** A whole file's parse, or undefined when any unit of it is unusable. */
 const sourceFileFrom = (
   entry: typeof EncodedFile.Type,
-  source: Source,
+  source: FileText,
 ): SourceFile | undefined => {
   const units: Array<Unit> = []
   for (const raw of entry.units) {

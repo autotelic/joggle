@@ -95,10 +95,10 @@ const gaps = (page: Page): ReadonlyArray<string> => {
 const PageEvidence = Schema.Struct({
   page: Schema.Struct({
     path: Schema.String,
-    lines: Schema.Finite,
-    local_state_calls: Schema.Finite,
-    inline_elements: Schema.Finite,
-    imports_from_pattern_bundles: Schema.Finite,
+    lines: Schema.Number,
+    local_state_calls: Schema.Number,
+    inline_elements: Schema.Number,
+    imports_from_pattern_bundles: Schema.Number,
     renders_a_provider: Schema.Boolean,
   }),
   gaps: Schema.Array(Schema.String),
