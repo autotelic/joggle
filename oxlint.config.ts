@@ -162,6 +162,14 @@ export default {
     // supposed to be reproducible.
     // plumb-effect/require-schema-type-derivation is off (see above).
     //
+    // deterministic-keys wants a path-derived key like
+    // `<package>/<dir>/<ClassName>`. joggle's services are keyed
+    // `@joggle/<ClassName>`: readable, stable, and set by hand beside the class.
+    // The rule's key would be longer and no more honest, and the rule takes no
+    // Oxlint options, so it is off with the reason rather than renamed to please
+    // it.
+    "effecttsgo/deterministic-keys": "off",
+    //
     // effecttsgo/missing-pipeable-signature wants every exported fixed-arity
     // function to also carry a pipeable overload. That is right for a library
     // whose functions compose through `.pipe`; joggle's exported functions are
@@ -402,6 +410,14 @@ export default {
       // built from the cluster's own members, not a query.
       files: ["src/rules/cluster-verdict.ts"],
       rules: { "plumb/no-sql-string-interpolation": "off" },
+    },
+    {
+      // The rule reads `interface X extends Schema.Schema.Type<typeof X>` as a
+      // class instance, but the type is a plain object: the spread copies fields
+      // and there is no prototype to lose. A false positive from type-aware mode
+      // on every Schema-derived interface in the tree.
+      files: ["src/decision.ts", "src/plugins.ts", "src/check.ts"],
+      rules: { "typescript/no-misused-spread": "off" },
     },
   ],
 };

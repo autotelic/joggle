@@ -890,10 +890,9 @@ export const assessClusters = (
     // A fact-based rule still reports its facts when the model was never reached;
     // a guess-based rule steps aside and the engine reports it as skipped.
     const verdicts = yield* answerPlans(phase.planned.map((entry) => entry.plan)).pipe(
-      Effect.catch((error) =>
-        rule.onUnavailable === "report" || !isUnreachable(error)
-          ? Effect.succeed(phase.planned.map(() => undefined))
-          : Effect.fail(error),
+      Effect.catchIf(
+        (error) => rule.onUnavailable === "report" || !isUnreachable(error),
+        () => Effect.succeed(phase.planned.map(() => undefined)),
       ),
     )
     return readClusters(rule, workspace, phase, layers, verdicts)

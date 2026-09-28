@@ -245,8 +245,9 @@ export const classifyModules = (
           // One candidate that cannot be read is a drop for that candidate, not a
           // failed run: the other modules still deserve an answer. A model that
           // was never reached is different -- the whole rule steps aside.
-          Effect.catch((error) =>
-            isUnreachable(error) ? Effect.fail(error) : Effect.succeed(Option.none<string>()),
+          Effect.catchIf(
+            (error) => !isUnreachable(error),
+            () => Effect.succeed(Option.none<string>()),
           ),
         )
       },

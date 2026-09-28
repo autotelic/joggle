@@ -1,16 +1,8 @@
 {
   "note": "Known plumb findings, by identity and count. `pnpm lint:update` accepts the current state; `pnpm lint` fails when a count rises or a new identity appears.",
-  "total": 70,
+  "total": 53,
   "census": {
     "effecttsgo(async-function)\u0000src/typefacts.ts\u0000This code declares an async function, consider representing this async control flow with Effect values and `Effect.gen`.": 2,
-    "effecttsgo(catch-conditional-refail-to-catch-if)\u0000src/roles.ts\u0000`Effect.catchIf` expresses selective recovery more directly than `Effect.catch` with a conditional `Effect.fail` passthrough.": 1,
-    "effecttsgo(catch-conditional-refail-to-catch-if)\u0000src/rules/cluster-verdict.ts\u0000`Effect.catchIf` expresses selective recovery more directly than `Effect.catch` with a conditional `Effect.fail` passthrough.": 1,
-    "effecttsgo(deterministic-keys)\u0000src/atoms.ts\u0000This key does not match the deterministic key for this declaration. The expected key is `@autotelic/joggle/atoms`.": 1,
-    "effecttsgo(deterministic-keys)\u0000src/decision.ts\u0000This key does not match the deterministic key for this declaration. The expected key is `@autotelic/joggle/decision/DecisionStats`.": 1,
-    "effecttsgo(deterministic-keys)\u0000src/git.ts\u0000This key does not match the deterministic key for this declaration. The expected key is `@autotelic/joggle/git/Service`.": 1,
-    "effecttsgo(deterministic-keys)\u0000src/plans.ts\u0000This key does not match the deterministic key for this declaration. The expected key is `@autotelic/joggle/plans/PlanAnswers`.": 1,
-    "effecttsgo(deterministic-keys)\u0000src/rules/index.ts\u0000This key does not match the deterministic key for this declaration. The expected key is `@autotelic/joggle/rules/Rules`.": 1,
-    "effecttsgo(deterministic-keys)\u0000src/tsgo.ts\u0000This key does not match the deterministic key for this declaration. The expected key is `@autotelic/joggle/tsgo/Service`.": 1,
     "effecttsgo(leaking-requirements)\u0000src/tsgo.ts\u0000Methods of this Service require `ChildProcessSpawner` from every caller.\n\nThe requirement becomes part of the public service surface instead of remaining internal to Layer implementation.\n\nResolve these dependencies at Layer creation and provide them to each method, so the service's type reflects its purpose, not its implementation.\n\nTo suppress this diagnostic for specific dependency types that are intentionally passed through (e.g., HttpServerRequest), add `@effect-leakable-service` JSDoc to their interface declarations, or to this service by adding a `@effect-expect-leaking ChildProcessSpawner` JSDoc.\n\nMore info and examples at https://effect.website/docs/requirements-management/layers/#avoiding-requirement-leakage": 1,
     "effecttsgo(nested-effect-gen-yield)\u0000src/ask.ts\u0000This `yield*` is applied to a nested `Effect.gen(...)` that can be inlined in the parent Effect generator context.": 1,
     "effecttsgo(node-builtin-import)\u0000src/state.ts\u0000This module reference uses the `crypto` module, the corresponding Effect API is `Crypto` from `effect`.": 1,
@@ -57,9 +49,6 @@
     "plumb(no-swappable-primitive-params)\u0000src/workspace.ts\u0000`depthOf` takes 2 adjacent `string` parameters, so a swapped call compiles. Brand each one (e.g. `type UserId = string & Brand.Brand<\"UserId\">`) so the compiler rejects transposed arguments.": 1,
     "plumb(no-swappable-primitive-params)\u0000src/workspace.ts\u0000`parseSourceFile` takes 2 adjacent `string` parameters, so a swapped call compiles. Brand each one (e.g. `type UserId = string & Brand.Brand<\"UserId\">`) so the compiler rejects transposed arguments.": 1,
     "plumb(no-swappable-primitive-params)\u0000src/workspace.ts\u0000`sourceFileFrom` takes 2 adjacent `string` parameters, so a swapped call compiles. Brand each one (e.g. `type UserId = string & Brand.Brand<\"UserId\">`) so the compiler rejects transposed arguments.": 1,
-    "plumb(no-swappable-primitive-params)\u0000src/workspace.ts\u0000`walk` takes 2 adjacent `string` parameters, so a swapped call compiles. Brand each one (e.g. `type UserId = string & Brand.Brand<\"UserId\">`) so the compiler rejects transposed arguments.": 1,
-    "typescript(no-misused-spread)\u0000src/check.ts\u0000Using the spread operator on class instances will lose their class prototype.": 2,
-    "typescript(no-misused-spread)\u0000src/decision.ts\u0000Using the spread operator on class instances will lose their class prototype.": 5,
-    "typescript(no-misused-spread)\u0000src/plugins.ts\u0000Using the spread operator on class instances will lose their class prototype.": 2
+    "plumb(no-swappable-primitive-params)\u0000src/workspace.ts\u0000`walk` takes 2 adjacent `string` parameters, so a swapped call compiles. Brand each one (e.g. `type UserId = string & Brand.Brand<\"UserId\">`) so the compiler rejects transposed arguments.": 1
   }
 }
