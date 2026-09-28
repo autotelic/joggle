@@ -362,6 +362,19 @@ export const verdictsOf = <A>(answers: ReadonlyArray<unknown>): ReadonlyArray<A 
   answers as ReadonlyArray<A | undefined>
 
 /**
+ * One candidate's plan, with the candidate it was built from.
+ *
+ * A `plan` phase builds these so its `read` can name the finding it is about;
+ * every rule that does spells the shape the same way, so it is declared once.
+ */
+export interface PlannedCandidate<C> {
+  readonly candidate: C
+  /** The atom the plan's decisions reference, when the rule added one. */
+  readonly id: string
+  readonly plan: Plan<unknown>
+}
+
+/**
  * Plans cut to fit one request, with the characters of state they carry.
  *
  * The characters are what the caller estimates tokens from: the provider charges

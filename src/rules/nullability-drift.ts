@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { lineAt, lineStarts } from "../cascade.ts"
+import { type PlannedCandidate } from "../plans.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
 import { locator, messages, reporter, type Report } from "../reporting.ts"
 import { verdictOf } from "../verdict.ts"
@@ -153,7 +154,7 @@ export const nullabilityDrift: PlannedRule = {
           },
           read: (answers) => answers,
         }
-        return { candidate, id, plan }
+        return { candidate, id, plan } satisfies PlannedCandidate<typeof candidate>
       }),
       { concurrency: "unbounded" },
     )
