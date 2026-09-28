@@ -1,6 +1,6 @@
 import { Effect, Order } from "effect"
 import { Decision } from "effect/unstable/ai"
-import { Atoms } from "../atoms.ts"
+import { Atoms, type CandidateSample } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
 import { locator, messages, reporter, type Report } from "../reporting.ts"
@@ -151,7 +151,7 @@ export const nameThePrimitive: PlannedRule = {
           if (first === undefined) return undefined
           // The state is the field names and a bounded sample of the declarations
           // that carry them, not every declaration's source.
-          const declarations = entry.units.slice(0, 4).map((unit) => ({
+          const declarations: ReadonlyArray<CandidateSample> = entry.units.slice(0, 4).map((unit) => ({
             name: unit.name,
             file: unit.file,
             line: unit.location.line,

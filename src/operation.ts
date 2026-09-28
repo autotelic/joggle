@@ -94,6 +94,14 @@ export interface Settled {
   readonly reason: string
 }
 
+/** The two estimators and how much each is worth, for `settle`. */
+export interface SettleInput {
+  readonly derived: Operation | undefined
+  readonly proposed: Operation | undefined
+  readonly margin: number
+  readonly confidence: number | undefined
+}
+
 /**
  * Reconcile the table with the model's own read, as peers.
  *
@@ -111,12 +119,7 @@ export interface Settled {
  * @param input.margin - Winner minus runner-up in the model's own distribution.
  * @param input.confidence - The provider's confidence in its answer.
  */
-export const settle = (input: {
-  readonly derived: Operation | undefined
-  readonly proposed: Operation | undefined
-  readonly margin: number
-  readonly confidence: number | undefined
-}): Settled => {
+export const settle = (input: SettleInput): Settled => {
   if (input.proposed === undefined) {
     return { operation: undefined, quality: "drop", reason: "the model declined" }
   }

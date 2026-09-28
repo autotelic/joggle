@@ -15,6 +15,22 @@ import { shortHash } from "./state.ts"
  */
 export const atomId = (value: Schema.Json): string => "a" + shortHash(canonical(value))
 
+/**
+ * One declaration offered to the model, bounded.
+ *
+ * The same four fields every rule sends when it names a member: which
+ * declaration, where, and a slice of its source. Declared as a Schema so it is
+ * JSON by construction -- an atom's value must be.
+ */
+export const CandidateSample = Schema.Struct({
+  name: Schema.String,
+  file: Schema.String,
+  line: Schema.Finite,
+  source: Schema.String,
+})
+
+export type CandidateSample = typeof CandidateSample.Type
+
 export interface Interface {
   /** Add a fact and return its id. The same value returns the same id. */
   readonly add: (value: Schema.Json) => Effect.Effect<string>

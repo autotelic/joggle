@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { Decision } from "effect/unstable/ai"
-import { Atoms } from "../atoms.ts"
+import { Atoms, type CandidateSample } from "../atoms.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
 import { locator, messages, reporter, type Report } from "../reporting.ts"
@@ -115,7 +115,7 @@ export const callPattern: PlannedRule = {
         const calls = first.calls.map(stripFile)
         // The state is the shared call sequence and a bounded sample of the
         // members, not every member's source.
-        const members = units.slice(0, 5).map((unit) => ({
+        const members: ReadonlyArray<CandidateSample> = units.slice(0, 5).map((unit) => ({
           name: unit.name,
           file: unit.file,
           line: unit.location.line,
