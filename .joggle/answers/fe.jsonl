@@ -12,3 +12,4 @@ fe9ef75cd7898962	1790635110	{"confidence":0.27,"kind":"Classify","label":"two_co
 fec4b58c5620d302	1790631747	{"confidence":0.32,"kind":"Classify","label":"drift","probabilities":{"compatible":0.25,"drift":0.54,"two_concepts":0.21}}
 fecb33d05b54e340	1790631747	{"confidence":0.98,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.99,"stale_reference":0,"wrong_behavior":0,"wrong_contract":0.01}}
 fecc0278eab0b283	1790632045	{"confidence":0.45,"kind":"Classify","label":"compatible","probabilities":{"compatible":0.64,"drift":0.35,"two_concepts":0.01}}
+fee1f80409e88d93	1790635956	{"confidence":0.81,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.86,"stale_reference":0,"wrong_behavior":0.13,"wrong_contract":0.01}}

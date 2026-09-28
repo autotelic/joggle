@@ -1,3 +1,4 @@
+d000dc10702ccdaf	1790635956	{"confidence":0.4,"kind":"Classify","label":"two_concepts","probabilities":{"compatible":0.09,"drift":0.31,"two_concepts":0.6}}
 d00533741adc0331	1790631747	{"confidence":0.81,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.87,"stale_reference":0.07,"wrong_behavior":0.03,"wrong_contract":0.03}}
 d00ea8f045f5d7fa	1790631747	{"confidence":1,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":1,"stale_reference":0,"wrong_behavior":0,"wrong_contract":0}}
 d01436c50281ccc3	1790635110	{"confidence":0.37,"kind":"Classify","label":"two_concepts","probabilities":{"compatible":0.02,"drift":0.4,"two_concepts":0.58}}

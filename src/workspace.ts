@@ -2023,7 +2023,7 @@ export const loadWorkspace = (
     // PARSER was the expensive part. It never was.
     const outward = new Map<string, Array<ImportEdge>>()
     for (const edge of graph.edges) {
-      if (!edge.resolved) continue
+      if (edge.resolution === "unresolved") continue
       const existing = outward.get(edge.importer)
       if (existing === undefined) outward.set(edge.importer, [edge])
       else existing.push(edge)

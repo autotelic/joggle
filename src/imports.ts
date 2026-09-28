@@ -41,7 +41,13 @@ export interface ImportEdge extends ParsedImport {
   readonly importer: string
   /** Resolved workspace-relative path, or the raw specifier when unresolved. */
   readonly to: string
-  readonly resolved: boolean
+  /**
+   * Whether `to` is a path in the workspace or the specifier as written.
+   *
+   * A tag rather than a boolean, so a reader names which case it is in rather
+   * than testing a flag beside `to` and hoping the two agree.
+   */
+  readonly resolution: "resolved" | "unresolved"
 }
 
 export interface ImportGraph {
@@ -118,7 +124,7 @@ export const buildImportGraph = (
         importer: file.path,
         specifier: statement.specifier,
         to: target ?? statement.specifier,
-        resolved: target !== undefined,
+        resolution: target !== undefined ? "resolved" : "unresolved",
         names: statement.names,
         typeOnly: statement.typeOnly,
       })
@@ -127,7 +133,7 @@ export const buildImportGraph = (
 
   const importersOf = new Map<string, Array<ImportEdge>>()
   for (const edge of edges) {
-    if (!edge.resolved) continue
+    if (edge.resolution === "unresolved") continue
     const existing = importersOf.get(edge.to)
     if (existing === undefined) importersOf.set(edge.to, [edge])
     else existing.push(edge)

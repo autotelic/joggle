@@ -97,7 +97,7 @@ export const moduleDirection: PlannedRule = {
       readonly file: string
     }> = []
     for (const edge of workspace.imports.edges) {
-      if (!edge.resolved || edge.importer === edge.to) continue
+      if (edge.resolution === "unresolved" || edge.importer === edge.to) continue
       // A scoped run asks about the change: an upward dependency is a candidate
       // when one of its two ends moved. A pure rename counts -- the move itself
       // can put a module on the wrong side of a boundary it used to respect.

@@ -8,7 +8,7 @@ const graphOf = (pairs: ReadonlyArray<readonly [string, string, boolean?]>): Imp
     importer,
     specifier: to,
     to,
-    resolved: true,
+    resolution: "resolved",
     names: [],
     typeOnly: typeOnly === true,
   })),

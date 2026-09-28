@@ -125,7 +125,7 @@ const dependenciesIn = (workspace: Workspace): Candidates => {
   for (const edge of workspace.imports.edges) {
     // Internal imports are `layer-direction`'s business, and a relative specifier
     // cannot be a dependency on a framework.
-    if (edge.resolved) continue
+    if (edge.resolution === "resolved") continue
     if (edge.specifier.startsWith(".") || edge.specifier.startsWith("/")) continue
     if (BUILTINS.has(edge.specifier)) continue
     // A path into an installed tree is not an import of a package, and a package

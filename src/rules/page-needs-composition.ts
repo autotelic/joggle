@@ -74,7 +74,7 @@ const candidatesIn = (workspace: Workspace): ReadonlyArray<Page> => {
       inlineElements,
       lines: file.text.split("\n").length,
       importsBundles: workspace.imports.edges.filter(
-        (edge) => edge.importer === file.path && edge.resolved && bundleDirs.has(dirOf(edge.to)),
+        (edge) => edge.importer === file.path && edge.resolution === "resolved" && bundleDirs.has(dirOf(edge.to)),
       ).length,
       rendersProvider: file.facts.jsx.some((element) => element.endsWith(".Provider")),
     })

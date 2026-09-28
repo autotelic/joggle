@@ -158,7 +158,7 @@ export const directionViolations = (
 ): ReadonlyArray<DirectionViolation> => {
   const violations: Array<DirectionViolation> = []
   for (const edge of imports.edges) {
-    if (!edge.resolved || edge.importer === edge.to) continue
+    if (edge.resolution === "unresolved" || edge.importer === edge.to) continue
     const source = layerOf(layers, edge.importer)
     const target = layerOf(layers, edge.to)
     if (source === undefined || target === undefined) continue
@@ -219,7 +219,7 @@ export const cyclesIn = (imports: ImportGraph): ReadonlyArray<Cycle> => {
   /** Whether EVERY edge from one file to another is erased. */
   const erased = new Map<string, boolean>()
   for (const edge of imports.edges) {
-    if (!edge.resolved || edge.importer === edge.to) continue
+    if (edge.resolution === "unresolved" || edge.importer === edge.to) continue
     const existing = adjacency.get(edge.importer)
     if (existing === undefined) adjacency.set(edge.importer, [edge.to])
     else if (!existing.includes(edge.to)) existing.push(edge.to)

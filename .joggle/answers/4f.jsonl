@@ -1,3 +1,4 @@
+4f50b3f1473f1bb9	1790635956	{"confidence":0.81,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.86,"stale_reference":0,"wrong_behavior":0.13,"wrong_contract":0.01}}
 4f596e16e0fd99ca	1790624340	{"confidence":0.4,"kind":"Rate","label":"meaningfully_better","probabilities":{"meaningfully_better":0.45999999999999996,"no_difference":0.07,"removes_a_hazard":0.22,"slightly_clearer":0.25},"rating":1.84}
 4f929c108904a288	1790624340	{"confidence":0.69,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.02,"name_meaning":0.03,"no_issue":0.18,"semantic_verdict":0.77}}
 4fa0f48b46eba6a0	1790631747	{"confidence":0.84,"kind":"Classify","label":"shared_vocabulary","probabilities":{"general":0.1,"names_a_caller":0,"shared_vocabulary":0.9}}

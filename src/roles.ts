@@ -75,7 +75,7 @@ export const externalNames = (workspace: Workspace): ReadonlySet<string> => {
     for (const declared of manifest.declares) names.add(declared)
   }
   for (const edge of workspace.imports.edges) {
-    if (edge.resolved) continue
+    if (edge.resolution === "resolved") continue
     if (edge.specifier.startsWith(".") || edge.specifier.startsWith("/")) continue
     if (edge.specifier.startsWith("node:")) continue
     names.add(packageNameOf(edge.specifier))
@@ -187,7 +187,7 @@ export const classifyModules = (
     // this is how the model can see that rather than infer it from the name.
     const externalByModule = new Map<string, Set<string>>()
     for (const edge of workspace.imports.edges) {
-      if (edge.resolved) continue
+      if (edge.resolution === "resolved") continue
       if (edge.specifier.startsWith(".") || edge.specifier.startsWith("/")) continue
       if (edge.specifier.startsWith("node:")) continue
       const module = ownerOf.get(edge.importer)
@@ -202,7 +202,7 @@ export const classifyModules = (
     // them here means the rank question gets them without a second graph walk.
     const importersByModule = new Map<string, Set<string>>()
     for (const edge of workspace.imports.edges) {
-      if (!edge.resolved) continue
+      if (edge.resolution === "unresolved") continue
       const from = ownerOf.get(edge.importer)
       const to = ownerOf.get(edge.to)
       if (from === undefined || to === undefined || from === to) continue
