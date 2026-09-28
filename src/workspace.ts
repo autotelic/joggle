@@ -2015,7 +2015,7 @@ export const loadWorkspace = (
     //
     // Resolving a type name used to scan the whole edge list once per type
     // reference, and the first loop it tried was `importersOf.get(file)` filtered
-    // by `edge.from === file` -- which only ever matches a file importing itself,
+    // by `edge.importer === file` -- which only ever matches a file importing itself,
     // so it missed on every call and the second loop did all the work.
     //
     // On one repository that was 10,674 type references against 8,518 edges:
@@ -2025,8 +2025,8 @@ export const loadWorkspace = (
     const outward = new Map<string, Array<ImportEdge>>()
     for (const edge of graph.edges) {
       if (!edge.resolved) continue
-      const existing = outward.get(edge.from)
-      if (existing === undefined) outward.set(edge.from, [edge])
+      const existing = outward.get(edge.importer)
+      if (existing === undefined) outward.set(edge.importer, [edge])
       else existing.push(edge)
     }
     const resolveRef = (file: string, name: string): string => {

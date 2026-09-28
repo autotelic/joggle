@@ -8,3 +8,4 @@
 74af91cf6f46b1ca	1790624340	{"confidence":0.98,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.99,"stale_reference":0,"wrong_behavior":0.01,"wrong_contract":0}}
 74dfdc5c71615e95	1790624340	{"confidence":0.93,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.95,"stale_reference":0,"wrong_behavior":0.03,"wrong_contract":0.02}}
 74e28d36d3fb15fe	1790631747	{"confidence":0.92,"kind":"Classify","label":"internal_only","probabilities":{"accounted_elsewhere":0.02,"internal_only":0.94,"unaccounted":0.04}}
+74f8ce04af0ca1c7	1790633007	{"confidence":0.27,"kind":"Classify","label":"two_concepts","probabilities":{"compatible":0.08,"drift":0.41,"two_concepts":0.51}}

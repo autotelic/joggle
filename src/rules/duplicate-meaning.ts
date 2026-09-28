@@ -70,7 +70,7 @@ const find = (workspace: Workspace, scope: Scope): Candidates => {
     .filter((entry) => entry.unit.tokens.length >= minTokens)
 
   const candidates = allPairs(
-    eligible.map((entry) => ({ index: entry.index, shingles: entry.unit.shingles })),
+    eligible.map((entry) => ({ position: entry.index, shingles: entry.unit.shingles })),
     minSimilarity,
   )
 

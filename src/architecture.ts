@@ -43,12 +43,12 @@ export const layersFrom = (config: JoggleConfig): ReadonlyArray<Layer> =>
 export const layerOf = (
   layers: ReadonlyArray<Layer>,
   file: string,
-): Layer | undefined => layers.find((layer) => layer.include.some((glob) => matchesGlob({ glob, value: file })))
+): Layer | undefined => layers.find((layer) => layer.include.some((glob) => matchesGlob({ glob, subject: file })))
 
 /** The declared layers and the two files an import would connect. */
 interface ImportEdge {
   readonly layers: ReadonlyArray<Layer>
-  readonly from: string
+  readonly importer: string
   readonly to: string
 }
 
@@ -59,8 +59,8 @@ interface ImportEdge {
  * describes what someone wrote down, and inventing a rule for the rest would be
  * reporting an architecture nobody declared.
  */
-export const canImport: Predicate.Predicate<ImportEdge> = ({ layers, from, to }) => {
-  const source = layerOf(layers, from)
+export const canImport: Predicate.Predicate<ImportEdge> = ({ layers, importer, to }) => {
+  const source = layerOf(layers, importer)
   const target = layerOf(layers, to)
   if (source === undefined || target === undefined) return true
   return target.rank <= source.rank
@@ -94,7 +94,7 @@ export const sharedLayerFor = (
 }
 
 export interface PurityViolation {
-  readonly from: string
+  readonly importer: string
   readonly specifier: string
   readonly layer: string
   readonly pattern: string
@@ -118,12 +118,12 @@ export const purityViolations = (
 ): ReadonlyArray<PurityViolation> => {
   const found: Array<PurityViolation> = []
   for (const edge of imports.edges) {
-    const layer = layerOf(layers, edge.from)
+    const layer = layerOf(layers, edge.importer)
     if (layer === undefined || layer.forbid.length === 0) continue
     for (const pattern of layer.forbid) {
-      if (matchesGlob({ glob: pattern, value: edge.specifier })) {
+      if (matchesGlob({ glob: pattern, subject: edge.specifier })) {
         found.push({
-          from: edge.from,
+          importer: edge.importer,
           specifier: edge.specifier,
           layer: layer.name,
           pattern,
@@ -133,7 +133,7 @@ export const purityViolations = (
   }
   return found.sort(
     (left, right) =>
-      left.from.localeCompare(right.from) || left.specifier.localeCompare(right.specifier),
+      left.importer.localeCompare(right.importer) || left.specifier.localeCompare(right.specifier),
   )
 }
 
@@ -158,13 +158,13 @@ export const directionViolations = (
 ): ReadonlyArray<DirectionViolation> => {
   const violations: Array<DirectionViolation> = []
   for (const edge of imports.edges) {
-    if (!edge.resolved || edge.from === edge.to) continue
-    const source = layerOf(layers, edge.from)
+    if (!edge.resolved || edge.importer === edge.to) continue
+    const source = layerOf(layers, edge.importer)
     const target = layerOf(layers, edge.to)
     if (source === undefined || target === undefined) continue
     if (target.rank > source.rank) {
       violations.push({
-        from: edge.from,
+        from: edge.importer,
         to: edge.to,
         fromLayer: source.name,
         toLayer: target.name,
@@ -219,11 +219,11 @@ export const cyclesIn = (imports: ImportGraph): ReadonlyArray<Cycle> => {
   /** Whether EVERY edge from one file to another is erased. */
   const erased = new Map<string, boolean>()
   for (const edge of imports.edges) {
-    if (!edge.resolved || edge.from === edge.to) continue
-    const existing = adjacency.get(edge.from)
-    if (existing === undefined) adjacency.set(edge.from, [edge.to])
+    if (!edge.resolved || edge.importer === edge.to) continue
+    const existing = adjacency.get(edge.importer)
+    if (existing === undefined) adjacency.set(edge.importer, [edge.to])
     else if (!existing.includes(edge.to)) existing.push(edge.to)
-    const key = edge.from + "\u0000" + edge.to
+    const key = edge.importer + "\u0000" + edge.to
     erased.set(key, (erased.get(key) ?? true) && edge.typeOnly)
   }
 

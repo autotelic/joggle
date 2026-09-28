@@ -4,8 +4,8 @@ import type { ImportGraph } from "../src/imports.ts"
 import { allRules } from "../src/rules/index.ts"
 
 const graphOf = (pairs: ReadonlyArray<readonly [string, string, boolean?]>): ImportGraph => ({
-  edges: pairs.map(([from, to, typeOnly]) => ({
-    from,
+  edges: pairs.map(([importer, to, typeOnly]) => ({
+    importer,
     specifier: to,
     to,
     resolved: true,

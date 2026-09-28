@@ -211,7 +211,7 @@ const affectedBy = (
     const was = [...(before.get(file) ?? [])].sort(Order.String).join(",")
     const now = [...(after.get(file) ?? [])].sort(Order.String).join(",")
     if (was === now) continue
-    for (const edge of imports.importersOf.get(file) ?? []) out.add(edge.from)
+    for (const edge of imports.importersOf.get(file) ?? []) out.add(edge.importer)
   }
   return out
 }

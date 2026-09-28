@@ -250,8 +250,8 @@ export const bundleNote = ({ bundles, broken }: BundleTally): ReadonlyArray<stri
 
 /** A value together with its position in the workspace, for union-find below. */
 export interface Sized<T> {
-  readonly value: T
-  readonly index: number
+  readonly item: T
+  readonly position: number
 }
 
 /**
@@ -279,13 +279,13 @@ export const sweep = <T>(
   for (let i = 0; i < ordered.length; i += 1) {
     const left = ordered[i]
     if (left === undefined) continue
-    const smaller = size(left.value)
+    const smaller = size(left.item)
     if (smaller === 0 || threshold <= 0) continue
     const limit = smaller / threshold
     for (let j = i + 1; j < ordered.length; j += 1) {
       const right = ordered[j]
       if (right === undefined) break
-      if (size(right.value) > limit) break
+      if (size(right.item) > limit) break
       compared += 1
       visit(left, right)
     }

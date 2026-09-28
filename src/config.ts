@@ -156,7 +156,7 @@ export const emptyConfig: JoggleConfig = {}
 /** A glob and the value it is tested against. */
 interface GlobMatch {
   readonly glob: string
-  readonly value: string
+  readonly subject: string
 }
 
 /**
@@ -165,8 +165,8 @@ interface GlobMatch {
  * Exported because the architecture rules match file paths against declared
  * layers, and two matchers would be two behaviours for one config file.
  */
-export const matchesGlob: Predicate.Predicate<GlobMatch> = ({ glob, value }) =>
-  globToRegExp(glob).test(value)
+export const matchesGlob: Predicate.Predicate<GlobMatch> = ({ glob, subject }) =>
+  globToRegExp(glob).test(subject)
 
 const globToRegExp = (glob: string): RegExp =>
   new RegExp("^" + globSource(glob, { question: false, doubleStarSkipsSlash: false }) + "$")
@@ -240,7 +240,7 @@ export const unavailableFor = (
  */
 export const appliesAt: Predicate.Predicate<RuleAt> = ({ config, ruleId, path }) => {
   const paths = settingFor(config, ruleId)?.paths
-  return paths === undefined || paths.some((glob) => matchesGlob({ glob, value: path }))
+  return paths === undefined || paths.some((glob) => matchesGlob({ glob, subject: path }))
 }
 
 /** Whether a rule runs at all under this config. */

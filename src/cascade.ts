@@ -77,7 +77,7 @@ export const cascadeOf = (
     // 1. The importers. They must take the survivor's name from the survivor.
     for (const edge of workspace.imports.importersOfName(drop.file, drop.name)) {
       push({
-        file: edge.from,
+        file: edge.importer,
         line: 1,
         column: 1,
         instruction:

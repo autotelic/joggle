@@ -510,7 +510,7 @@ const prescription = (
   keep: Unit,
   drops: ReadonlyArray<Unit>,
 ): string => {
-  if (drops.every((unit) => canImport({ layers, from: unit.file, to: keep.file }))) {
+  if (drops.every((unit) => canImport({ layers, importer: unit.file, to: keep.file }))) {
     return `Delete or import instead of redeclaring: ${memberList(drops)}.`
   }
   const shared = sharedLayerFor(
@@ -611,7 +611,7 @@ const shapeOnlyNote = (cluster: Cluster): string =>
  */
 const dependents = (imports: ImportGraph, unit: Unit): string => {
   const named = imports.importersOfName(unit.file, unit.name)
-  const files = [...new Set(named.map((edge) => edge.from))]
+  const files = [...new Set(named.map((edge) => edge.importer))]
   if (files.length === 0) {
     return imports.importersOf.get(unit.file) === undefined
       ? "nothing in the analysed set imports this file"

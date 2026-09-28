@@ -47,15 +47,15 @@ const complete = (
   threshold: number,
 ): ReadonlyArray<string> => {
   const ordered = sets
-    .map((value, index) => ({ value, index }))
-    .sort((a, b) => a.value.size - b.value.size || a.index - b.index)
+    .map((item, position) => ({ item, position }))
+    .sort((a, b) => a.item.size - b.item.size || a.position - b.position)
   const found: Array<string> = []
   sweep(
     ordered,
-    (value) => value.size,
+    (item) => item.size,
     threshold,
     (a, b) => {
-      if (similarityOf(a.value, b.value) >= threshold) found.push(key(a.index, b.index))
+      if (similarityOf(a.item, b.item) >= threshold) found.push(key(a.position, b.position))
     },
   )
   return found.sort()
@@ -65,7 +65,7 @@ it("prefix filtering finds exactly the pairs the complete sweep finds", () => {
   for (const seed of [7, 99, 1234]) {
     const sets = corpus(seed)
     const fast = allPairs(
-      sets.map((shingles, index) => ({ index, shingles })),
+      sets.map((shingles, index) => ({ position: index, shingles })),
       0.7,
     )
       .map((pair) => key(pair.left, pair.right))
@@ -77,7 +77,7 @@ it("prefix filtering finds exactly the pairs the complete sweep finds", () => {
 it("prefix filtering stays complete at a looser threshold too", () => {
   const sets = corpus(11)
   const fast = allPairs(
-    sets.map((shingles, index) => ({ index, shingles })),
+    sets.map((shingles, index) => ({ position: index, shingles })),
     0.3,
   )
     .map((pair) => key(pair.left, pair.right))
@@ -87,14 +87,14 @@ it("prefix filtering stays complete at a looser threshold too", () => {
 
 it("it is much cheaper than comparing every pair in the window", () => {
   const sets = corpus(7)
-  const index = sets.map((shingles, position) => ({ index: position, shingles }))
+  const index = sets.map((shingles, position) => ({ position, shingles }))
   let windowPairs = 0
   const ordered = index
-    .map((entry) => ({ value: entry, index: entry.index }))
-    .sort((a, b) => a.value.shingles.size - b.value.shingles.size || a.index - b.index)
+    .map((entry) => ({ item: entry, position: entry.position }))
+    .sort((a, b) => a.item.shingles.size - b.item.shingles.size || a.position - b.position)
   sweep(
     ordered,
-    (value) => value.shingles.size,
+    (item) => item.shingles.size,
     0.7,
     () => {
       windowPairs += 1
@@ -119,20 +119,20 @@ it("finds pairs a token-length window would drop", () => {
   const sets = [narrow, wide]
   const tokenLengths = [100, 200]
   const shingleSized = allPairs(
-    sets.map((shingles, index) => ({ index, shingles })),
+    sets.map((shingles, index) => ({ position: index, shingles })),
     0.7,
   )
   const tokenWindow = (() => {
     const ordered = sets
-      .map((shingles, index) => ({ value: { shingles, tokens: tokenLengths[index] ?? 0 }, index }))
-      .sort((a, b) => a.value.tokens - b.value.tokens || a.index - b.index)
+      .map((shingles, position) => ({ item: { shingles, tokens: tokenLengths[position] ?? 0 }, position }))
+      .sort((a, b) => a.item.tokens - b.item.tokens || a.position - b.position)
     const found: Array<string> = []
     sweep(
       ordered,
-      (value) => value.tokens,
+      (item) => item.tokens,
       0.7,
       (a, b) => {
-        if (similarityOf(a.value.shingles, b.value.shingles) >= 0.7) found.push(key(a.index, b.index))
+        if (similarityOf(a.item.shingles, b.item.shingles) >= 0.7) found.push(key(a.position, b.position))
       },
     )
     return found

@@ -190,7 +190,7 @@ export const classifyModules = (
       if (edge.resolved) continue
       if (edge.specifier.startsWith(".") || edge.specifier.startsWith("/")) continue
       if (edge.specifier.startsWith("node:")) continue
-      const module = ownerOf.get(edge.from)
+      const module = ownerOf.get(edge.importer)
       if (module === undefined) continue
       const found = externalByModule.get(module) ?? new Set<string>()
       found.add(packageNameOf(edge.specifier))
@@ -203,7 +203,7 @@ export const classifyModules = (
     const importersByModule = new Map<string, Set<string>>()
     for (const edge of workspace.imports.edges) {
       if (!edge.resolved) continue
-      const from = ownerOf.get(edge.from)
+      const from = ownerOf.get(edge.importer)
       const to = ownerOf.get(edge.to)
       if (from === undefined || to === undefined || from === to) continue
       const found = importersByModule.get(to) ?? new Set<string>()

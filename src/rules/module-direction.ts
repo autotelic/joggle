@@ -70,12 +70,12 @@ export const moduleDirection = defineRule({
     const seen = new Set<string>()
     const diagnostics: Array<Diagnostic> = []
     for (const edge of workspace.imports.edges) {
-      if (!edge.resolved || edge.from === edge.to) continue
+      if (!edge.resolved || edge.importer === edge.to) continue
       // A scoped run asks about the change: an upward dependency is a candidate
       // when one of its two ends moved. A pure rename counts -- the move itself
       // can put a module on the wrong side of a boundary it used to respect.
-      if (!inGraphScope(scope, edge.from) && !inGraphScope(scope, edge.to)) continue
-      const from = classified.roles.get(moduleKey(edge.from, workspace))
+      if (!inGraphScope(scope, edge.importer) && !inGraphScope(scope, edge.to)) continue
+      const from = classified.roles.get(moduleKey(edge.importer, workspace))
       const to = classified.roles.get(moduleKey(edge.to, workspace))
       if (from === undefined || to === undefined) continue
       if (from === to) continue
@@ -97,12 +97,12 @@ export const moduleDirection = defineRule({
       seen.add(key)
       diagnostics.push(
         report({
-                  at: { file: edge.from, start: 0 },
+                  at: { file: edge.importer, start: 0 },
                   messageId: "upward_module",
                   data: {
                     from,
                     to,
-                    fromModule: moduleKey(edge.from, workspace),
+                    fromModule: moduleKey(edge.importer, workspace),
                     toModule: moduleKey(edge.to, workspace),
                     order: order(classified.ranks),
                   },

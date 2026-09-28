@@ -49,13 +49,13 @@ const ARCHITECTURE_MESSAGES = messages({
  * position is a finding a reader has to go looking for.
  */
 const spanOf = (files: ReadonlyMap<string, SourceFile>, edge: ImportEdge): Span => {
-  const file = files.get(edge.from)
-  if (file === undefined) return { file: edge.from, start: 0 }
+  const file = files.get(edge.importer)
+  if (file === undefined) return { file: edge.importer, start: 0 }
   for (const quote of ['"', "'"]) {
     const index = file.text.indexOf(quote + edge.specifier + quote)
-    if (index !== -1) return { file: edge.from, start: index }
+    if (index !== -1) return { file: edge.importer, start: index }
   }
-  return { file: edge.from, start: 0 }
+  return { file: edge.importer, start: 0 }
 }
 
 const filesByPath = (workspace: Workspace): ReadonlyMap<string, SourceFile> =>
@@ -129,7 +129,7 @@ export const layerDirection: PlannedRule = {
       scope.changed === undefined ? all : all.filter((violation) => inGraphScope(scope, violation.from))
     const report = reporter(layerDirection, locator(workspace))
     const files = filesByPath(workspace)
-    const edgeAt = new Map(workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.to, edge]))
+    const edgeAt = new Map(workspace.imports.edges.map((edge) => [edge.importer + "\u0000" + edge.to, edge]))
 
     const candidates = violations.flatMap((violation) => {
       const edge = edgeAt.get(violation.from + "\u0000" + violation.to)
@@ -268,8 +268,8 @@ export const importCycle: PlannedRule = {
         // The edges that make the loop, so the question can tell a real mutual
         // dependency from a barrel or a re-export instead of reading file names.
         const edges = workspace.imports.edges
-          .filter((edge) => members.has(edge.from) && members.has(edge.to))
-          .map((edge) => ({ from: edge.from, to: edge.to, specifier: edge.specifier }))
+          .filter((edge) => members.has(edge.importer) && members.has(edge.to))
+          .map((edge) => ({ from: edge.importer, to: edge.to, specifier: edge.specifier }))
         const id = yield* atoms.add({ files: cycle.files, runtime: cycle.runtime, typeOnly: cycle.typeOnly, edges })
         const plan: Plan<DecisionAnswers> = {
           ruleId: CYCLE_RULE,
@@ -375,13 +375,13 @@ export const layerPurity: PlannedRule = {
 
     const all = purityViolations(workspace.imports, layers)
     const violations =
-      scope.changed === undefined ? all : all.filter((violation) => inGraphScope(scope, violation.from))
+      scope.changed === undefined ? all : all.filter((violation) => inGraphScope(scope, violation.importer))
     const report = reporter(layerPurity, locator(workspace))
     const files = filesByPath(workspace)
-    const edgeAt = new Map(workspace.imports.edges.map((edge) => [edge.from + "\u0000" + edge.specifier, edge]))
+    const edgeAt = new Map(workspace.imports.edges.map((edge) => [edge.importer + "\u0000" + edge.specifier, edge]))
 
     const candidates = violations.flatMap((violation) => {
-      const edge = edgeAt.get(violation.from + "\u0000" + violation.specifier)
+      const edge = edgeAt.get(violation.importer + "\u0000" + violation.specifier)
       return edge === undefined ? [] : [{ violation, edge }]
     })
 
@@ -390,15 +390,15 @@ export const layerPurity: PlannedRule = {
       Effect.gen(function* () {
         const { violation } = candidate
         const id = yield* atoms.add({
-          from: violation.from,
+          from: violation.importer,
           specifier: violation.specifier,
           layer: violation.layer,
           pattern: violation.pattern,
         })
         const plan: Plan<DecisionAnswers> = {
           ruleId: PURITY_RULE,
-          subject: violation.from + " -> " + violation.specifier,
-          concerns: [violation.from],
+          subject: violation.importer + " -> " + violation.specifier,
+          concerns: [violation.importer],
           atoms: [id],
           violations: { verdict: ["forbidden"] },
           decisions: {
@@ -430,7 +430,7 @@ export const layerPurity: PlannedRule = {
         const drops: Array<Drop> = []
         planned.forEach((value, index) => {
           const { violation, edge } = value.candidate
-          const subject = violation.from + " -> " + violation.specifier
+          const subject = violation.importer + " -> " + violation.specifier
           const outcomeOf = readVerdict(verdicts[index]?.["verdict"], "forbidden", () =>
             "the pattern matched something the layer does not forbid",
           )
@@ -445,13 +445,13 @@ export const layerPurity: PlannedRule = {
             at: spanOf(files, edge),
             messageId: "forbidden_import",
             data: {
-              from: violation.from,
+              from: violation.importer,
               specifier: violation.specifier,
               layer: violation.layer,
               pattern: violation.pattern,
             },
             helpId: "forbidden_import_help",
-            identity: [PURITY_RULE, violation.from, violation.specifier].join("\u0000"),
+            identity: [PURITY_RULE, violation.importer, violation.specifier].join("\u0000"),
             judged: true,
             confidence,
             severity: outcomeOf.review ? "info" : "warn",

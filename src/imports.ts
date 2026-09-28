@@ -38,7 +38,7 @@ export interface ParsedImport extends Schema.Schema.Type<typeof ParsedImport> {}
  */
 export interface ImportEdge extends ParsedImport {
   /** Importing file, workspace-relative. */
-  readonly from: string
+  readonly importer: string
   /** Resolved workspace-relative path, or the raw specifier when unresolved. */
   readonly to: string
   readonly resolved: boolean
@@ -115,7 +115,7 @@ export const buildImportGraph = (
       const target = resolveSpecifier({ from: file.path, specifier: statement.specifier, known, path })
       if (target === undefined) unresolved += 1
       edges.push({
-        from: file.path,
+        importer: file.path,
         specifier: statement.specifier,
         to: target ?? statement.specifier,
         resolved: target !== undefined,

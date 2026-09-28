@@ -132,14 +132,14 @@ const dependenciesIn = (workspace: Workspace): Candidates => {
     // importing itself is internal structuring rather than a dependency.
     if (edge.specifier.includes("/node_modules/")) continue
     if (isInternalPath(edge.specifier, internal)) continue
-    const cut = edge.from.lastIndexOf("/")
-    const directory = cut === -1 ? "." : edge.from.slice(0, cut)
+    const cut = edge.importer.lastIndexOf("/")
+    const directory = cut === -1 ? "." : edge.importer.slice(0, cut)
     const manifest = workspace.manifests.get(directory)
     // The package's own name is a better grouping than two path segments: it is
     // what the package IS rather than where it happens to sit, and it collapses
     // `packages/fasdentify/src/a.ts` and `packages/fasdentify/test/b.ts` into one
     // thing without guessing at a directory depth.
-    const path = manifest?.name ?? moduleOf(edge.from)
+    const path = manifest?.name ?? moduleOf(edge.importer)
     if (path.length === 0) continue
     const key = path + "\u0000" + edge.specifier
     const existing = grouped.get(key)
@@ -150,12 +150,12 @@ const dependenciesIn = (workspace: Workspace): Candidates => {
         declares: manifest?.declares ?? [],
         specifier: edge.specifier,
         count: 1,
-        examples: [edge.from],
+        examples: [edge.importer],
       })
       continue
     }
     existing.count += 1
-    if (existing.examples.length < policy.evidence.maxListedPaths) existing.examples.push(edge.from)
+    if (existing.examples.length < policy.evidence.maxListedPaths) existing.examples.push(edge.importer)
   }
   const sorted = [...grouped.values()].sort(
     (left, right) =>

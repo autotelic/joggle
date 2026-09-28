@@ -78,7 +78,7 @@ const isCandidate = (unit: Unit): boolean => {
 const onlyTestsUse = (unit: Unit, workspace: Workspace): boolean => {
   const importers = workspace.imports.importersOfName(unit.file, unit.name)
   if (importers.length === 0) return false
-  return importers.every((edge) => policy.testFiles.test(edge.from))
+  return importers.every((edge) => policy.testFiles.test(edge.importer))
 }
 
 const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Unit> =>

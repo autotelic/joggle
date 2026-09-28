@@ -115,7 +115,7 @@ export const fieldTypeDrift: PlannedRule = {
 
     const reachable = new Set<string>()
     for (const edge of workspace.imports.edges) {
-      if (edge.resolved) reachable.add(edge.from + "\u0000" + edge.to)
+      if (edge.resolved) reachable.add(edge.importer + "\u0000" + edge.to)
     }
     const isTest = (file: string): boolean => policy.testFiles.test(file)
 

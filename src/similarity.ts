@@ -41,7 +41,7 @@ export const similarity = (
 
 export interface SizedShingles {
   /** Position in the caller's array, so results refer to the caller's data. */
-  readonly index: number
+  readonly position: number
   readonly shingles: ReadonlySet<string>
 }
 
@@ -95,15 +95,15 @@ export const allPairs = (
   })
 
   const order = entries
-    .map((entry, position) => ({ position, size: entry.shingles.size, index: entry.index }))
+    .map((entry, position) => ({ size: entry.shingles.size, slot: position, callerIndex: entry.position }))
     .filter((entry) => entry.size > 0)
-    .sort((a, b) => a.size - b.size || a.index - b.index)
+    .sort((a, b) => a.size - b.size || a.callerIndex - b.callerIndex)
 
   const postings = new Map<string, Array<number>>()
   const pairs: Array<ScoredPair> = []
 
   for (const current of order) {
-    const entry = entries[current.position]
+    const entry = entries[current.slot]
     if (entry === undefined) continue
 
     // Probe with the whole set. Only prefixes were indexed, and the argument
@@ -114,7 +114,7 @@ export const allPairs = (
       const list = postings.get(shingle)
       if (list === undefined) continue
       for (const other of list) {
-        if (other === current.position || seen.has(other)) continue
+        if (other === current.slot || seen.has(other)) continue
         seen.add(other)
         const candidate = entries[other]
         if (candidate === undefined) continue
@@ -123,18 +123,18 @@ export const allPairs = (
         if (candidate.shingles.size < threshold * entry.shingles.size) continue
         const score = similarityOf(candidate.shingles, entry.shingles)
         if (score < threshold) continue
-        const left = candidate.index
-        const right = entry.index
+        const left = candidate.position
+        const right = entry.position
         pairs.push(left <= right ? { left, right, score } : { left: right, right: left, score })
       }
     }
 
-    const prefix = prefixes[current.position]
+    const prefix = prefixes[current.slot]
     if (prefix === undefined) continue
     for (const shingle of prefix) {
       const list = postings.get(shingle)
-      if (list === undefined) postings.set(shingle, [current.position])
-      else list.push(current.position)
+      if (list === undefined) postings.set(shingle, [current.slot])
+      else list.push(current.slot)
     }
   }
 

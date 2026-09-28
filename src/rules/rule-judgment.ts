@@ -91,7 +91,7 @@ interface Candidate {
  * `presets/` file to this one is the declaration that the rule is opt-in.
  */
 const isPreset = (workspace: Workspace, path: string): boolean =>
-  workspace.imports.edges.some((edge) => edge.to === path && edge.from.includes("/presets/"))
+  workspace.imports.edges.some((edge) => edge.to === path && edge.importer.includes("/presets/"))
 
 /**
  * The string literals in the rule's `message:` argument.

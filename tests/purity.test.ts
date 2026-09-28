@@ -40,10 +40,10 @@ test("a layer's forbidden imports are an import-graph fact", async () => {
 test("a pattern without a wildcard matches only itself", () => {
   // Which is the difference between forbidding one package and forbidding a
   // whole family, and it is worth being able to say either.
-  expect(matchesGlob({ glob: "react", value: "react" })).toBe(true)
-  expect(matchesGlob({ glob: "react", value: "react-dom" })).toBe(false)
-  expect(matchesGlob({ glob: "react*", value: "react-dom" })).toBe(true)
-  expect(matchesGlob({ glob: "@remix-run/*", value: "@remix-run/react" })).toBe(true)
+  expect(matchesGlob({ glob: "react", subject: "react" })).toBe(true)
+  expect(matchesGlob({ glob: "react", subject: "react-dom" })).toBe(false)
+  expect(matchesGlob({ glob: "react*", subject: "react-dom" })).toBe(true)
+  expect(matchesGlob({ glob: "@remix-run/*", subject: "@remix-run/react" })).toBe(true)
 })
 
 test("a rule can be scoped to where it is meant to speak", () => {

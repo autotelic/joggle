@@ -10,3 +10,4 @@
 57c4b693c0706ba4	1790624340	{"confidence":0.4,"kind":"Classify","label":"keep_variants","probabilities":{"collapse":0.14,"keep_variants":0.6,"no_issue":0.26}}
 57d52e70eb36b479	1790624340	{"kind":"Probability","probability":0.29}
 57f575607404ba08	1790624340	{"confidence":0.3,"kind":"Rate","label":"meaningfully_better","probabilities":{"meaningfully_better":0.39,"no_difference":0.09,"removes_a_hazard":0.2,"slightly_clearer":0.32},"rating":1.7}
+57f7166683fdbe55	1790633006	{"confidence":0.21,"kind":"Classify","label":"two_concepts","probabilities":{"compatible":0.06,"drift":0.46,"two_concepts":0.48}}

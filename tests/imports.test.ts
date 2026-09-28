@@ -43,6 +43,6 @@ it.effect("the graph records importers by file and by name", () =>
     expect(graph.unresolved).toBe(0)
     expect(graph.importersOf.get("src/types.ts")?.length).toBe(2)
     expect(graph.importersOfName("src/types.ts", "Task").length).toBe(1)
-    expect(graph.importersOfName("src/types.ts", "Task")[0]?.from).toBe("src/a.ts")
+    expect(graph.importersOfName("src/types.ts", "Task")[0]?.importer).toBe("src/a.ts")
   }).pipe(Effect.provide(Path.layer)),
 )
