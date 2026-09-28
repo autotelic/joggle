@@ -5,3 +5,4 @@
 8eb85aecd03c6121	1790631748	{"confidence":0.73,"kind":"Classify","label":"already_there","probabilities":{"already_there":0.79,"component_or_feature":0.02,"not_applicable":0.17,"route_or_handler":0.02}}
 8ec5771635b37131	1790631747	{"confidence":0.25,"kind":"Classify","label":"legitimate_local","probabilities":{"legitimate_local":0.5,"not_a_derivation":0.43,"reimplements":0.07}}
 8edcae00bfa7f759	1790632045	{"confidence":0.85,"kind":"Classify","label":"implementation_detail","probabilities":{"domain_concept":0.11,"framework_glue":0,"implementation_detail":0.89,"wire_contract":0}}
+8eef5d5d1fe4711b	1790634043	{"confidence":0.35,"kind":"Classify","label":"meaning","probabilities":{"meaning":0.56,"unclear":0.01,"value":0.43}}

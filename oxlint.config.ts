@@ -412,10 +412,11 @@ export default {
       rules: { "effecttsgo/prefer-schema-over-json": "off" },
     },
     {
-      // The rule reads "hoist ... into <name>" and "import it from all of them"
-      // as SQL interpolation. They are the sentences a finding prints, prose
-      // built from the cluster's own members, not a query.
-      files: ["src/rules/cluster-verdict.ts"],
+      // The rule reads "hoist ... into <name>", "import it from all of them" and
+      // "A domain_concept module imports a domain_concept module" as SQL
+      // interpolation. They are the sentences a finding prints, prose built from
+      // the cluster's own members, not a query.
+      files: ["src/rules/cluster-verdict.ts", "src/rules/module-direction.ts"],
       rules: { "plumb/no-sql-string-interpolation": "off" },
     },
     {
