@@ -1,4 +1,5 @@
 a508c2137ddd4cb5	1790631747	{"confidence":0.62,"kind":"Classify","label":"independent","probabilities":{"appropriate":0.24,"independent":0.74,"meaning_switched":0.02}}
+a53f0cf3fa0579e6	1790635273	{"confidence":0.76,"kind":"Classify","label":"meaning","probabilities":{"meaning":0.84,"unclear":0,"value":0.16}}
 a5473d2f96eafc45	1790624340	{"confidence":0.46,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.01,"name_meaning":0.01,"no_issue":0.39,"semantic_verdict":0.59}}
 a54a53e69a172a28	1790631747	{"confidence":0.29,"kind":"Classify","label":"drift","probabilities":{"compatible":0.44,"drift":0.53,"two_concepts":0.03}}
 a54ab3f291acb697	1790631747	{"confidence":0.67,"kind":"Classify","label":"legitimate_local","probabilities":{"legitimate_local":0.78,"not_a_derivation":0.14,"reimplements":0.08}}

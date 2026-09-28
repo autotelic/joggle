@@ -452,7 +452,7 @@ interface IdentifierSite {
    * erasing the latter is the difference between "the same shape" and "the same
    * thing".
    */
-  readonly kind: "binding" | "property" | "type"
+  readonly siteKind: "binding" | "property" | "type"
 }
 
 /**
@@ -568,8 +568,7 @@ const collectIdentifiers = (root: unknown): ReadonlyArray<IdentifierSite> => {
 
   return found.map((site) => ({
     ...site,
-    ...site,
-    kind: properties.has(site.start) ? "property" : types.has(site.start) ? "type" : "binding",
+    siteKind: properties.has(site.start) ? "property" : types.has(site.start) ? "type" : "binding",
   }))
 }
 
@@ -603,7 +602,7 @@ const normalize = (
     }
   }
   for (const identifier of identifiers) {
-    if (identifier.kind !== "binding") continue
+    if (identifier.siteKind !== "binding") continue
     if (identifier.start < span.start) continue
     if (identifier.start + identifier.name.length > span.end) continue
     if (text.slice(identifier.start, identifier.start + identifier.name.length) !== identifier.name) continue
@@ -1601,7 +1600,7 @@ const sourceFileFrom = ({ file, text, parsed }: ParsedFileText): SourceFile => {
           identifiers
             .filter(
               (identifier) =>
-                identifier.kind === "type" &&
+                identifier.siteKind === "type" &&
                 identifier.start >= site.start &&
                 identifier.end <= site.end,
             )
