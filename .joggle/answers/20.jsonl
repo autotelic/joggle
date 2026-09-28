@@ -8,3 +8,4 @@
 209cbc5f92082ff8	1790631747	{"confidence":0.32,"kind":"Classify","label":"rendering","probabilities":{"domain_logic":0.01,"infrastructure":0,"input_adaptation":0.39,"mechanical":0.12,"not_applicable":0.05,"orchestration":0,"rendering":0.41000000000000003,"request_validation":0,"transport_concern":0.02}}
 20b27f5d51abe42a	1790631748	{"confidence":0.62,"kind":"Classify","label":"no_issue","probabilities":{"merge":0.02,"move":0.24,"no_issue":0.74}}
 20bd0aed9e639881	1790631747	{"confidence":1,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":1,"stale_reference":0,"wrong_behavior":0,"wrong_contract":0}}
+20d9e7288f34e256	1790635161	{"confidence":0.37,"kind":"Classify","label":"independent","probabilities":{"appropriate":0.39,"independent":0.58,"meaning_switched":0.03}}

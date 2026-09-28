@@ -149,7 +149,7 @@ const spec: ClusterRule = {
   move: "contract",
   onUnavailable: "propagate",
   questionnaire: nameQuestionnaire,
-  subject: (cluster) => {
+  nameOf: (cluster) => {
     const names = [...new Set(cluster.members.map((member) => member.name))]
     return names.length === 1
       ? `\`${names[0] ?? "?"}\` is spelled ${cluster.members.length} ways`
@@ -190,8 +190,8 @@ export const expanded = (name: string): ReadonlyArray<string> =>
 
 /** Two names compared for similarity: neither is privileged. */
 interface NamePair {
-  readonly left: string
-  readonly right: string
+  readonly one: string
+  readonly two: string
 }
 
 /**
@@ -202,9 +202,9 @@ interface NamePair {
  * of `*Modal`s over the line, which is how one category became a "concept".
  * Those two names already score 0.5 without it, which is the threshold.
  */
-const nameScore = ({ left, right }: NamePair): number => {
-  const a = new Set(expanded(left))
-  const b = new Set(expanded(right))
+const nameScore = ({ one, two }: NamePair): number => {
+  const a = new Set(expanded(one))
+  const b = new Set(expanded(two))
   let intersection = 0
   for (const word of a) if (b.has(word)) intersection += 1
   const union = a.size + b.size - intersection
@@ -223,10 +223,10 @@ const nameScore = ({ left, right }: NamePair): number => {
  * answering it (docs/rule-coupling.md). The filter keeps the structural part:
  * the two names are nested and differ by exactly one word.
  */
-export const worthJudging: Predicate.Predicate<NamePair> = ({ left, right }) => {
-  if (left === right) return false
-  const words = new Set(expanded(left))
-  const other = new Set(expanded(right))
+export const worthJudging: Predicate.Predicate<NamePair> = ({ one, two }) => {
+  if (one === two) return false
+  const words = new Set(expanded(one))
+  const other = new Set(expanded(two))
   let common = 0
   for (const word of words) if (other.has(word)) common += 1
   const differs = words.size - common + (other.size - common)
@@ -239,10 +239,10 @@ export const worthJudging: Predicate.Predicate<NamePair> = ({ left, right }) => 
   return nested && differs === 1
 }
 
-const sharedWords = ({ left, right }: NamePair): number => {
-  const a = new Set(expanded(left))
+const sharedWords = ({ one, two }: NamePair): number => {
+  const a = new Set(expanded(one))
   let shared = 0
-  for (const word of new Set(expanded(right))) if (a.has(word)) shared += 1
+  for (const word of new Set(expanded(two))) if (a.has(word)) shared += 1
   return shared
 }
 
@@ -291,10 +291,10 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
         if (one.kind !== two.kind) continue
         // Test fixtures are compared only against each other.
         if (one.test && two.test) continue
-        if (sharedWords({ left: one.name, right: two.name }) < minSharedWords) continue
+        if (sharedWords({ one: one.name, two: two.name }) < minSharedWords) continue
         // A new pair of spellings has to include the spelling that changed.
         if (!inScope(scope, one.file) && !inScope(scope, two.file)) continue
-        const score = nameScore({ left: one.name, right: two.name })
+        const score = nameScore({ one: one.name, two: two.name })
         if (score < minScore) continue
 
         // Shape of the pair, measured over 1,864 judged candidates:
@@ -309,7 +309,7 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
         // an accessor verb like `get` or `calculate` do not distinguish anything.
         // That is a judgement the filter may make, because it is about shape
         // rather than about which of two names is right.
-        if (!worthJudging({ left: one.name, right: two.name })) continue
+        if (!worthJudging({ one: one.name, two: two.name })) continue
 
         pairs.push({ left, right, score })
       }

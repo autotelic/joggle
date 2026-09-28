@@ -20,7 +20,7 @@ const spec: ClusterRule = {
   // Shape equality is a fact, so an unjudged cluster is still worth reporting.
   onUnavailable: "report",
   questionnaire: collapseQuestionnaire,
-  subject: (cluster) => {
+  nameOf: (cluster) => {
     const names = [...new Set(cluster.members.map((member) => member.name))]
     return names.length === 1
       ? `\`${names[0] ?? "?"}\` is declared ${cluster.members.length} times`
@@ -64,7 +64,7 @@ const largestOf = (clusters: ReadonlyArray<Cluster>): ReadonlyArray<string> =>
   [...clusters]
     .sort((a, b) => b.members.length - a.members.length)
     .slice(0, 3)
-    .map((cluster) => `${cluster.members.length}× ${spec.subject(cluster)}`)
+    .map((cluster) => `${cluster.members.length}× ${spec.nameOf(cluster)}`)
 
 export const duplicateImplementation: PlannedRule = {
   id: spec.ruleId,

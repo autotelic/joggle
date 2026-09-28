@@ -40,7 +40,7 @@ const RULE_ID = "joggle/meaning-switched-by-flag"
 // that is the coupling docs/rule-coupling.md audits.
 type Flag = {
   readonly field: string
-  readonly unit: string
+  readonly unitName: string
   readonly file: string
   readonly fields: ReadonlyArray<string>
 }
@@ -68,7 +68,7 @@ export const meaningSwitchedByFlag: PlannedRule = {
         // `fieldTypes` keeps the annotation with its colon: ": boolean".
         if (annotation.replace(/^\s*:\s*/, "").trim() !== "boolean") continue
         if (!flags.has(field)) {
-          flags.set(field, { field, unit: unit.name, file: unit.file, fields: unitFields(unit) })
+          flags.set(field, { field, unitName: unit.name, file: unit.file, fields: unitFields(unit) })
         }
       }
     }
@@ -139,7 +139,7 @@ export const meaningSwitchedByFlag: PlannedRule = {
               verdict: Decision.classify({
                 instructions: [
                   `\`atoms[${id}].source\` branches on \`atoms[${id}].flag.field\` (\`atoms[${id}].branch.guard\`).`,
-                  `That field is a \`boolean\` on \`atoms[${id}].flag.unit\`, whose fields are \`atoms[${id}].flag.fields\`.`,
+                  `That field is a \`boolean\` on \`atoms[${id}].flag.unitName\`, whose fields are \`atoms[${id}].flag.fields\`.`,
                   "Does a value's MEANING depend on the flag -- is the same field standing for two different things, one under each reading?",
                   "Answer `meaning_switched` when a sibling field means one thing when the flag is true and another when it is false, so it should be a union or two named fields.",
                   "Answer `independent` when the flag selects behaviour but no value changes meaning -- a permission, a route, a branch with its own result.",
@@ -226,7 +226,7 @@ const findingFor = (
     data: {
       unit: entry.candidate.unit.name,
       flag: entry.candidate.flag.field,
-      owner: entry.candidate.flag.unit,
+      owner: entry.candidate.flag.unitName,
       fields: entry.candidate.flag.fields.slice(0, 8).join(", "),
       unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
     },

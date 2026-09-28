@@ -6,3 +6,4 @@
 9e66a808db241d68	1790631748	{"confidence":0.26,"kind":"Classify","label":"keep_variants","probabilities":{"collapse":0.32,"keep_variants":0.5,"no_issue":0.18}}
 9e994996888ba87b	1790631747	{"confidence":0.73,"kind":"Classify","label":"independent","probabilities":{"appropriate":0.17,"independent":0.82,"meaning_switched":0.01}}
 9e9a0f961e489095	1790632045	{"confidence":0.84,"kind":"Classify","label":"independent","probabilities":{"appropriate":0.1,"independent":0.89,"meaning_switched":0.01}}
+9ea6b36e781cc6ed	1790635216	{"confidence":0.92,"kind":"Classify","label":"legitimate_local","probabilities":{"legitimate_local":0.95,"not_a_derivation":0.04,"reimplements":0.01}}

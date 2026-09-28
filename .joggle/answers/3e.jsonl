@@ -12,5 +12,6 @@
 3ead65b9e8ee6d84	1790624340	{"confidence":0.88,"kind":"Classify","label":"domain_concept","probabilities":{"domain_concept":0.91,"framework_glue":0,"implementation_detail":0.09,"wire_contract":0}}
 3ebeca88958b1526	1790624340	{"confidence":0.82,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.86,"stale_reference":0,"wrong_behavior":0.12,"wrong_contract":0.02}}
 3ed471d76b407f3c	1790624340	{"confidence":0.9,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.92,"stale_reference":0,"wrong_behavior":0.07,"wrong_contract":0.01}}
+3eef176ac0aeb4bf	1790635213	{"confidence":0.84,"kind":"Classify","label":"legitimate_local","probabilities":{"legitimate_local":0.89,"not_a_derivation":0.1,"reimplements":0.01}}
 3ef3a0bf0372eb22	1790631747	{"confidence":0.92,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.95,"stale_reference":0,"wrong_behavior":0.05,"wrong_contract":0}}
 3efd79868961a240	1790624340	{"confidence":0.95,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.96,"stale_reference":0,"wrong_behavior":0.03,"wrong_contract":0.01}}

@@ -5,6 +5,7 @@ e342b88bf1e020a2	1790624340	{"confidence":0.46,"kind":"Classify","label":"semant
 e351724b2c0e47a5	1790633176	{"confidence":0.66,"kind":"Classify","label":"already_there","probabilities":{"already_there":0.74,"component_or_feature":0.01,"not_applicable":0.23,"route_or_handler":0.02}}
 e364ca3769d823b2	1790634043	{"confidence":0.79,"kind":"Classify","label":"already_there","probabilities":{"already_there":0.84,"component_or_feature":0.01,"not_applicable":0.13,"route_or_handler":0.02}}
 e392cab9d5b855fc	1790624340	{"confidence":0.72,"kind":"Classify","label":"same_module","probabilities":{"different_deployables":0,"same_module":0.79,"same_package":0.21,"sibling_packages":0}}
+e3941426e1b98def	1790635161	{"confidence":0.94,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.96,"stale_reference":0,"wrong_behavior":0.02,"wrong_contract":0.02}}
 e399f3b37c945ddc	1790624340	{"confidence":0.9,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.93,"stale_reference":0.02,"wrong_behavior":0.04,"wrong_contract":0.01}}
 e3a131538834b35b	1790631747	{"confidence":0.89,"kind":"Classify","label":"legitimate_local","probabilities":{"legitimate_local":0.93,"not_a_derivation":0.04,"reimplements":0.03}}
 e3ae16db1594a788	1790634043	{"confidence":0.52,"kind":"Classify","label":"unaccounted","probabilities":{"accounted_elsewhere":0.01,"internal_only":0.31,"unaccounted":0.68}}

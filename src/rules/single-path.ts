@@ -46,7 +46,7 @@ const RULE_ID = "joggle/single-path"
 type Helper = {
   readonly name: string
   readonly file: string
-  readonly source: string
+  readonly body: string
 }
 
 /**
@@ -125,7 +125,7 @@ export const singlePath: PlannedRule = {
         helpers.push({
           name: declaration.name,
           file: declaration.file,
-          source: declaration.text.slice(0, 240),
+          body: declaration.text.slice(0, 240),
         })
       }
       if (helpers.length === 0) continue

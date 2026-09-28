@@ -107,7 +107,7 @@ export interface ClusterRule {
    */
   readonly onUnavailable: "report" | "propagate"
   /** How to say what the cluster is, for the finding's first line. */
-  readonly subject: (cluster: Cluster) => string
+  readonly nameOf: (cluster: Cluster) => string
   readonly questionnaire: (
     cluster: Cluster,
     described: ReadonlyArray<Unit>,
@@ -573,7 +573,7 @@ export const unverifiedFinding = (
     at: first,
     messageId: "unverified",
     data: {
-      subject: rule.subject(cluster),
+      subject: rule.nameOf(cluster),
       keep: keep.name,
       keepAt: keep.file + ":" + keep.location.line,
       reason,
@@ -638,7 +638,7 @@ export const planCluster = (
     const questionnaire = yield* rule.questionnaire(cluster, described, workspace)
     return {
       ruleId: rule.ruleId,
-      subject: rule.subject(cluster),
+      subject: rule.nameOf(cluster),
       concerns: cluster.members.map((member) => member.file),
       atoms: questionnaire.atoms,
       decisions: questionnaire.decisions,
@@ -660,7 +660,7 @@ export const dropOf = (
   cluster: Cluster,
   stage: DropStage,
   reason: string,
-): Drop => ({ ruleId: rule.ruleId, subject: rule.subject(cluster), stage, reason })
+): Drop => ({ ruleId: rule.ruleId, subject: rule.nameOf(cluster), stage, reason })
 
 /** Either a finding, or the reason there is none. Never both. */
 export interface Result {
@@ -741,7 +741,7 @@ export const findingFor = (
       at: first,
       messageId: "duplicate",
       data: {
-        subject: rule.subject(cluster),
+        subject: rule.nameOf(cluster),
         keep: keep.name,
         keepAt: keep.file + ":" + keep.location.line,
         extra,

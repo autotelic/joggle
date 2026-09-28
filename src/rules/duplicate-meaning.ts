@@ -16,7 +16,7 @@ const spec: ClusterRule = {
   // unjudged cluster is silence and the rule reports itself as skipped.
   onUnavailable: "propagate",
   questionnaire: collapseQuestionnaire,
-  subject: (cluster) =>
+  nameOf: (cluster) =>
     `${cluster.members.length} declarations that may be one thing: ${nameList(cluster)}`,
 }
 
@@ -187,14 +187,14 @@ export const duplicateMeaning: PlannedRule = {
       .slice(budget)
       .sort((a, b) => b.members.length - a.members.length)
       .slice(0, 3)
-      .map((cluster) => `${cluster.members.length}× ${spec.subject(cluster)}`)
+      .map((cluster) => `${cluster.members.length}× ${spec.nameOf(cluster)}`)
 
     // Reported as drops rather than dropped silently: "476 declarations across 9
     // clusters were generated from one template" is a fact about the codebase,
     // and the only thing wrong with it was asking the model to confirm it.
     const tooManyToShow = oversized.map((cluster) => ({
       ruleId: spec.ruleId,
-      subject: spec.subject(cluster),
+      subject: spec.nameOf(cluster),
       stage: "no_evidence" as const,
       reason:
         cluster.members.length +
