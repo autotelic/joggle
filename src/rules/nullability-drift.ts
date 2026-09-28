@@ -230,7 +230,7 @@ const findingFor = (
   review = false,
 ): Diagnostic =>
   report({
-    at: { file: candidate.schema.file, line: candidate.schema.line, column: 1 },
+    about: { file: candidate.schema.file, line: candidate.schema.line, column: 1 },
     messageId: "nullable_mismatch",
     data: {
       source: candidate.source,

@@ -229,7 +229,7 @@ const findingFor = (
 ): Diagnostic => {
   const first = candidate.entries[0]
   return report({
-    at: first?.unit ?? { file: "", start: 0 },
+    about: first?.unit ?? { file: "", start: 0 },
     messageId: "one_name_many_types",
     data: {
       name: candidate.name,

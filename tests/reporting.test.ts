@@ -19,7 +19,7 @@ const rule = {
 
 it("a message is one declaration, filled from data", () => {
   const report = reporter(rule, () => ({ file: "x.ts", line: 1, column: 1 }))
-  const diagnostic = report({ at: { file: "x.ts", start: 0 }, messageId: "drift", data: { name: "A", other: "B" } })
+  const diagnostic = report({ about: { file: "x.ts", start: 0 }, messageId: "drift", data: { name: "A", other: "B" } })
   expect(diagnostic.message).toBe("A drifted from B.")
   expect(diagnostic.severity).toBe("warn")
   expect(diagnostic.judged).toBe(false)
@@ -27,7 +27,7 @@ it("a message is one declaration, filled from data", () => {
 
 it("reporting an undeclared message id is a rule bug, and says so", () => {
   const report = reporter(rule, () => ({ file: "x.ts", line: 1, column: 1 }))
-  expect(() => report({ at: { file: "x.ts", start: 0 }, messageId: "missing" })).toThrow(
+  expect(() => report({ about: { file: "x.ts", start: 0 }, messageId: "missing" })).toThrow(
     RuleAuthoringError,
   )
 })
@@ -35,7 +35,7 @@ it("reporting an undeclared message id is a rule bug, and says so", () => {
 it("a template that needs data it was not given says so", () => {
   const report = reporter(rule, () => ({ file: "x.ts", line: 1, column: 1 }))
   expect(() =>
-    report({ at: { file: "x.ts", start: 0 }, messageId: "drift", data: { name: "A" } }),
+    report({ about: { file: "x.ts", start: 0 }, messageId: "drift", data: { name: "A" } }),
   ).toThrow(RuleAuthoringError)
 })
 

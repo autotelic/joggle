@@ -305,7 +305,7 @@ const describe = (outage: Outage): string =>
 
 const findingFor = (report: Report, outage: Outage, unverified: string | undefined): Diagnostic =>
   report({
-    at: { file: outage.file, line: outage.line, column: 1 },
+    about: { file: outage.file, line: outage.line, column: 1 },
     messageId: "outage",
     data: {
       handler: outage.handler,

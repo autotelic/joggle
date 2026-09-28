@@ -1,3 +1,4 @@
+1a0557fec23a5341	1790635483	{"confidence":0.79,"kind":"Classify","label":"not_applicable","probabilities":{"independent":0.11,"inferred":0.02,"not_applicable":0.87}}
 1a329cb17cf8645e	1790624340	{"confidence":0.65,"kind":"Classify","label":"same_package","probabilities":{"different_deployables":0,"same_module":0.26,"same_package":0.74,"sibling_packages":0}}
 1a4ab6ad02307fb5	1790631747	{"confidence":0.5,"kind":"Classify","label":"infrastructure","probabilities":{"domain_logic":0.05,"infrastructure":0.55,"input_adaptation":0,"mechanical":0,"not_applicable":0,"orchestration":0.4,"rendering":0,"request_validation":0,"transport_concern":0}}
 1a61d847c9d2d148	1790635213	{"confidence":0.95,"kind":"Classify","label":"legitimate_local","probabilities":{"legitimate_local":0.97,"not_a_derivation":0.03,"reimplements":0}}

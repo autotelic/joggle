@@ -8,4 +8,5 @@ d267e880c18c9490	1790634043	{"confidence":0.62,"kind":"Classify","label":"no_iss
 d292fc8339c914b9	1790624340	{"kind":"Probability","probability":0.35}
 d2933fe593c34f69	1790631747	{"confidence":0.31,"kind":"Classify","label":"move","probabilities":{"merge":0.17,"move":0.54,"no_issue":0.29}}
 d2a4558be2ee44f7	1790631747	{"confidence":0.89,"kind":"Classify","label":"legitimate_local","probabilities":{"legitimate_local":0.93,"not_a_derivation":0.04,"reimplements":0.03}}
+d2ac3c5a741b6ebf	1790635483	{"confidence":0.83,"kind":"Classify","label":"not_applicable","probabilities":{"independent":0.09,"inferred":0.02,"not_applicable":0.89}}
 d2bbad38c72b5d9d	1790631747	{"confidence":0.55,"kind":"Classify","label":"shared_vocabulary","probabilities":{"general":0.3,"names_a_caller":0,"shared_vocabulary":0.7}}

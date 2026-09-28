@@ -196,7 +196,7 @@ const findingFor = (
   review = false,
 ): Diagnostic =>
   report({
-    at: unit,
+    about: unit,
     messageId: "silent_drop",
     data: {
       name: unit.name,

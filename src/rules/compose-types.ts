@@ -245,7 +245,7 @@ const findingFor = (
   const { whole, part, added } = candidate
   const drifted = label === "same_name_drift" || (label === undefined && whole.name === part.name)
   return report({
-    at: whole,
+    about: whole,
     messageId: drifted ? "same_name_drift" : "composes_shared_fields",
     data: {
       name: whole.name,

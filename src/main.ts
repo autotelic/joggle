@@ -188,7 +188,7 @@ const checkCommand = Command.make(
       const changedSet =
         gitScope === undefined ? undefined : yield* git.changedFiles(cwd, gitScope)
       const changedPaths = changedSet?.changed
-      const movedPaths = changedSet?.moved
+      const movedPaths = changedSet?.renamed
       const changedBase =
         gitScope === undefined
           ? undefined

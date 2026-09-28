@@ -221,7 +221,7 @@ const findingFor = (
   review = false,
 ): Diagnostic =>
   report({
-    at: { file: entry.candidate.unit.file, start: entry.candidate.guard.start },
+    about: { file: entry.candidate.unit.file, start: entry.candidate.guard.start },
     messageId: "switched",
     data: {
       unit: entry.candidate.unit.name,

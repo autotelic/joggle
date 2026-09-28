@@ -222,7 +222,7 @@ const findingFor = (
 ): Diagnostic => {
   const { units, first, calls } = value
   return report({
-    at: first,
+    about: first,
     messageId: "same_calls",
     data: {
       names: units.map((unit) => unit.name).join(", "),

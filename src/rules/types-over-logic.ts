@@ -233,7 +233,7 @@ const findingFor = (
   unverifiedReason: string | undefined,
 ): Diagnostic =>
   report({
-    at: { file: candidate.file, start: candidate.guard.start },
+    about: { file: candidate.file, start: candidate.guard.start },
     messageId: "guard_not_type",
     data: {
       name: candidate.unit.name,

@@ -138,7 +138,7 @@ const findingFor = (report: Report, page: Page, answers: DecisionAnswers): Resul
   const missing = gaps(page)
   return {
     diagnostic: report({
-      at: page.source,
+      about: page.source,
       messageId: "state_pressure",
       data: {
         file: page.source.path,

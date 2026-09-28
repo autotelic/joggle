@@ -297,7 +297,7 @@ const findingFor = (
       ? " and " + (files.length - policy.evidence.maxListedPaths) + " more"
       : "")
   return report({
-    at: { file: entry.first.file, start: entry.first.start },
+    about: { file: entry.first.file, start: entry.first.start },
     messageId: "repeated_fields",
     data: {
       count: entry.sites.length,

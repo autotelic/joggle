@@ -226,7 +226,7 @@ const findingFor = (
   review = false,
 ): Diagnostic =>
   report({
-    at: entry.candidate.unit,
+    about: entry.candidate.unit,
     messageId: "inferred",
     data: {
       unit: entry.candidate.unit.name,

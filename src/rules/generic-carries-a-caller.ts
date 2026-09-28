@@ -239,7 +239,7 @@ const findingFor = (
   review = false,
 ): Diagnostic =>
   report({
-    at: { file: entry.candidate.unit.file, start: entry.candidate.start },
+    about: { file: entry.candidate.unit.file, start: entry.candidate.start },
     messageId: "caller_fact",
     data: {
       unit: entry.candidate.unit.name,

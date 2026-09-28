@@ -295,7 +295,7 @@ export const hoistToDomain: PlannedRule = {
       }
       diagnostics.push(
         report({
-                  at: unit,
+                  about: unit,
                   messageId: "rule_at_the_edge",
                   data: { name: unit.name, file: unit.file, home: (home.label ?? "").replace(/_/g, " ") },
                   helpId: "rule_at_the_edge_help",

@@ -53,7 +53,7 @@ test("a git scope is the branch diff plus uncommitted work", async () => {
 
   expect(await changedFiles(dir, { since: "main" })).toEqual({
     changed: ["src/a.ts", "src/b.ts", "src/c.ts"],
-    moved: [],
+    renamed: [],
   })
 })
 
@@ -74,13 +74,13 @@ test("a pure rename is a move, not a content change", async () => {
   writeFileSync(join(dir, "src/b.ts"), "export const b = 2\n")
 
   const scope = await changedFiles(dir, { since: "main" })
-  expect(scope.moved).toEqual(["src/domain/a.ts"])
+  expect(scope.renamed).toEqual(["src/domain/a.ts"])
   expect(scope.changed).toEqual(["src/b.ts"])
 })
 
 test("a branch with no changes yields no files", async () => {
   const dir = repo()
-  expect(await changedFiles(dir, { since: "main" })).toEqual({ changed: [], moved: [] })
+  expect(await changedFiles(dir, { since: "main" })).toEqual({ changed: [], renamed: [] })
 })
 
 test("a revision that does not exist is a typed failure, not a crash", async () => {

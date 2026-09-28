@@ -204,7 +204,7 @@ export const layerDirection: PlannedRule = {
           const confidence = verdict !== undefined && "confidence" in verdict ? verdict.confidence : undefined
           diagnostics.push(
           report({
-            at: spanOf(files, edge),
+            about: spanOf(files, edge),
             messageId: "upward_import",
             data: {
               from: violation.from,
@@ -320,7 +320,7 @@ export const importCycle: PlannedRule = {
           const confidence = verdict !== undefined && "confidence" in verdict ? verdict.confidence : undefined
           diagnostics.push(
           report({
-            at: { file: first, start: 0 },
+            about: { file: first, start: 0 },
             messageId: "import_cycle",
             data: { files: [...cycle.loop, first].join(" -> ") },
             helpId: "import_cycle_help",
@@ -443,7 +443,7 @@ export const layerPurity: PlannedRule = {
           const confidence = verdict !== undefined && "confidence" in verdict ? verdict.confidence : undefined
           diagnostics.push(
           report({
-            at: spanOf(files, edge),
+            about: spanOf(files, edge),
             messageId: "forbidden_import",
             data: {
               from: violation.importer,

@@ -239,7 +239,7 @@ const findingFor = (
         ? "an object"
         : entry.candidate.argumentKeys.join(", ")
   return report({
-    at: { file: entry.candidate.unit.file, start: entry.candidate.start },
+    about: { file: entry.candidate.unit.file, start: entry.candidate.start },
     messageId: "unbounded",
     data: {
       caller: entry.candidate.unit.name,

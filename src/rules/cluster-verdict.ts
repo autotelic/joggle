@@ -570,7 +570,7 @@ export const unverifiedFinding = (
   const first = drops[0]
   if (keep === undefined || first === undefined) return undefined
   return report({
-    at: first,
+    about: first,
     messageId: "unverified",
     data: {
       subject: rule.nameOf(cluster),
@@ -738,7 +738,7 @@ export const findingFor = (
         }
   return {
     diagnostic: report({
-      at: first,
+      about: first,
       messageId: "duplicate",
       data: {
         subject: rule.nameOf(cluster),

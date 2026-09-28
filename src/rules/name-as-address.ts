@@ -217,7 +217,7 @@ export const nameAsAddress: PlannedRule = {
       const review = quality.quality === "review"
       diagnostics.push(
         report({
-                  at: candidate.unit,
+                  about: candidate.unit,
                   messageId: "common_name",
                   data: {
                     name: candidate.unit.name,

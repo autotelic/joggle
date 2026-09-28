@@ -263,7 +263,7 @@ const findingFor = (
 ): Diagnostic => {
   const { entry, first } = value
   return report({
-    at: first,
+    about: first,
     messageId: "fields_unnamed",
     data: {
       fields: entry.fields.join(", "),

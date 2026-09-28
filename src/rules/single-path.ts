@@ -268,7 +268,7 @@ const findingFor = (
   const names = entry.candidate.helpers.slice(0, 4).map((helper) => helper.name)
   const listed = names.length <= 1 ? (names[0] ?? "a helper") : names.slice(0, -1).join(", ") + " or " + names.at(-1)
   return report({
-    at: { file: entry.candidate.file, start: entry.candidate.site.start },
+    about: { file: entry.candidate.file, start: entry.candidate.site.start },
     messageId: "inline_derivation",
     data: {
       unit: entry.candidate.unit.name,

@@ -35,7 +35,7 @@ export interface ChangedSet {
   /** Added, modified, or renamed-with-edits: content the run has not seen. */
   readonly changed: ReadonlyArray<string>
   /** Pure renames: the path moved and the bytes did not. */
-  readonly moved: ReadonlyArray<string>
+  readonly renamed: ReadonlyArray<string>
 }
 
 export interface Interface {
@@ -155,7 +155,7 @@ const changedFiles = Effect.fn("Git.changedFiles")(function* (
     options.pr !== undefined
       ? yield* prRef(cwd, options.pr === "" ? undefined : options.pr)
       : options.since
-  if (base === undefined) return { changed: [], moved: [] }
+  if (base === undefined) return { changed: [], renamed: [] }
 
   // Three dots by hand: the merge base is where the branch forked, so the diff
   // is the PR's own work rather than every commit main has gained since. A ref
@@ -194,7 +194,7 @@ const changedFiles = Effect.fn("Git.changedFiles")(function* (
   for (const file of lines(untracked)) changed.add(file)
 
   const order = (left: string, right: string): number => left.localeCompare(right)
-  return { changed: [...changed].sort(order), moved: [...moved].sort(order) }
+  return { changed: [...changed].sort(order), renamed: [...moved].sort(order) }
 })
 
 const make = (): Interface => ({ changedFiles })

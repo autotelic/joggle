@@ -192,7 +192,7 @@ export const shallowModule: PlannedRule = {
           const exports = file.units.filter((unit) => unit.exported).length
           diagnostics.push(
             report({
-                          at: file,
+                          about: file,
                           messageId: "grab_bag",
                           data: {
                             file: file.path,

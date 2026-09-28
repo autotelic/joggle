@@ -254,7 +254,7 @@ export const ruleJudgment: PlannedRule = {
       const review = quality.quality === "review"
       diagnostics.push(
         report({
-                  at: candidate.source,
+                  about: candidate.source,
                   messageId: "code_decides",
                   data: {
                     id: candidate.id,

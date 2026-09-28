@@ -307,7 +307,7 @@ const findingFor = (
   const first = group.drifts[0]
   if (first === undefined) {
     return report({
-      at: { file: group.file, line: group.line, column: 1 },
+      about: { file: group.file, line: group.line, column: 1 },
       messageId: "two_types",
       data: { unit: group.unitName },
       judged: false,
@@ -334,7 +334,7 @@ const findingFor = (
       .join(", ") +
     (group.drifts.length > 3 ? ", and " + String(group.drifts.length - 3) + " more" : "")
   return report({
-    at: { file: group.file, line: group.line, column: 1 },
+    about: { file: group.file, line: group.line, column: 1 },
     messageId: group.drifts.length === 1 ? "single_drift" : "many_drifts",
     data: {
       unit: group.unitName,

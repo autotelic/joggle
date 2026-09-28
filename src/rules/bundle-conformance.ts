@@ -175,7 +175,7 @@ const findingFor = (
   review = false,
 ): Diagnostic =>
   report({
-    at: bundle.indexFile ?? { file: bundle.dir, start: 0 },
+    about: bundle.indexFile ?? { file: bundle.dir, start: 0 },
     messageId: "pattern_problem",
     data: {
       subject: spec.describe(bundle),

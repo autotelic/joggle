@@ -218,7 +218,7 @@ export const languageDrift: PlannedRule = {
       const review = quality.quality === "review"
       diagnostics.push(
         report({
-                  at: candidate.source,
+                  about: candidate.source,
                   messageId: "prose_word_not_named",
                   data: { word: verdict.label ?? "" },
                   helpId: "prose_word_not_named_help",

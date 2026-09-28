@@ -278,7 +278,7 @@ const findingFor = (
 ): Diagnostic => {
   const { run, steps } = value
   return report({
-    at: run.left,
+    about: run.left,
     messageId: "shared_run",
     data: {
       left: run.left.name,

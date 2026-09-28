@@ -196,7 +196,7 @@ export const docMatchesCode: PlannedRule = {
       }
       diagnostics.push(
         report({
-                  at: unit,
+                  about: unit,
                   messageId: "doc_contradicts",
                   data: { where: label(unit), contradiction: (verdict.label ?? "unreadable").replace(/_/g, " ") },
                   helpId: "doc_contradicts_help",

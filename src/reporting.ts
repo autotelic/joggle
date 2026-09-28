@@ -96,7 +96,7 @@ export const locator = (workspace: Workspace): Locate => {
 
 /** What to report, in terms of a subject and a message id. */
 export interface ReportInput {
-  readonly at: Subject
+  readonly about: Subject
   readonly messageId: string
   /** Fills the `{{name}}` holes in the message template. */
   readonly data?: Readonly<Record<string, string | number>> | undefined
@@ -193,7 +193,7 @@ export const reporter = (rule: ReportedRule, locate: Locate): Report => (input) 
     severity: input.severity ?? rule.severity,
     message,
     help,
-    location: locate(input.at),
+    location: locate(input.about),
     judged: input.judged ?? rule.judged,
     confidence: input.confidence,
     score: input.score,

@@ -211,7 +211,7 @@ export const moduleDirection: PlannedRule = {
           }
           diagnostics.push(
             reporterFor(workspace)({
-              at: { file: entry.candidate.file, start: 0 },
+              about: { file: entry.candidate.file, start: 0 },
               messageId: "upward_module",
               data: {
                 from: entry.candidate.from,

@@ -234,7 +234,7 @@ const findingFor = (
   review = false,
 ): Diagnostic =>
   report({
-    at: { file: entry.candidate.schemaFile, start: 0 },
+    about: { file: entry.candidate.schemaFile, start: 0 },
     messageId: "excludes",
     data: {
       field: entry.candidate.field,

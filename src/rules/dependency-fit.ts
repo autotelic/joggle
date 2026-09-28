@@ -336,7 +336,7 @@ export const dependencyFit: PlannedRule = {
       const misplaced = verdict.label === "violates"
       diagnostics.push(
         report({
-                  at: { file: dependency.examples[0] ?? dependency.path, start: 0 },
+                  about: { file: dependency.examples[0] ?? dependency.path, start: 0 },
                   messageId: "undeclared_dependency",
                   data: {
                     path: dependency.path,
