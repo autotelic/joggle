@@ -14,7 +14,18 @@
  *
  * `plumb-effect` is consumer-opt-in upstream because plumb itself is not an
  * Effect application. This repository is, so the whole set is on.
+ *
+ * The second Effect rulebook is `@effect/tsgo`'s, which is the Effect language
+ * service's own diagnostics exposed as type-aware Oxlint rules. Every rule it
+ * ships is enabled below, from all four of its categories, so the codebase is
+ * held to the upstream opinion as well as plumb's. Correctness and anti-pattern
+ * rules are errors; the Effect-native and style rules are warnings, matching the
+ * tool's own taxonomy. `pnpm lint:update` folds the existing findings into the
+ * same baseline ratchet, which is what makes adopting a rulebook this size
+ * possible at all.
  */
+
+import { antipattern, correctness, effectNative, style } from "@effect/tsgo/oxlint-presets"
 
 const GENERIC = [
   "no-anonymous-wide-tuples",
@@ -101,9 +112,33 @@ const every = (): Record<string, "error"> =>
     ...EFFECT.map((id) => [`plumb-effect/${id}`, "error"]),
   ]);
 
+/**
+ * The Effect language service's rulebook, at one severity.
+ *
+ * The presets ship their rules as warnings; the category decides the severity
+ * here, so a correctness rule is an error and a style rule is a warning without
+ * listing 116 names. The union of the four categories is the whole rulebook.
+ */
+const atSeverity = (
+  rules: Readonly<Record<string, unknown>> | undefined,
+  severity: "error" | "warn",
+): Record<string, "error" | "warn"> =>
+  Object.fromEntries(Object.keys(rules ?? {}).map((id) => [id, severity]));
+
+const EFFECT_TSGO = {
+  ...atSeverity(correctness.rules, "error"),
+  ...atSeverity(antipattern.rules, "error"),
+  ...atSeverity(effectNative.rules, "warn"),
+  ...atSeverity(style.rules, "warn"),
+};
+
 export default {
   ignorePatterns: ["node_modules", "tests/fixtures/**"],
-  plugins: ["eslint", "oxc", "typescript", "unicorn", "jsdoc", "node"],
+  plugins: ["eslint", "oxc", "typescript", "unicorn", "jsdoc", "node", "effecttsgo"],
+  // Every `effecttsgo/*` rule is type-aware, so oxlint's type-aware mode is on
+  // for the whole run. The binary that answers it is the Effect language service,
+  // wired in by `effect-tsgo patch --oxlint` from the `prepare` script.
+  options: { typeAware: true },
   settings: { jsdoc: { mode: "typescript" } },
   jsPlugins: [
     // The installed package, which is what a consumer has. Its dist was three
@@ -115,6 +150,7 @@ export default {
   ],
   rules: {
     ...every(),
+    ...EFFECT_TSGO,
     // plumb:allow-off: this rule is non-deterministic AND reports the pattern it
     // recommends. Read its detection: it collects schema names, collects every
     // interface, and reports the overlap at Program:exit without ever looking at
