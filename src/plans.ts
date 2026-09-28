@@ -74,25 +74,25 @@ export class PlanAnswers extends Context.Service<PlanAnswers, PlanAnswerStore>()
 export const StoredAnswer = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("Rate"),
-    rating: Schema.Number,
+    rating: Schema.Finite,
     label: Schema.String,
-    probabilities: Schema.Record(Schema.String, Schema.Number),
-    confidence: Schema.optionalKey(Schema.Number),
+    probabilities: Schema.Record(Schema.String, Schema.Finite),
+    confidence: Schema.optionalKey(Schema.Finite),
   }),
   Schema.Struct({
     kind: Schema.Literal("Classify"),
     label: Schema.String,
-    probabilities: Schema.Record(Schema.String, Schema.Number),
-    confidence: Schema.optionalKey(Schema.Number),
+    probabilities: Schema.Record(Schema.String, Schema.Finite),
+    confidence: Schema.optionalKey(Schema.Finite),
   }),
   Schema.Struct({
     kind: Schema.Literal("Probability"),
-    probability: Schema.Number,
-    consistency: Schema.optionalKey(Schema.Number),
+    probability: Schema.Finite,
+    consistency: Schema.optionalKey(Schema.Finite),
   }),
 ])
 
-export type StoredAnswer = Schema.Schema.Type<typeof StoredAnswer>
+export type StoredAnswer = typeof StoredAnswer.Type
 
 /**
  * The agreement carried alongside an answer, when a Noul was asked more than
@@ -286,7 +286,7 @@ export const memoize = (
           }
           missing[name] = decision
         }
-        let usage = new DecisionModel.DecisionUsage({})
+        let usage = DecisionModel.DecisionUsage.make({})
         if (Object.keys(missing).length > 0) {
           // A Noul asked `repeats` times, in the same request and for the same
           // reason as `answerPlansRaw`: one yes/no has no margin. A rule that
@@ -535,12 +535,13 @@ export const answerPlans = <A>(
 > =>
   answerPlansRaw(plans).pipe(
     Effect.map((records) =>
-      records.map((record, index) => {
-        // SAFETY: the caller built these plans, so each record is the answer
-        // shape its own plan's decisions produced and `read` returns the A that
-        // plan declared. The record was erased only so the plans could be
-        // answered together.
-        return plans[index]?.read(record) as A | undefined
-      }),
+      records.map(
+        (record, index) =>
+          // SAFETY: the caller built these plans, so each record is the answer
+          // shape its own plan's decisions produced and `read` returns the A that
+          // plan declared. The record was erased only so the plans could be
+          // answered together.
+          plans[index]?.read(record) as A | undefined,
+      ),
     ),
   )

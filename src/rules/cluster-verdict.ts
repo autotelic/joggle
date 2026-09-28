@@ -314,7 +314,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
         difference: Decision.classify({
           instructions: [
             `The declarations named by \`${refs}\` are not identical. What IS the difference between them?`,
-            "Inspect their \`source\`.",
+            "Inspect their `source`.",
             "Choose `value` when they are one thing with a different constant, option or parameter, so one of them could take the other's value.",
             "Choose `meaning` when they are two concepts that happen to read alike.",
           ].join("\n"),

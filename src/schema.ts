@@ -7,15 +7,15 @@ import { Move } from "./moves.ts"
 
 export const Severity = Schema.Literals(["error", "warn", "info"])
 
-export type Severity = Schema.Schema.Type<typeof Severity>
+export type Severity = typeof Severity.Type
 
 /** A resolvable place in the source. `line` and `column` are 1-based. */
 export const SourceLocation = Schema.Struct({
   file: Schema.String,
-  line: Schema.Number,
-  column: Schema.Number,
-  endLine: Schema.optionalKey(Schema.Number),
-  endColumn: Schema.optionalKey(Schema.Number),
+  line: Schema.Finite,
+  column: Schema.Finite,
+  endLine: Schema.optionalKey(Schema.Finite),
+  endColumn: Schema.optionalKey(Schema.Finite),
 })
 
 export interface SourceLocation extends Schema.Schema.Type<typeof SourceLocation> {}
@@ -29,14 +29,14 @@ export interface SourceLocation extends Schema.Schema.Type<typeof SourceLocation
  */
 export const Operation = Schema.Literals(["merge", "split", "move", "replace", "migrate"])
 
-export type Operation = Schema.Schema.Type<typeof Operation>
+export type Operation = typeof Operation.Type
 
 /** One place that must change, and what to do there. */
 export const Edit = Schema.Struct({
   file: Schema.String,
   /** 1-based, like every other location in this program. */
-  line: Schema.Number,
-  column: Schema.Number,
+  line: Schema.Finite,
+  column: Schema.Finite,
   /** One sentence a person or an agent can act on. */
   instruction: Schema.String,
 })
@@ -76,12 +76,12 @@ export interface Repair extends Schema.Schema.Type<typeof Repair> {}
  */
 export const Structure = Schema.Struct({
   /** Distinct declared names, as the index counts them. */
-  concepts: Schema.Number,
-  declarations: Schema.Number,
+  concepts: Schema.Finite,
+  declarations: Schema.Finite,
   /** Declarations sharing a name with another declaration. */
-  duplicated: Schema.Number,
+  duplicated: Schema.Finite,
   /** Names resolving to more than one type. */
-  overloaded: Schema.Number,
+  overloaded: Schema.Finite,
 })
 
 export interface Structure extends Schema.Schema.Type<typeof Structure> {}
@@ -110,14 +110,14 @@ export const Diagnostic = Schema.Struct({
    * Present only when a judgement produced this diagnostic. Absent means the
    * rule was deterministic, which is itself useful information for a reader.
    */
-  confidence: Schema.optionalKey(Schema.Number),
+  confidence: Schema.optionalKey(Schema.Finite),
   /**
    * How strongly the judgement says this is real, as a Noul probability. Unlike
    * `confidence` (which summarises how peaked the Choice distribution was, and
    * measured uninformative) this is comparable across every finding in a run,
    * so it is what the report sorts by.
    */
-  score: Schema.optionalKey(Schema.Number),
+  score: Schema.optionalKey(Schema.Finite),
   /**
    * A stable name for this finding, for comparing runs.
    *
@@ -174,7 +174,7 @@ export const DropStage = Schema.Literals([
   "budget",
 ])
 
-export type DropStage = Schema.Schema.Type<typeof DropStage>
+export type DropStage = typeof DropStage.Type
 
 export const Drop = Schema.Struct({
   ruleId: Schema.String,
@@ -188,12 +188,12 @@ export const Drop = Schema.Struct({
 export interface Drop extends Schema.Schema.Type<typeof Drop> {}
 
 export const DecisionTotals = Schema.Struct({
-  requests: Schema.Number,
-  replayed: Schema.Number,
-  calls: Schema.Number,
-  unavailable: Schema.Number,
-  inputTokens: Schema.Number,
-  outputTokens: Schema.Number,
+  requests: Schema.Finite,
+  replayed: Schema.Finite,
+  calls: Schema.Finite,
+  unavailable: Schema.Finite,
+  inputTokens: Schema.Finite,
+  outputTokens: Schema.Finite,
 })
 
 export interface DecisionTotals extends Schema.Schema.Type<typeof DecisionTotals> {}
@@ -227,8 +227,8 @@ export const StoredRun = Schema.Struct({
       exports: Schema.Array(Schema.String),
     }),
   ),
-  files: Schema.Number,
-  rules: Schema.Number,
+  files: Schema.Finite,
+  rules: Schema.Finite,
   /**
    * The shape of the codebase this run measured.
    *
@@ -247,7 +247,7 @@ export const StoredRun = Schema.Struct({
    */
   drops: Schema.optionalKey(Schema.Array(Drop)),
   decision: DecisionTotals,
-  elapsedMs: Schema.Number,
+  elapsedMs: Schema.Finite,
 })
 
 export interface StoredRun extends Schema.Schema.Type<typeof StoredRun> {}
@@ -262,7 +262,7 @@ export const Baseline = Schema.Struct({
   identities: Schema.Array(Schema.String),
 })
 
-export type Baseline = Schema.Schema.Type<typeof Baseline>
+export type Baseline = typeof Baseline.Type
 
 /* -------------------------------------------------------------------------- */
 /* Typed errors                                                                */

@@ -62,7 +62,7 @@ export { atomsLayer }
  * ask, so a rule under test never has to know which kind it got.
  */
 export const planAnswersLayer: Layer.Layer<PlanAnswers> = Layer.succeed(PlanAnswers, {
-  get: () => Effect.succeed(Option.none()),
+  get: () => Effect.succeedNone,
   put: () => Effect.void,
 } satisfies PlanAnswerStore)
 
@@ -131,7 +131,7 @@ export const refusingModel = (
       DecisionModel.make({
         decide: () =>
           Effect.fail(
-            decisionError(["@autotelic/joggle/testing", "decide"], new AiError.UnknownError({ description: reason })),
+            decisionError(["@autotelic/joggle/testing", "decide"], AiError.UnknownError.make({ description: reason })),
           ),
       }),
     ),

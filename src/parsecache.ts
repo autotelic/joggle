@@ -51,7 +51,7 @@ export const keyOf = (file: string, text: string): string =>
   file + "\u0000" + shortHash(text)
 
 /** A unit minus everything derivable from the file's text. */
-const encodeUnit = (unit: Unit): Schema.Schema.Type<typeof EncodedUnit> => ({
+const encodeUnit = (unit: Unit): typeof EncodedUnit.Type => ({
   kind: unit.kind,
   name: unit.name,
   start: unit.start,
@@ -69,7 +69,7 @@ const encodeUnit = (unit: Unit): Schema.Schema.Type<typeof EncodedUnit> => ({
   ...(unit.doc === undefined ? {} : { doc: unit.doc }),
 })
 
-const encodeSourceFile = (file: SourceFile): Schema.Schema.Type<typeof EncodedFile> => ({
+const encodeSourceFile = (file: SourceFile): typeof EncodedFile.Type => ({
   units: file.units.map(encodeUnit),
   imports: file.imports,
   facts: file.facts,
@@ -93,8 +93,8 @@ const encodeSourceFile = (file: SourceFile): Schema.Schema.Type<typeof EncodedFi
 const EncodedUnit = Schema.Struct({
   kind: UnitKind,
   name: Schema.String,
-  start: Schema.Number,
-  end: Schema.Number,
+  start: Schema.Finite,
+  end: Schema.Finite,
   location: SourceLocation,
   exported: Schema.Boolean,
   shape: Schema.String,
@@ -155,7 +155,7 @@ interface Source {
  * a corrupt entry is a miss.
  */
 const unitFrom = (
-  entry: Schema.Schema.Type<typeof EncodedUnit>,
+  entry: typeof EncodedUnit.Type,
   source: Source,
 ): Unit | undefined => {
   const { file, text } = source
@@ -197,7 +197,7 @@ const unitFrom = (
 
 /** A whole file's parse, or undefined when any unit of it is unusable. */
 const sourceFileFrom = (
-  entry: Schema.Schema.Type<typeof EncodedFile>,
+  entry: typeof EncodedFile.Type,
   source: Source,
 ): SourceFile | undefined => {
   const units: Array<Unit> = []
@@ -241,7 +241,7 @@ export const loadParses = (
     // The map holds the ENCODED form, so saving serializes what is already there
     // rather than walking every unit a second time to write it out.
     const issues: Array<string> = []
-    const entries = new Map<string, Schema.Schema.Type<typeof EncodedFile>>()
+    const entries = new Map<string, typeof EncodedFile.Type>()
     const exists = yield* Effect.orElseSucceed(fs.exists(store), () => false)
     if (exists) {
       const body = yield* Effect.orElseSucceed(fs.readFileString(store), () => "")

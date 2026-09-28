@@ -52,7 +52,7 @@ export const TypeFact = Schema.Struct({
    * declaration. That difference is the useful part -- it is the join from a
    * name to its meaning that text cannot make.
    */
-  origin: Schema.Struct({ file: Schema.String, line: Schema.Number }),
+  origin: Schema.Struct({ file: Schema.String, line: Schema.Finite }),
 })
 
 export interface TypeFact extends Schema.Schema.Type<typeof TypeFact> {}
@@ -253,7 +253,7 @@ const TRACE_VERSION = "1"
 
 const CachedEntry = Schema.Struct({
   file: Schema.String,
-  line: Schema.Number,
+  line: Schema.Finite,
   name: Schema.String,
   fact: TypeFact,
 })

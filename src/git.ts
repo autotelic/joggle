@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { GitError } from "./schema.ts"
@@ -89,20 +89,18 @@ const command = (
         { concurrency: "unbounded" },
       )
       if (Number(exitCode) !== 0) {
-        return yield* Effect.fail(
-          new GitError({
-            operation: `${binary} ${args.join(" ")}`,
-            detail: stderr.trim() === "" ? `exited with code ${Number(exitCode)}` : stderr.trim(),
-          }),
-        )
+        return yield* GitError.make({
+          operation: `${binary} ${args.join(" ")}`,
+          detail: stderr.trim() === "" ? `exited with code ${Number(exitCode)}` : stderr.trim(),
+        })
       }
       return stdout
     }),
   ).pipe(
     Effect.mapError((cause) =>
-      cause instanceof GitError
+      Schema.is(GitError)(cause)
         ? cause
-        : new GitError({
+        : GitError.make({
             operation: `${binary} ${args.join(" ")}`,
             detail: cause instanceof Error ? cause.message : String(cause),
           }),
@@ -137,9 +135,10 @@ const prRef = (
         : ["pr", "view", pr, "--json", "baseRefName", "--jq", ".baseRefName"]
     const base = (yield* command("gh", args, cwd)).trim()
     if (base === "") {
-      return yield* Effect.fail(
-        new GitError({ operation: "gh pr view", detail: "the pull request has no base branch" }),
-      )
+      return yield* GitError.make({
+        operation: "gh pr view",
+        detail: "the pull request has no base branch",
+      })
     }
     const origin = `origin/${base}`
     if (yield* resolves({ cwd, ref: origin })) return origin

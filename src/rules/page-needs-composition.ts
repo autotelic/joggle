@@ -95,10 +95,10 @@ const gaps = (page: Page): ReadonlyArray<string> => {
 const PageEvidence = Schema.Struct({
   page: Schema.Struct({
     path: Schema.String,
-    lines: Schema.Number,
-    local_state_calls: Schema.Number,
-    inline_elements: Schema.Number,
-    imports_from_pattern_bundles: Schema.Number,
+    lines: Schema.Finite,
+    local_state_calls: Schema.Finite,
+    inline_elements: Schema.Finite,
+    imports_from_pattern_bundles: Schema.Finite,
     renders_a_provider: Schema.Boolean,
   }),
   gaps: Schema.Array(Schema.String),
@@ -212,7 +212,7 @@ export const pageNeedsComposition = defineRule({
       (page) =>
         DecisionModel.decide(PageRole, { input: evidenceFor(page) }).pipe(
           Effect.map((result) => Option.some(result.answers.role.label)),
-          Effect.catch(() => Effect.succeed(Option.none<string>())),
+          Effect.orElseSucceed(() => Option.none<string>()),
         ),
       { concurrency: policy.decision.requestConcurrency },
     )
@@ -274,7 +274,7 @@ export const pageNeedsComposition = defineRule({
         })
         return DecisionModel.decide(definition, { input: { ...evidenceFor(page), role } }).pipe(
           Effect.map((result) => Option.some(result.answers)),
-          Effect.catch(() => Effect.succeed(Option.none<DecisionAnswers>())),
+          Effect.orElseSucceed(() => Option.none<DecisionAnswers>()),
         )
       },
       { concurrency: policy.decision.requestConcurrency },

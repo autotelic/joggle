@@ -22,7 +22,7 @@ import { Schema } from "effect"
  */
 export const Move = Schema.Literals(["contract", "combine", "expand"])
 
-export type Move = Schema.Schema.Type<typeof Move>
+export type Move = typeof Move.Type
 
 /**
  * The ratchet order.

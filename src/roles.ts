@@ -114,7 +114,7 @@ const ModuleEvidence = Schema.Struct({
   repository: Schema.optionalKey(Schema.String),
   module: Schema.Struct({
     path: Schema.String,
-    declarations: Schema.Number,
+    declarations: Schema.Finite,
     examples: Schema.Array(Schema.String),
     imports: Schema.Array(Schema.String),
     shares_a_name_with_a_dependency: Schema.NullOr(Schema.String),
@@ -258,7 +258,7 @@ export const classifyModules = (
     listed.forEach(([path, units], index) => {
       const role = answered[index]
       if (role === undefined || Option.isNone(role)) {
-        for (const unit of units) {
+        for (const _unit of units) {
           drops.push({
             ruleId,
             subject: path,

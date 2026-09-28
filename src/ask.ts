@@ -176,7 +176,7 @@ export const ask = (
         const outcome = yield* Effect.result(attempt(list))
         if (Result.isSuccess(outcome)) return outcome.success
         if (list.length <= 1 || isUnreachable(outcome.failure)) {
-          return yield* Effect.fail(outcome.failure)
+          return yield* outcome.failure
         }
         list = list.slice(0, Math.max(1, Math.ceil(list.length / 2)))
       }

@@ -268,9 +268,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
         : options.paths.length === 0
           ? "no source files under " + options.cwd
           : "no source files under " + options.paths.join(", ") + " in " + options.cwd
-    return yield* Effect.fail(
-      new WorkspaceError({ path: options.cwd, operation: "discover", cause: new Error(where) }),
-    )
+    return yield* WorkspaceError.make({ path: options.cwd, operation: "discover", cause: new Error(where) })
   }
 
   // Read once. The manifest needs the content, and a miss hands the same text to

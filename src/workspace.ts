@@ -25,7 +25,7 @@ import { emptyTypeIndex, type TypeFact, type TypeIndex } from "./typetrace.ts"
 /** What a declaration is. A Schema, so the cache decoder can be exact about it. */
 export const UnitKind = Schema.Literals(["function", "interface", "type"])
 
-export type UnitKind = Schema.Schema.Type<typeof UnitKind>
+export type UnitKind = typeof UnitKind.Type
 
 /**
  * One addressable declaration. This is the closest thing joggle has to an
@@ -152,7 +152,7 @@ export interface Unit {
 /** One object literal: what it holds, and where it is. */
 export const ObjectSite = Schema.Struct({
   keys: Schema.Array(Schema.String),
-  start: Schema.Number,
+  start: Schema.Finite,
   /**
    * True when the literal IS a type declaration, such as the field object of a
    * `Schema.Struct`. A declaration is not a shape that needs a name; it is the
@@ -204,20 +204,20 @@ export const ColumnFact = Schema.Struct({
   column: Schema.String,
   nullable: Schema.Boolean,
   /** The offset of the `table.<type>('<column>')` call, for the line. */
-  start: Schema.Number,
+  start: Schema.Finite,
 })
 
 /** One call, where it is, what it names, and the shape of its arguments. */
 export const CallSite = Schema.Struct({
   /** Callee name, dotted for member calls: `createContext`, `React.useState`. */
   name: Schema.String,
-  start: Schema.Number,
-  end: Schema.Number,
+  start: Schema.Finite,
+  end: Schema.Finite,
   /**
    * How many arguments the call passes. A call whose default path passes none is
    * the shape a data-access question needs.
    */
-  argumentCount: Schema.Number,
+  argumentCount: Schema.Finite,
   /**
    * The keys of the call's one object-literal argument, when it has exactly one.
    *
@@ -237,8 +237,8 @@ export const CallSite = Schema.Struct({
  * the string means asks, instead of matching the text for known shapes.
  */
 export const StringSite = Schema.Struct({
-  start: Schema.Number,
-  end: Schema.Number,
+  start: Schema.Finite,
+  end: Schema.Finite,
   /** The references interpolated into it, dotted: `row.amount`, `total`. */
   refs: Schema.Array(Schema.String),
 })
@@ -253,8 +253,8 @@ export interface StringSite extends Schema.Schema.Type<typeof StringSite> {}
  * `if (!x)` against the source.
  */
 export const GuardSite = Schema.Struct({
-  start: Schema.Number,
-  end: Schema.Number,
+  start: Schema.Finite,
+  end: Schema.Finite,
   /** The references the test names, dotted. */
   refs: Schema.Array(Schema.String),
   /** True when the consequent returns or throws: a guard clause. */
@@ -270,8 +270,8 @@ export interface GuardSite extends Schema.Schema.Type<typeof GuardSite> {}
  * NOT say the skip is a data loss the caller must know about. That is a question.
  */
 export const SkipSite = Schema.Struct({
-  start: Schema.Number,
-  end: Schema.Number,
+  start: Schema.Finite,
+  end: Schema.Finite,
 })
 
 export interface SkipSite extends Schema.Schema.Type<typeof SkipSite> {}
@@ -284,24 +284,24 @@ export interface SkipSite extends Schema.Schema.Type<typeof SkipSite> {}
  */
 export const LiteralSite = Schema.Struct({
   value: Schema.String,
-  start: Schema.Number,
-  end: Schema.Number,
+  start: Schema.Finite,
+  end: Schema.Finite,
 })
 
 export interface LiteralSite extends Schema.Schema.Type<typeof LiteralSite> {}
 
 /** A `return`, where it is. The expression it returns is what a type question asks about. */
 export const ReturnSite = Schema.Struct({
-  start: Schema.Number,
-  end: Schema.Number,
+  start: Schema.Finite,
+  end: Schema.Finite,
 })
 
 export interface ReturnSite extends Schema.Schema.Type<typeof ReturnSite> {}
 
 /** A comparison, its operator and span. A language construct, not a repository idiom. */
 export const ComparisonSite = Schema.Struct({
-  start: Schema.Number,
-  end: Schema.Number,
+  start: Schema.Finite,
+  end: Schema.Finite,
   operator: Schema.String,
 })
 
@@ -1007,16 +1007,16 @@ const sitesIn = (program: Record<string, unknown>, text: string): ReadonlyArray<
  * `state`, `actions` and `meta` among its keys.
  */
 const structureIn = (root: unknown, allOptionalFunctions: ReadonlyArray<string>): StructureFacts => {
-  const callSites: Array<Schema.Schema.Type<typeof CallSite>> = []
+  const callSites: Array<typeof CallSite.Type> = []
   const jsx = new Set<string>()
-  const objects: Array<Schema.Schema.Type<typeof ObjectSite>> = []
-  const columns: Array<Schema.Schema.Type<typeof ColumnFact>> = []
-  const stringSites: Array<Schema.Schema.Type<typeof StringSite>> = []
-  const guards: Array<Schema.Schema.Type<typeof GuardSite>> = []
-  const skips: Array<Schema.Schema.Type<typeof SkipSite>> = []
-  const literals: Array<Schema.Schema.Type<typeof LiteralSite>> = []
-  const returns: Array<Schema.Schema.Type<typeof ReturnSite>> = []
-  const comparisons: Array<Schema.Schema.Type<typeof ComparisonSite>> = []
+  const objects: Array<typeof ObjectSite.Type> = []
+  const columns: Array<typeof ColumnFact.Type> = []
+  const stringSites: Array<StringSite> = []
+  const guards: Array<GuardSite> = []
+  const skips: Array<SkipSite> = []
+  const literals: Array<LiteralSite> = []
+  const returns: Array<ReturnSite> = []
+  const comparisons: Array<ComparisonSite> = []
   interface DeclaredFields {
     readonly required: Array<string>
     readonly nullable: Array<string>
@@ -1736,7 +1736,7 @@ const walk = (
     // is best effort. One odd entry must not fail the whole run.
     const rootEntries = yield* fs.readDirectory(dir).pipe(
       Effect.mapError(
-        (cause) => new WorkspaceError({ path: dir, operation: "readDirectory", cause }),
+        (cause) => WorkspaceError.make({ path: dir, operation: "readDirectory", cause }),
       ),
     )
     seen.add(dir)
@@ -1925,7 +1925,7 @@ export const loadWorkspace = (
         preloaded ??
         (yield* fs.readFileString(absolute).pipe(
           Effect.mapError(
-            (cause) => new WorkspaceError({ path: absolute, operation: "readFileString", cause }),
+            (cause) => WorkspaceError.make({ path: absolute, operation: "readFileString", cause }),
           ),
         ))
       // Diagnostics carry paths relative to the root, so output is stable and

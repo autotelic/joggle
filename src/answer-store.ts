@@ -141,9 +141,9 @@ export const mergeShardText = (text: {
   Effect.gen(function* () {
     const ourEntries = parseLines(text.ours)
     const theirEntries = parseLines(text.theirs)
-    if (text.ours.trim() !== "" && ourEntries.length === 0) return yield* Effect.fail(new NotAShard({ side: "ours" }))
+    if (text.ours.trim() !== "" && ourEntries.length === 0) return yield* NotAShard.make({ side: "ours" })
     if (text.theirs.trim() !== "" && theirEntries.length === 0) {
-      return yield* Effect.fail(new NotAShard({ side: "theirs" }))
+      return yield* NotAShard.make({ side: "theirs" })
     }
     return renderShard(mergeEntries(ourEntries, theirEntries))
   })

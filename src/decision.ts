@@ -134,7 +134,7 @@ export const decisionError = (
 const missingKey = (): AiError.AiError =>
   decisionError(
     ["joggle/Decision", "systemOne"],
-    new AiError.AuthenticationError({
+    AiError.AuthenticationError.make({
       kind: "MissingKey",
       description: "TYPESAFE_API_KEY is not set",
     }),
@@ -143,7 +143,7 @@ const missingKey = (): AiError.AiError =>
 const offlineMiss = (): AiError.AiError =>
   decisionError(
     ["joggle/Decision", "systemOne"],
-    new AiError.UnknownError({ description: "offline mode and no cached judgement" }),
+    AiError.UnknownError.make({ description: "offline mode and no cached judgement" }),
   )
 
 /**
@@ -223,11 +223,11 @@ export const layer = (
             yield* Ref.update(stats, (current) => ({ ...current, requests: current.requests + 1 }))
             if (apiKey === undefined) {
               yield* Ref.update(stats, (current) => ({ ...current, unavailable: current.unavailable + 1 }))
-              return yield* Effect.fail(missingKey())
+              return yield* missingKey()
             }
             if (options.offline) {
               yield* Ref.update(stats, (current) => ({ ...current, unavailable: current.unavailable + 1 }))
-              return yield* Effect.fail(offlineMiss())
+              return yield* offlineMiss()
             }
             const response = yield* inner.systemOne(payload).pipe(
               // Backpressure is the provider's own classification, so

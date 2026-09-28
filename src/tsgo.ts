@@ -64,7 +64,7 @@ const run = (binary: string, args: ReadonlyArray<string>, cwd: string) =>
   ).pipe(
     Effect.mapError(
       (cause) =>
-        new TsgoError({
+        TsgoError.make({
           operation: `tsgo ${args.join(" ")}`,
           detail: cause instanceof Error ? cause.message : String(cause),
         }),

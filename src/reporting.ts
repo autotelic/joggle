@@ -142,7 +142,7 @@ const fill = (input: {
   input.template.replace(PLACEHOLDER, (_whole, name: string) => {
     const value = input.data?.[name]
     if (value === undefined) {
-      throw new RuleAuthoringError({
+      throw RuleAuthoringError.make({
         ruleId: input.ruleId,
         messageId: input.messageId,
         detail: "the template needs data." + name,
@@ -159,7 +159,7 @@ const templateFor = (input: {
 }): string => {
   const template = input.rule.messages?.[input.messageId]
   if (template === undefined) {
-    throw new RuleAuthoringError({
+    throw RuleAuthoringError.make({
       ruleId: input.rule.id,
       messageId: input.messageId,
       detail: "no message is declared with this id",
