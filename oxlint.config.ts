@@ -160,6 +160,15 @@ export default {
     // depending on the order files are visited. Both need fixing upstream before
     // this can hold a baseline; until then it cannot be part of a ratchet that is
     // supposed to be reproducible.
+    // plumb-effect/require-schema-type-derivation is off (see above).
+    //
+    // effecttsgo/missing-pipeable-signature wants every exported fixed-arity
+    // function to also carry a pipeable overload. That is right for a library
+    // whose functions compose through `.pipe`; joggle's exported functions are
+    // data-first and called directly, and its pipeable surface is the Effect
+    // ones, not these. Re-spelling 80 exports to satisfy it would be ceremony
+    // around an API shape nobody uses, so it is off with the reason instead.
+    "effecttsgo/missing-pipeable-signature": "off",
     "plumb-effect/require-schema-type-derivation": "off",
   },
 

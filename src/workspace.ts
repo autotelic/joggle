@@ -1,4 +1,4 @@
-import { Clock, Effect, FileSystem, Path, Schema } from "effect"
+import { Clock, Effect, FileSystem, Order, Path, Schema } from "effect"
 import { parseSync } from "oxc-parser"
 import { policy } from "./policy.ts"
 import {
@@ -136,7 +136,7 @@ export interface Unit {
   readonly doc: string | undefined
 }
 
-/**
+/*
  * Structure a JSX codebase reveals through names rather than shapes.
  *
  * A composition pattern is a convention about how components are organised --
@@ -356,11 +356,11 @@ export interface SourceFile {
   readonly facts: StructureFacts
 }
 
-/**
+/*
  * The deterministic substrate. Its only job is to make candidate generation
  * cheap and high-recall; it makes no judgements.
  */
-/** A file that was read and could not be parsed, with the parser's own words. */
+/* A file that was read and could not be parsed, with the parser's own words. */
 /**
  * What a package says about itself.
  *
@@ -442,6 +442,7 @@ export interface Workspace {
 /* Source helpers                                                              */
 /* -------------------------------------------------------------------------- */
 
+/** True for a plain object: the narrowing every raw JSON read begins with. */
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -624,6 +625,7 @@ const normalize = (
 
 const TOKEN_PATTERN = /[A-Za-z0-9_$]+|[^\sA-Za-z0-9_$]/g
 
+/** Split a shape string into its tokens. */
 export const tokenize = (shape: string): ReadonlyArray<string> => {
   const tokens: Array<string> = []
   for (const match of shape.matchAll(TOKEN_PATTERN)) tokens.push(match[0])
@@ -1634,7 +1636,7 @@ const parseSourceFile = (file: string, text: string): ParseOutcome => {
 
 const ignored = new Set<string>(policy.ignoredDirectories)
 
-/** Insurance against symlink cycles and pathological trees. */
+/* Insurance against symlink cycles and pathological trees. */
 /** What discovery saw, and what it declined to look at. */
 export interface Discovery {
   readonly files: ReadonlyArray<string>
@@ -1785,7 +1787,7 @@ const walk = (
     // Both limits are reported, not silently obeyed: reaching one means the run
     // analysed part of the tree and said nothing about the rest.
     return {
-      files: found.sort(),
+      files: found.sort(Order.String),
       skipped: summarise(skipped),
       truncated: found.length >= walkLimits.files || seen.size >= walkLimits.directories,
       ignored: ignoredCount,
@@ -1873,6 +1875,7 @@ export interface Parses {
   readonly misses: () => number
 }
 
+/** A parse cache that always misses, for a caller with no cache to give it. */
 export const noParses = (): Parses => ({
   get: () => undefined,
   set: () => undefined,
@@ -1880,6 +1883,10 @@ export const noParses = (): Parses => ({
   misses: () => 0,
 })
 
+/**
+ * Read and index what tsgo sees, or the given paths, into the workspace every
+ * rule reads.
+ */
 export const loadWorkspace = (
   root: string,
   inputs: ReadonlyArray<string>,
@@ -1991,7 +1998,7 @@ export const loadWorkspace = (
         }))
         unit.typeSignature = unit.typeRefs
           .map((name) => resolveRef(file.path, name))
-          .sort()
+          .sort(Order.String)
           .join("|")
         // The compiler's answer, keyed by the declaration's own line, with the
         // name as the fallback for the `const X` / `type X` pairs a trace puts

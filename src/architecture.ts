@@ -38,6 +38,7 @@ export const layersFrom = (config: JoggleConfig): ReadonlyArray<Layer> =>
     forbid: layer.forbid ?? [],
   }))
 
+/** The declared layer a file belongs to, by the first include glob it matches. */
 export const layerOf = (
   layers: ReadonlyArray<Layer>,
   file: string,

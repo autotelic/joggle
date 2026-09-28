@@ -98,6 +98,7 @@ export const resolveSpecifier = (
   return undefined
 }
 
+/** Resolve every file's imports against the known set, and return the graph. */
 export const buildImportGraph = (
   files: ReadonlyArray<SourceFile>,
   path: Path.Path,

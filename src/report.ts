@@ -96,6 +96,7 @@ export interface Report {
 
 const rank: Record<Severity, number> = { error: 0, warn: 1, info: 2 }
 
+/** Rank findings for reading: file, line, column, severity, then rule. */
 export const sortDiagnostics = (
   diagnostics: ReadonlyArray<Diagnostic>,
 ): ReadonlyArray<Diagnostic> =>
@@ -474,6 +475,7 @@ const github = (report: Report): string => {
   return lines.join("\n")
 }
 
+/** Render a report in one of the output formats. */
 export const render = (
   report: Report,
   format: Format,
@@ -493,6 +495,7 @@ export const render = (
   }
 }
 
+/** The process exit code a report and a warning ceiling imply. */
 export const exitCodeFor = (report: Report, maxWarnings: number): number => {
   const { errors, warnings } = counts(report)
   if (errors > 0) return 1

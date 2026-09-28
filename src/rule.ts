@@ -10,7 +10,7 @@ import type { Messages } from "./reporting.ts"
 import type { Move } from "./moves.ts"
 import type { Workspace } from "./workspace.ts"
 
-/**
+/*
  * A rule is a function from the deterministic workspace index to diagnostics.
  *
  * The interesting conventions are inside each rule, not in this interface:
@@ -46,6 +46,7 @@ export interface RuleOutcome {
   readonly drops: ReadonlyArray<Drop>
 }
 
+/** A rule's whole result: its findings, its notes, and the candidates it dropped. */
 export const outcome = (
   diagnostics: ReadonlyArray<Diagnostic>,
   notes: ReadonlyArray<string> = [],
@@ -173,6 +174,12 @@ export interface Rule {
   >
 }
 
+/**
+ * Declare a deterministic rule.
+ *
+ * Identity today, and the seam where a rule gains a name, a severity or a
+ * validated shape without every rule file changing.
+ */
 export const defineRule = (rule: Rule): Rule => rule
 
 /**
@@ -294,6 +301,7 @@ export const sweep = <T>(
  */
 type MutableDiagnostic = { -readonly [K in keyof Diagnostic]: Diagnostic[K] }
 
+/** Build one diagnostic, with the fields every finding carries. */
 export const finding = (input: {
   readonly ruleId: string
   readonly severity: Severity
@@ -329,7 +337,7 @@ export const finding = (input: {
   return diagnostic
 }
 
-/**
+/*
  * The one question every rule asks, and the only answer code reads.
  *
  * It lived in each rule file until joggle reported its own copy of it three

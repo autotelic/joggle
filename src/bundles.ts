@@ -67,6 +67,10 @@ const isTest = (file: string): boolean => /\.(test|spec)\.[jt]sx?$/.test(file)
  */
 const isBlockName = (name: string): boolean => /^[A-Z][A-Za-z0-9_$]*$/.test(name)
 
+/**
+ * The names a file exports that read as composition blocks: functions named
+ * with the block vocabulary, which is the producer half of the pattern.
+ */
 export const blocksIn = (file: SourceFile): ReadonlyArray<string> =>
   file.units
     .filter((unit) => unit.exported && unit.kind === "function" && isBlockName(unit.name))
@@ -86,7 +90,6 @@ const dotExport = (file: SourceFile | undefined): ReadonlyArray<string> => {
   return []
 }
 
-/** The object literal that looks like the provider's context value. */
 /**
  * The object literal that looks like the provider's context value.
  *

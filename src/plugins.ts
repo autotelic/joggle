@@ -131,6 +131,7 @@ const rulesOf = (module: unknown): ReadonlyArray<Rule> => {
   return Array.isArray(exported) ? (exported as ReadonlyArray<Rule>) : []
 }
 
+/** Load the configured rule modules, relative specifiers resolved against the analysed root. */
 export const loadPlugins = (
   specifiers: ReadonlyArray<string>,
   cwd: string,

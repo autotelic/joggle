@@ -36,7 +36,7 @@ const candidatePair = (
   return inScope(scope, one.file) || inScope(scope, two.file)
 }
 
-/**
+/*
  * Near-duplicates: structurally close but not identical, so someone renamed a
  * thing or the bodies drifted.
  *

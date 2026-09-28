@@ -1,4 +1,4 @@
-import { Context, Effect, FileSystem, Layer, Path, Stream } from "effect"
+import { Context, Effect, FileSystem, Layer, Order, Path, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { resolve, sep } from "node:path"
@@ -128,7 +128,7 @@ const make = (binary: string, path: Path.Path): Interface => {
       if (!underRoot(cwd, file)) continue
       files.add(path.resolve(file))
     }
-    return [...files].sort()
+    return [...files].sort(Order.String)
   })
 
   const typecheck = Effect.fn("Tsgo.typecheck")(function* (cwd: string) {

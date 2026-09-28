@@ -1,4 +1,4 @@
-import { Clock, Effect, FileSystem, Path, Result } from "effect"
+import { Clock, Effect, FileSystem, Order, Path, Result } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import type { DecisionModel } from "effect/unstable/ai"
 import { layer as atomsLayer, type Atoms } from "./atoms.ts"
@@ -208,8 +208,8 @@ const affectedBy = (
 ): ReadonlySet<string> => {
   const out = new Set(changed)
   for (const file of changed) {
-    const was = [...(before.get(file) ?? [])].sort().join(",")
-    const now = [...(after.get(file) ?? [])].sort().join(",")
+    const was = [...(before.get(file) ?? [])].sort(Order.String).join(",")
+    const now = [...(after.get(file) ?? [])].sort(Order.String).join(",")
     if (was === now) continue
     for (const edge of imports.importersOf.get(file) ?? []) out.add(edge.from)
   }
@@ -971,7 +971,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       sources: workspace.files.map((file) => ({
         path: file.path,
         hash: hashOf.get(file.path) ?? "",
-        exports: [...(exportsOf(workspace).get(file.path) ?? [])].sort(),
+        exports: [...(exportsOf(workspace).get(file.path) ?? [])].sort(Order.String),
       })),
       diagnostics: report.diagnostics,
       files: report.files,

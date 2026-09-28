@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, Order } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
@@ -112,7 +112,7 @@ export const objectShape: PlannedRule = {
         const keys = [...new Set(site.keys)]
         if (keys.length < minKeys) continue
         if (isDeclared(new Set(keys))) continue
-        const signature = [...keys].sort().join("\u0000")
+        const signature = [...keys].sort(Order.String).join("\u0000")
         const existing = groups.get(signature)
         if (existing === undefined) groups.set(signature, [{ file: file.path, start: site.start }])
         else existing.push({ file: file.path, start: site.start })

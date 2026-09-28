@@ -728,7 +728,7 @@ const services = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, built
 
 const program = Command.run(cli, { version: policy.version }).pipe(Effect.provide(services))
 
-/**
+/*
  * Never fail silently. A typed failure, an interruption and a defect all have
  * to reach stderr with enough detail to act on. This is a CI gate, and a gate
  * that exits non-zero without saying why is worse than no gate at all.

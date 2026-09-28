@@ -21,7 +21,7 @@ import type { Unit, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/hoist-to-domain"
 
-/**
+/*
  * Business logic that lives at the edge and belongs in the middle.
  *
  * The other half of a domain migration. `dependency-fit` asks what a package

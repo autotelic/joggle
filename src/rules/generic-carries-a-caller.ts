@@ -92,7 +92,7 @@ export const genericCarriesACaller: PlannedRule = {
             literal.end <= unit.end &&
             // A word, not a path or a symbol: the shape of a piece of copy.
             literal.value.length >= 4 &&
-            [...literal.value].some((character) => character >= "a" && character <= "z"),
+            literal.value.split("").some((character) => character >= "a" && character <= "z"),
         )
         for (const literal of inside.slice(0, 3)) {
           candidates.push({

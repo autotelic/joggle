@@ -1,7 +1,7 @@
-import { Effect, FileSystem, Path } from "effect"
+import { Effect, FileSystem, Order, Path } from "effect"
 import { shortHash } from "./state.ts"
 
-/**
+/*
  * A hash of the tool's own source, which is the version nobody has to remember.
  *
  * `policy.analysisVersion` is a hand-bumped string, and a hand-bumped string is a
@@ -10,7 +10,7 @@ import { shortHash } from "./state.ts"
  * times the output looked entirely plausible, because a stale report is not
  * malformed, it is just wrong.
  *
- * So the version is no longer maintained by hand. The tool hashes its own sources
+ * So the version is not maintained by hand. The tool hashes its own sources
  * and puts that hash in the run manifest, and a change to a rule, a threshold or a
  * question cannot be missed because it cannot be omitted. `analysisVersion`
  * survives as the fallback for when the sources cannot be read, and as the
@@ -39,6 +39,10 @@ const sourceDirectory = (): string | undefined => {
  */
 const isSource = (name: string): boolean => name.endsWith(".ts") || name.endsWith(".js")
 
+/**
+ * Hash this tool's own source, so a rule or threshold change cannot be
+ * forgotten. `declared` is the fallback for a build that ships no source.
+ */
 export const sourceFingerprint = (
   declared: string,
 ): Effect.Effect<string, never, FileSystem.FileSystem | Path.Path> =>
@@ -54,7 +58,7 @@ export const sourceFingerprint = (
       fs.readDirectory(directory, { recursive: true }),
       () => [],
     )
-    const sources = names.filter(isSource).sort()
+    const sources = names.filter(isSource).sort(Order.String)
     if (sources.length === 0) return declared
 
     const parts: Array<string> = []

@@ -20,7 +20,7 @@ import type { SourceFile, Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/page-needs-composition"
 
-/**
+/*
  * Does a page's own state and markup belong in a composition bundle?
  *
  * This is the CONSUMER half of the pattern, and the only half that needs a

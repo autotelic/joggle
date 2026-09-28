@@ -175,6 +175,7 @@ const abbreviations: Readonly<Record<string, string>> = {
   str: "string", util: "utility", utils: "utility",
 }
 
+/** Split a name into words on its camelCase, snake_case and kebab-case seams. */
 export const words = (name: string): ReadonlyArray<string> =>
   name
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -183,6 +184,7 @@ export const words = (name: string): ReadonlyArray<string> =>
     .split(/\s+/)
     .filter((word) => word.length > 0)
 
+/** Split a name into words and expand the abbreviations in the table. */
 export const expanded = (name: string): ReadonlyArray<string> =>
   words(name).map((word) => abbreviations[word] ?? word)
 

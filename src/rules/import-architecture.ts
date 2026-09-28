@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, Order } from "effect"
 import { Decision } from "effect/unstable/ai"
 import {
   cyclesIn,
@@ -323,7 +323,7 @@ export const importCycle: PlannedRule = {
             messageId: "import_cycle",
             data: { files: [...cycle.files, first].join(" -> ") },
             helpId: "import_cycle_help",
-            identity: [CYCLE_RULE, ...[...cycle.files].sort()].join("\u0000"),
+            identity: [CYCLE_RULE, ...[...cycle.files].sort(Order.String)].join("\u0000"),
             judged: true,
             confidence,
             severity: outcomeOf.review ? "info" : "warn",

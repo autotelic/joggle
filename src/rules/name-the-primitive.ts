@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, Order } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
@@ -36,7 +36,7 @@ const isTypeUnit = (unit: Unit): boolean =>
   (unit.kind === "interface" || unit.kind === "type") &&
   unit.fields.length >= policy.nameThePrimitive.minFields
 
-const signatureOf = (fields: ReadonlyArray<string>): string => [...fields].sort().join("\u0000")
+const signatureOf = (fields: ReadonlyArray<string>): string => [...fields].sort(Order.String).join("\u0000")
 
 export const nameThePrimitive: PlannedRule = {
   id: RULE_ID,
@@ -102,7 +102,7 @@ export const nameThePrimitive: PlannedRule = {
       }
       if (group.size < minFields) continue
       if (named.has(signatureOf([...group]))) continue
-      groups.push({ units, fields: [...group].sort() })
+      groups.push({ units, fields: [...group].sort(Order.String) })
     }
     groups.sort(
       (left, right) =>

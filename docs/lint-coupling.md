@@ -48,6 +48,15 @@ Two pairs do not merely overlap; they pull opposite ways.
   and wins; effect-tsgo's is the refactor you make when you have decided to
   swallow and want it visible.
 
+- **A schema's type, spelled twice.** Within the Effect rulebook itself,
+  `prefer-schema-type-property` and `unnecessary-typeof-type` pull both ways on
+  one spelling: the first rewrites `Schema.Schema.Type<typeof X>` to
+  `typeof X.Type`, and the second then says a named type exists, so use that. The
+  pair is only consistent once the named type is checked for first: `typeof
+  X.Type` where no named type exists, and the named interface where one does. The
+  fix obeyed both; what was left over is a disagreement the two rules had with
+  each other, not with the code.
+
 ## Coverage each one adds
 
 - **Only effect-tsgo reaches the type channels**: `missing-effect-context`,
@@ -78,3 +87,10 @@ If a line ever becomes noisy because two rules agree on it, the rule is: **the
 house rule wins, and its effect-tsgo twin is turned off here with the reason**,
 the way `require-schema-type-derivation` is already off. Nothing is turned off
 speculatively.
+
+One effect-tsgo rule is off for a reason of its own, not for overlap:
+`missing-pipeable-signature` wants every exported fixed-arity function to carry a
+pipeable overload. That is right for a library whose functions compose through
+`.pipe`; joggle's exported functions are data-first and called directly, so the
+rule describes a shape this is not. It is off in `oxlint.config.ts` with that
+sentence beside it.

@@ -1,4 +1,4 @@
-/**
+/*
  * Shingle sets, Jaccard similarity, and the all-pairs join that uses them.
  *
  * This module exists because the join and the similarity it verifies with have

@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, Order } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
@@ -47,7 +47,7 @@ const RULE_ID = "joggle/name-as-address"
  * apply -- and written as the property it is rather than a pattern.
  */
 const isSingleWord = (name: string): boolean =>
-  name.length > 0 && [...name].every((character) => character >= "a" && character <= "z")
+  name.length > 0 && name.split("").every((character) => character >= "a" && character <= "z")
 
 /** The two questions about one name, pointing at its atom by id. */
 const nameReview = (id: string) => ({
@@ -108,7 +108,7 @@ export const nameAsAddress: PlannedRule = {
       .filter((unit) => scope.changed === undefined || scope.changed.has(unit.file))
       .map((unit) => ({
         unit,
-        callers: [...(calledFrom.get(unit.file + "#" + unit.name) ?? new Set<string>())].sort(),
+        callers: [...(calledFrom.get(unit.file + "#" + unit.name) ?? new Set<string>())].sort(Order.String),
       }))
       .filter((entry) => entry.callers.length >= minFiles)
       .sort((left, right) => right.callers.length - left.callers.length)

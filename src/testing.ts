@@ -1,4 +1,4 @@
-import { Effect, Layer, Option } from "effect"
+import { Effect, Layer } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { DecisionModel } from "effect/unstable/ai"
 import { Atoms, layer as atomsLayer } from "./atoms.ts"
@@ -70,6 +70,7 @@ export const planAnswersLayer: Layer.Layer<PlanAnswers> = Layer.succeed(PlanAnsw
 const withShared = <R>(layer: Layer.Layer<R>): Layer.Layer<R | Atoms | PlanAnswers> =>
   Layer.mergeAll(layer, atomsLayer, planAnswersLayer)
 
+/** Run a rule against a workspace and return its findings, for a test. */
 export const diagnosticsOf = (
   rule: Rule,
   workspace: Workspace,

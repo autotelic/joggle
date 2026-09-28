@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, Order } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
@@ -36,7 +36,7 @@ const isTypeUnit = (unit: Unit): boolean =>
   unit.fields.length >= policy.composeTypes.minFields
 
 /** A field set as a comparable key, order-insensitive. */
-const signatureOf = (unit: Unit): string => [...unit.fields].sort().join("\u0000")
+const signatureOf = (unit: Unit): string => [...unit.fields].sort(Order.String).join("\u0000")
 
 /**
  * Whether two declarations of one field can compose.

@@ -55,6 +55,7 @@ const toRegExp = (pattern: string): RegExp | undefined => {
   )
 }
 
+/** Parse gitignore lines into rules, relative to the file's directory. */
 export const parseGitignore = (
   text: string,
   base: string,
@@ -75,6 +76,7 @@ export const parseGitignore = (
 export const orderRules = (rules: ReadonlyArray<IgnoreRule>): ReadonlyArray<IgnoreRule> =>
   [...rules].sort((left, right) => left.depth - right.depth)
 
+/** Whether a path is ignored: the last matching rule wins, as git decides it. */
 export const isIgnored = (
   rules: ReadonlyArray<IgnoreRule>,
   absolute: string,

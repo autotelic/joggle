@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import { Decision } from "effect/unstable/ai"
 
-/**
+/*
  * Every word the model is asked to choose between, in one file.
  *
  * jev keeps its thresholds AND its whole vocabulary in a config module with no

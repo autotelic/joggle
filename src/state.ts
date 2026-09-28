@@ -2,7 +2,7 @@ import { Config, Effect, FileSystem, Option, Path } from "effect"
 import { createHash } from "node:crypto"
 import { homedir } from "node:os"
 
-/**
+/*
  * Where joggle's state lives, and how it is read back.
  *
  * Three artifacts, three lifecycles:

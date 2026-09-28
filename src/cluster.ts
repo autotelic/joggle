@@ -75,6 +75,10 @@ export const components = (
 const byPath = (a: Unit, b: Unit): number =>
   a.file === b.file ? a.start - b.start : a.file < b.file ? -1 : 1
 
+/**
+ * Build a cluster: its members in path order, whether they are identical, how
+ * much they overlap, and whether any member carries a type.
+ */
 export const makeCluster = (
   members: ReadonlyArray<Unit>,
   identical: boolean,

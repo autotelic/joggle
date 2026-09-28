@@ -88,12 +88,6 @@ export const JoggleConfig = Schema.Struct({
    * Relative specifiers resolve against the analysed root, so a repository's own
    * rules live with the repository's own config. A module exports `rules`.
    */
-  /**
-   * Rule modules to load from the repository, in addition to the built-in set.
-   *
-   * Relative specifiers resolve against the analysed root, so a repository's own
-   * rules live with the repository's own config. A module exports `rules`.
-   */
   plugins: Schema.optionalKey(Schema.Array(Schema.String)),
   /**
    * Packages of opinions: rule modules that also carry default severities.
@@ -247,6 +241,7 @@ export const isEnabled = (
   fallback: Severity,
 ): boolean => severityFor(config, ruleId, fallback) !== "off"
 
+/** Read a repository's config, or the empty config when it has none. */
 export const loadConfig = (
   file: string,
 ): Effect.Effect<JoggleConfig, never, FileSystem.FileSystem> =>

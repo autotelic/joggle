@@ -1,4 +1,4 @@
-import { Effect, Option, Schema } from "effect"
+import { Effect, Option, Order, Schema } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { Decision, DecisionModel } from "effect/unstable/ai"
 import { isUnreachable } from "./decision.ts"
@@ -8,7 +8,7 @@ import { moduleRoles, rankOfLabel, RoleRanking } from "./vocabulary.ts"
 import type { Drop } from "./schema.ts"
 import type { Unit, Workspace } from "./workspace.ts"
 
-/**
+/*
  * What each module is for, and where that role sits, asked once and shared.
  *
  * This was inside `hoist-to-domain`, which classifies a module before asking
@@ -228,7 +228,7 @@ export const classifyModules = (
               policy.evidence.maxListedPaths,
             ),
             imports: [...(externalByModule.get(path) ?? [])]
-              .sort()
+              .sort(Order.String)
               .slice(0, policy.evidence.maxListedPaths),
             shares_a_name_with_a_dependency: collision,
             // The module paths that import this one. The rank question uses them
@@ -355,5 +355,6 @@ export const roleOfFile = (
   return unit === undefined ? undefined : roles.get(moduleOf(unit))
 }
 
+/** Lift a possibly-absent value into Option. */
 export const optionOf = <A>(value: A | undefined): Option.Option<A> =>
   value === undefined ? Option.none() : Option.some(value)

@@ -243,7 +243,7 @@ export const policy = {
     maxCallers: 30,
   },
 
-  /**
+  /*
    * Name retrieval cost.
    *
    * `minFiles` was chosen from the distribution rather than guessed. Measured

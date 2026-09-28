@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Effect, Order, Schema } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
 import { Decision, DecisionModel } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
@@ -549,7 +549,7 @@ const memberList = (units: ReadonlyArray<Unit>): string => {
  * a baseline that reports every edit as new is a baseline nobody reads.
  */
 const identityOf = (ruleId: string, cluster: Cluster, keep: Unit): string =>
-  [ruleId, keep.name, ...[...new Set(cluster.members.map((m) => m.file))].sort()].join("\u0000")
+  [ruleId, keep.name, ...[...new Set(cluster.members.map((m) => m.file))].sort(Order.String)].join("\u0000")
 
 /** Prescriptions that mean expected duplication: reported, but as a notice. */
 const EXPECTED_DUPLICATION: ReadonlySet<string> = new Set(["leave_it", "share_a_contract"])
@@ -659,7 +659,7 @@ export const planCluster = (
     }
   })
 
-/** Turn a verdict into a finding, or into silence. Pure, so it is testable alone. */
+/* Turn a verdict into a finding, or into silence. Pure, so it is testable alone. */
 /**
  * A candidate the rule looked at and did not report.
  *
@@ -680,6 +680,7 @@ export interface Result {
   readonly drop?: Drop
 }
 
+/** Turn a cluster's verdict into a finding, or into silence. */
 export const findingFor = (
   rule: ClusterRule,
   workspace: Workspace,
@@ -777,7 +778,7 @@ export const findingFor = (
   }
 }
 
-/**
+/*
  * Ask about many clusters and turn the answers into findings.
  *
  * One call per cluster, and the cache is the reason: the key is the state and the
