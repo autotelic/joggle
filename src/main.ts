@@ -317,15 +317,15 @@ const askCommand = Command.make(
             " declaration(s) ranked",
           ...answer.matches.map(
             (match) =>
-              match.score.toFixed(3) +
+              match.confidence.toFixed(3) +
               "  " +
-              match.path +
+              match.file +
               ":" +
               match.line +
               "  " +
               match.symbol +
               " (" +
-              match.kind +
+              match.symbolKind +
               ")",
           ),
         ].join("\n"),

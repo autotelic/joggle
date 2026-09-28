@@ -49,7 +49,7 @@ interface Spec {
   readonly severity: Severity
   readonly description: string
   readonly problems: (bundle: Bundle) => ReadonlyArray<string>
-  readonly subject: (bundle: Bundle) => string
+  readonly describe: (bundle: Bundle) => string
 }
 
 const ruleFor = (spec: Spec): PlannedRule => ({
@@ -88,7 +88,7 @@ const ruleFor = (spec: Spec): PlannedRule => ({
         })
         const plan: Plan<DecisionAnswers> = {
           ruleId: spec.id,
-          subject: spec.subject(bundle),
+          subject: spec.describe(bundle),
           concerns: [bundle.dir],
           atoms: [id],
           violations: VIOLATIONS,
@@ -123,7 +123,7 @@ const ruleFor = (spec: Spec): PlannedRule => ({
         const drops: Array<Drop> = []
         planned.forEach((value, index) => {
           const { bundle, problems } = value.candidate
-          const subject = spec.subject(bundle)
+          const subject = spec.describe(bundle)
           const answer = verdicts[index]
           const verdict = verdictOf(answer?.["verdict"], VIOLATIONS.verdict)
           if (verdict === undefined) {
@@ -178,7 +178,7 @@ const findingFor = (
     at: bundle.indexFile ?? { file: bundle.dir, start: 0 },
     messageId: "pattern_problem",
     data: {
-      subject: spec.subject(bundle),
+      subject: spec.describe(bundle),
       count: problems.length,
       problems: problems.join("; "),
       unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",
@@ -198,7 +198,7 @@ export const dotNotationExport = ruleFor({
   id: "joggle/bundle-dot-notation",
   severity: "warn",
   description: "A composition bundle whose index does not export its blocks by dot notation.",
-  subject: (bundle) => `${bundle.name} (${bundle.dir})`,
+  describe: (bundle) => `${bundle.name} (${bundle.dir})`,
   problems: (bundle) => {
     if (bundle.indexFile === undefined) {
       return [`no index file, so there is no \`${bundle.name}.Block\` to import`]
@@ -222,7 +222,7 @@ export const tripartiteValue = ruleFor({
   id: "joggle/bundle-tripartite-value",
   severity: "warn",
   description: "A composition bundle whose context value is not { state, actions, meta }.",
-  subject: (bundle) => `${bundle.name} (${bundle.dir})`,
+  describe: (bundle) => `${bundle.name} (${bundle.dir})`,
   problems: (bundle) => {
     if (bundle.providerFile === undefined) {
       return ["no file renders a Provider, so the blocks have no composition root"]
@@ -248,7 +248,7 @@ export const oneFilePerBlock = ruleFor({
   id: "joggle/bundle-one-file-per-block",
   severity: "warn",
   description: "A composition bundle that does not keep one block per file.",
-  subject: (bundle) => `${bundle.name} (${bundle.dir})`,
+  describe: (bundle) => `${bundle.name} (${bundle.dir})`,
   problems: (bundle) => {
     const problems: Array<string> = []
     for (const file of bundle.blocks) {
@@ -270,7 +270,7 @@ export const contextHook = ruleFor({
   id: "joggle/bundle-context-hook",
   severity: "warn",
   description: "A composition bundle with no hook, or a hook that does not read the context.",
-  subject: (bundle) => `${bundle.name} (${bundle.dir})`,
+  describe: (bundle) => `${bundle.name} (${bundle.dir})`,
   problems: (bundle) => {
     if (bundle.hookNames.length === 0) {
       return [`no \`use${bundle.name}\` hook, so blocks cannot read the context without importing it directly`]

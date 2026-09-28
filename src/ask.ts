@@ -3,7 +3,7 @@ import * as AiError from "effect/unstable/ai/AiError"
 import { Decision, DecisionModel } from "effect/unstable/ai"
 import { isUnreachable } from "./decision.ts"
 import { policy } from "./policy.ts"
-import type { Unit, Workspace } from "./workspace.ts"
+import type { Unit, UnitKind, Workspace } from "./workspace.ts"
 
 /**
  * Semantic search over the declarations, in one request.
@@ -69,11 +69,11 @@ const relevanceInstructions = (index: number): string =>
 
 export interface Match {
   readonly symbol: string
-  readonly kind: string
-  readonly path: string
+  readonly symbolKind: UnitKind
+  readonly file: string
   readonly line: number
   /** The probability the Choice gave this declaration. */
-  readonly score: number
+  readonly confidence: number
 }
 
 export interface Answer {
@@ -192,13 +192,13 @@ export const ask = (
         const answer = answered.decided.answers[`candidate_${index}`]
         return {
           symbol: unit.name,
-          kind: unit.kind,
-          path: unit.file,
+          symbolKind: unit.kind,
+          file: unit.file,
           line: unit.location.line,
-          score: answer !== undefined && "probability" in answer ? answer.probability : 0,
+          confidence: answer !== undefined && "probability" in answer ? answer.probability : 0,
         }
       })
-      .sort((left, right) => right.score - left.score)
+      .sort((left, right) => right.confidence - left.confidence)
       .slice(0, policy.ask.top)
     return { exists: probability, matches, considered: answered.list.length }
   })

@@ -142,7 +142,7 @@ test("a cached index is reused without generating a trace", async () => {
       Effect.provide(NodeServices.layer),
     ) as Effect.Effect<unknown, never, never>,
   )
-  const result = loaded as { from: string; index: { at: (f: string, l: number, n?: string) => { display: string } | undefined } }
+  const result = loaded as { loadedFrom: string; index: { at: (f: string, l: number, n?: string) => { display: string } | undefined } }
   expect(result.loadedFrom).toBe("cache")
   expect(result.index.at("src/a.ts", 4, "User")?.display).toBe("{ id: String }")
 })
@@ -161,7 +161,7 @@ test("a cache from a different manifest is not a hit", async () => {
       Effect.provide(NodeServices.layer),
     ) as Effect.Effect<unknown, never, never>,
   )
-  const result = loaded as { from: string; index: { sites: number } }
+  const result = loaded as { loadedFrom: string; index: { sites: number } }
   expect(result.loadedFrom).toBe("trace")
   expect(result.index.sites).toBe(0)
 })
