@@ -17,21 +17,19 @@ export const funnelNotes = (drops: ReadonlyArray<Drop>): ReadonlyArray<Note> => 
     stages.set(drop.stage, (stages.get(drop.stage) ?? 0) + 1)
     byRule.set(drop.ruleId, stages)
   }
-  const notes: Array<Note> = []
-  for (const [ruleId, stages] of byRule) {
+  return [...byRule.entries()].map(([ruleId, stages]) => {
     const parts = [...stages.entries()]
       .sort((left, right) => left[0].localeCompare(right[0]))
       .map(([stage, count]) => stage + " " + count)
     const example = drops.find((drop) => drop.ruleId === ruleId)
-    notes.push({
+    return {
       ruleId,
       reason:
         "dropped " +
         parts.join(", ") +
         (example === undefined ? "" : "; e.g. " + example.subject + ": " + example.reason),
-    })
-  }
-  return notes
+    }
+  })
 }
 
 /**

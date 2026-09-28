@@ -450,5 +450,13 @@ export default {
       files: ["src/tsgo.ts"],
       rules: { "jsdoc/check-tag-names": "off" },
     },
+    {
+      // `ignored`, `ignoredDirectories` and `truncated` are `let` accumulators
+      // local to the walk's generator, added to as each child directory returns.
+      // The rule reads them as module scope; nothing in this file exports them
+      // and no caller can see the mutation.
+      files: ["src/workspace.ts"],
+      rules: { "plumb/no-exported-mutable-state": "off" },
+    },
   ],
 };
