@@ -71,6 +71,12 @@ const run = (binary: string, args: ReadonlyArray<string>, cwd: string) =>
     ),
   )
 
+/** A file and the root it is supposed to be under. */
+interface RootedFile {
+  readonly cwd: string
+  readonly file: string
+}
+
 /**
  * Whether the compiler's absolute path is inside the analysed root.
  *
@@ -78,7 +84,7 @@ const run = (binary: string, args: ReadonlyArray<string>, cwd: string) =>
  * boundary, before it was normalized), and `startsWith` on raw strings also
  * accepts a sibling whose name merely begins with the root.
  */
-const underRoot = (cwd: string, file: string): boolean => {
+const underRoot = ({ cwd, file }: RootedFile): boolean => {
   const root = resolve(cwd)
   const candidate = resolve(file)
   return candidate === root || candidate.startsWith(root + sep)
@@ -125,7 +131,7 @@ const make = (binary: string, path: Path.Path): Interface => {
       const file = raw.trim()
       if (!file.endsWith(".ts") && !file.endsWith(".tsx")) continue
       if (file.endsWith(".d.ts")) continue
-      if (!underRoot(cwd, file)) continue
+      if (!underRoot({ cwd, file })) continue
       files.add(path.resolve(file))
     }
     return [...files].sort(Order.String)

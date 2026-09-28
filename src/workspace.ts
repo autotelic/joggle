@@ -1610,6 +1610,12 @@ export type ParseOutcome =
   | { readonly ok: true; readonly file: SourceFile }
   | { readonly ok: false; readonly reason: string }
 
+/** A file's path and text, the pair the parser reads. */
+interface FileText {
+  readonly file: string
+  readonly text: string
+}
+
 /**
  * Parse a file, giving `.js` a second reading as JSX.
  *
@@ -1618,7 +1624,7 @@ export type ParseOutcome =
  * parser rejected looked exactly like a file with no declarations in it -- and
  * every rule's view of the repository had a hole nobody could see.
  */
-const parseSourceFile = (file: string, text: string): ParseOutcome => {
+const parseSourceFile = ({ file, text }: FileText): ParseOutcome => {
   const lang = langOf(file)
   const first = parseSync(file, text, { sourceType: "module", lang })
   if (first.errors.length === 0) return { ok: true, file: sourceFileFrom(file, text, first) }
@@ -1706,7 +1712,14 @@ const summarise = (counts: ReadonlyMap<string, number>): ReadonlyArray<SkippedEx
 
 const walkLimits = { directories: 5000, files: 20000 }
 
-const depthOf = (root: string, dir: string, path: Path.Path): number =>
+/** A directory and the root it is measured against. */
+interface WalkPosition {
+  readonly root: string
+  readonly dir: string
+  readonly path: Path.Path
+}
+
+const depthOf = ({ root, dir, path }: WalkPosition): number =>
   path.relative(root, dir).split(path.sep).filter((segment) => segment !== "" && segment !== ".")
     .length
 
@@ -1773,7 +1786,7 @@ const walk = (
       seen.add(current)
       // A directory's own .gitignore applies to what is inside it, so it is
       // read before its children are pushed.
-      const here = yield* rulesAt(current, depthOf(root, current, path))
+      const here = yield* rulesAt(current, depthOf({ root, dir: current, path }))
       if (here.length > 0) rules = orderRules([...rules, ...here])
 
       const entries = yield* Effect.orElseSucceed(
@@ -1943,7 +1956,7 @@ export const loadWorkspace = (
         parsed.push(cached)
         continue
       }
-      const outcome = parseSourceFile(relative, text)
+      const outcome = parseSourceFile({ file: relative, text })
       if (outcome.ok) {
         parsed.push(outcome.file)
         parses.set(relative, text, outcome.file)

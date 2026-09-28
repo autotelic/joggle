@@ -188,6 +188,12 @@ export const words = (name: string): ReadonlyArray<string> =>
 export const expanded = (name: string): ReadonlyArray<string> =>
   words(name).map((word) => abbreviations[word] ?? word)
 
+/** Two names compared for similarity: neither is privileged. */
+interface NamePair {
+  readonly left: string
+  readonly right: string
+}
+
 /**
  * Jaccard over expanded words, and nothing else.
  *
@@ -196,7 +202,7 @@ export const expanded = (name: string): ReadonlyArray<string> =>
  * of `*Modal`s over the line, which is how one category became a "concept".
  * Those two names already score 0.5 without it, which is the threshold.
  */
-const nameScore = (left: string, right: string): number => {
+const nameScore = ({ left, right }: NamePair): number => {
   const a = new Set(expanded(left))
   const b = new Set(expanded(right))
   let intersection = 0
@@ -233,7 +239,7 @@ export const worthJudging = (left: string, right: string): boolean => {
   return nested && differs === 1
 }
 
-const sharedWords = (left: string, right: string): number => {
+const sharedWords = ({ left, right }: NamePair): number => {
   const a = new Set(expanded(left))
   let shared = 0
   for (const word of new Set(expanded(right))) if (a.has(word)) shared += 1
@@ -285,10 +291,10 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
         if (one.kind !== two.kind) continue
         // Test fixtures are compared only against each other.
         if (one.test && two.test) continue
-        if (sharedWords(one.name, two.name) < minSharedWords) continue
+        if (sharedWords({ left: one.name, right: two.name }) < minSharedWords) continue
         // A new pair of spellings has to include the spelling that changed.
         if (!inScope(scope, one.file) && !inScope(scope, two.file)) continue
-        const score = nameScore(one.name, two.name)
+        const score = nameScore({ left: one.name, right: two.name })
         if (score < minScore) continue
 
         // Shape of the pair, measured over 1,864 judged candidates:

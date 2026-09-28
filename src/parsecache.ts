@@ -46,8 +46,14 @@ import {
  */
 export const CACHE_VERSION = "7"
 
+/** A file's text: the pair a parse's cache key is built from. */
+interface FileText {
+  readonly file: string
+  readonly text: string
+}
+
 /** One parse's key: which file, and what it said. */
-export const keyOf = (file: string, text: string): string =>
+export const keyOf = ({ file, text }: FileText): string =>
   file + "\u0000" + shortHash(text)
 
 /** A unit minus everything derivable from the file's text. */
@@ -263,7 +269,7 @@ export const loadParses = (
     let misses = 0
     const parses: Parses = {
       get: (relative, text) => {
-        const stored = entries.get(keyOf(relative, text))
+        const stored = entries.get(keyOf({ file: relative, text }))
         // Decoded against the text the CALLER has, which is the whole reason the
         // text is not in the cache: it is already here.
         const rebuilt =
@@ -276,7 +282,7 @@ export const loadParses = (
         return rebuilt
       },
       set: (relative, text, parsed) => {
-        entries.set(keyOf(relative, text), encodeSourceFile(parsed))
+        entries.set(keyOf({ file: relative, text }), encodeSourceFile(parsed))
       },
       hits: () => hits,
       misses: () => misses,
