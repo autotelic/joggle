@@ -200,12 +200,12 @@ interface KeyName {
 /**
  * Whether a declared name is the component an index key refers to.
  *
- * The pattern's index keys are the SHORT block names -- `Display`, not
- * `GoodDisplay` -- so a direct string comparison flags every conforming bundle.
- * The declared name is the key, the key prefixed by the bundle name, or the key
- * as a suffix of it: `Settings.Provider` maps to `SettingsProvider` and
- * `Counter.Display` to `CounterDisplay`. The fixture caught this because the
- * compliant bundle was reported as broken.
+ * The pattern's index keys are the SHORT block names -- the spec's own
+ * `Display`, not `GoodDisplay` -- so a direct string comparison flags every
+ * conforming bundle. The declared name is the key, the key prefixed by the
+ * bundle name, or the key as a suffix of it: the spec's `Settings.Provider`
+ * maps to `SettingsProvider` and its `Counter.Display` to `CounterDisplay`.
+ * The fixture caught this because the compliant bundle was reported as broken.
  */
 export const keyMatchesName: Predicate.Predicate<KeyName> = ({ bundleName, key, name }) =>
   name === key || name === bundleName + key || name.endsWith(key)
