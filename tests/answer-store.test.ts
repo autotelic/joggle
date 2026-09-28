@@ -35,7 +35,7 @@ test("a shard round-trips through its lines", () => {
 })
 
 test("a malformed line is skipped, not fatal", () => {
-  expect(parseLines("garbage\n\nab\t1\tnot json\n")).toEqual({ entries: [], skipped: 2 })
+  expect(parseLines("garbage\n\nab\t1\tnot json\n")).toEqual({ entries: [], skippedLines: 2 })
 })
 
 test("the shard is the first two characters of the key", () => {

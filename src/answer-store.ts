@@ -75,30 +75,30 @@ export const renderEntry = (entry: Entry): string =>
 export interface ParsedShard {
   readonly entries: ReadonlyArray<Entry>
   /** Lines that did not decode, so a caller can see what it ignored. */
-  readonly skipped: number
+  readonly skippedLines: number
 }
 
 /** Parse a shard. A line that does not decode is skipped and COUNTED, never fatal. */
 export const parseLines = (text: string): ParsedShard => {
   const entries: Array<Entry> = []
-  let skipped = 0
+  let skippedLines = 0
   for (const line of text.split("\n")) {
     if (line === "") continue
     const first = line.indexOf("\t")
     const second = line.indexOf("\t", first + 1)
     if (first < 0 || second < 0) {
-      skipped += 1
+      skippedLines += 1
       continue
     }
     const writtenAt = Number(line.slice(first + 1, second))
     const answer = Result.getOrUndefined(SchemaParser.decodeResult(decodeAnswer)(line.slice(second + 1)))
     if (answer === undefined || !Number.isFinite(writtenAt)) {
-      skipped += 1
+      skippedLines += 1
       continue
     }
     entries.push({ key: line.slice(0, first), writtenAt, answer })
   }
-  return { entries, skipped }
+  return { entries, skippedLines }
 }
 
 const byKey: Order.Order<Entry> = Order.mapInput(Order.String, (entry: Entry) => entry.key)
