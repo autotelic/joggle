@@ -5,6 +5,7 @@
 62413970cf279771	1790631747	{"confidence":0.91,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.9299999999999999,"stale_reference":0.04,"wrong_behavior":0.01,"wrong_contract":0.02}}
 6248d7fb36481fe1	1790635869	{"confidence":0.91,"kind":"Classify","label":"library_core","probabilities":{"domain_core":0.05,"infrastructure":0,"library_core":0.93,"not_applicable":0,"rendering_edge":0,"transport_edge":0,"utilities":0.02}}
 6278b092816db265	1790624340	{"confidence":0.97,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.98,"stale_reference":0,"wrong_behavior":0.01,"wrong_contract":0.01}}
+628124733598b46b	1790636506	{"confidence":0.76,"kind":"Classify","label":"violation","probabilities":{"acceptable":0.14,"different_pattern":0.02,"violation":0.84}}
 628dd27b75a8230c	1790624340	{"confidence":0.95,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.96,"stale_reference":0,"wrong_behavior":0.03,"wrong_contract":0.01}}
 6296c252881ec209	1790624340	{"confidence":0.12,"kind":"Classify","label":"member_1","probabilities":{"member_0":0.44,"member_1":0.56}}
 62b3b4d5a6c8d0d9	1790631748	{"confidence":0.47,"kind":"Classify","label":"keep_variants","probabilities":{"collapse":0.03,"keep_variants":0.65,"no_issue":0.32}}

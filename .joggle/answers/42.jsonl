@@ -6,3 +6,4 @@
 4299c04f560ea8fb	1790635273	{"confidence":0.36,"kind":"Classify","label":"member_1","probabilities":{"member_0":0.32,"member_1":0.68}}
 429ab9179deb8a76	1790624340	{"confidence":0.96,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.97,"stale_reference":0,"wrong_behavior":0.03,"wrong_contract":0}}
 42d8c005c453f6e4	1790624340	{"confidence":0.85,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.9,"stale_reference":0,"wrong_behavior":0.09,"wrong_contract":0.01}}
+42f8763e692a0a02	1790636522	{"confidence":0.36,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.53,"stale_reference":0.38,"wrong_behavior":0.07,"wrong_contract":0.02}}

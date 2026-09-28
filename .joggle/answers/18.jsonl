@@ -5,4 +5,5 @@
 187301aebb372166	1790631747	{"confidence":0.74,"kind":"Classify","label":"input_adaptation","probabilities":{"domain_logic":0.01,"infrastructure":0,"input_adaptation":0.77,"mechanical":0.2,"not_applicable":0,"orchestration":0.01,"rendering":0,"request_validation":0,"transport_concern":0.01}}
 187791dbb659c608	1790624340	{"confidence":0.64,"kind":"Classify","label":"keep_variants","probabilities":{"collapse":0.12,"keep_variants":0.76,"no_issue":0.12}}
 187913a0f5d05e8a	1790631748	{"confidence":0.7,"kind":"Classify","label":"keep_variants","probabilities":{"collapse":0.05,"keep_variants":0.8,"no_issue":0.15}}
+18c26d4a7b74878c	1790636522	{"confidence":0.29,"kind":"Classify","label":"drift","probabilities":{"compatible":0.47,"drift":0.52,"two_concepts":0.01}}
 18f3294872bf4d62	1790624340	{"kind":"Probability","probability":0.32}
