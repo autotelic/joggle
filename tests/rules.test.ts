@@ -153,15 +153,15 @@ it("a pair that differs by one word is admitted, and the model decides", () => {
   // list of "words that do not count". `formatted` in the middle and `get` in
   // front are both admitted now; the model tells them apart.
   expect(
-    worthJudging("convertUtcDateToFormattedLocalizedDateTime", "convertUtcDateToLocalizedDateTime"),
+    worthJudging({ left: "convertUtcDateToFormattedLocalizedDateTime", right: "convertUtcDateToLocalizedDateTime" }),
   ).toBe(true)
   // And a word that adds nothing is not a difference at all.
-  expect(worthJudging("getUserProfile", "userProfile")).toBe(true)
-  expect(worthJudging("calculateOrderTotal", "orderTotal")).toBe(true)
+  expect(worthJudging({ left: "getUserProfile", right: "userProfile" })).toBe(true)
+  expect(worthJudging({ left: "calculateOrderTotal", right: "orderTotal" })).toBe(true)
   // Identical words, different spelling: the rule's best bucket.
-  expect(worthJudging("userId", "userIdentifier")).toBe(true)
+  expect(worthJudging({ left: "userId", right: "userIdentifier" })).toBe(true)
   // A name against itself is not a pair.
-  expect(worthJudging("parsePrice", "parsePrice")).toBe(false)
+  expect(worthJudging({ left: "parsePrice", right: "parsePrice" })).toBe(false)
 })
 
 it.effect("two distinct concepts are silence", () =>

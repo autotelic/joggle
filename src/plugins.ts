@@ -46,6 +46,13 @@ export interface Loaded {
 
 const EXTENSIONS = [".ts", ".tsx", ".mts", ".js", ".mjs", ".cjs", "/index.ts", "/index.js"]
 
+/** A module specifier, the root it resolves from, and the path service. */
+interface PluginRequest {
+  readonly specifier: string
+  readonly cwd: string
+  readonly path: Path.Path
+}
+
 /**
  * What to hand to `import`.
  *
@@ -58,11 +65,7 @@ const EXTENSIONS = [".ts", ".tsx", ".mts", ".js", ".mjs", ".cjs", "/index.ts", "
  * `@autotelic/joggle/presets/composition` into a path under the working directory and fails
  * with "cannot find module /repo/@autotelic/joggle/presets/composition".
  */
-const resolve = (
-  specifier: string,
-  cwd: string,
-  path: Path.Path,
-): Effect.Effect<string, never, FileSystem.FileSystem> =>
+const resolve = ({ specifier, cwd, path }: PluginRequest): Effect.Effect<string, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     if (!specifier.startsWith(".") && !specifier.startsWith("/")) return specifier
     const fs = yield* FileSystem.FileSystem
@@ -152,7 +155,7 @@ export const loadPlugins = (
       // A specifier that resolves to nothing is not special-cased: `import`
       // fails on it and the runtime's own message is the failure reason, which
       // is more accurate than anything this could invent.
-      const resolved = yield* resolve(specifier, cwd, path)
+      const resolved = yield* resolve({ specifier, cwd, path })
 
       const attempt = yield* Effect.tryPromise({
         try: () => import(resolved),

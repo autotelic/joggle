@@ -228,6 +228,12 @@ export interface ParseCache {
   readonly save: Effect.Effect<void, never, FileSystem.FileSystem | Path.Path>
 }
 
+/** The cache directory and the tool fingerprint that keys it. */
+interface ParseCacheScope {
+  readonly cacheDir: string
+  readonly tool: string
+}
+
 /**
  * The cache on disk, discarded whole when the tool's own source has changed.
  *
@@ -235,10 +241,7 @@ export interface ParseCache {
  * not a cache hit -- it is a wrong answer. That is the same reasoning as the run
  * manifest, applied to the operation that dominates the run.
  */
-export const loadParses = (
-  cacheDir: string,
-  tool: string,
-): Effect.Effect<ParseCache, never, FileSystem.FileSystem | Path.Path> =>
+export const loadParses = ({ cacheDir, tool }: ParseCacheScope): Effect.Effect<ParseCache, never, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path

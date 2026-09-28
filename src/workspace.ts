@@ -1723,6 +1723,13 @@ const depthOf = ({ root, dir, path }: WalkPosition): number =>
   path.relative(root, dir).split(path.sep).filter((segment) => segment !== "" && segment !== ".")
     .length
 
+/** A directory to walk, its root, and the ignore rules already in force. */
+interface WalkRequest {
+  readonly dir: string
+  readonly root: string
+  readonly inherited?: ReadonlyArray<IgnoreRule>
+}
+
 /**
  * Walk a directory, honouring .gitignore as it goes.
  *
@@ -1731,11 +1738,7 @@ const depthOf = ({ root, dir, path }: WalkPosition): number =>
  * the rule's base -- so a sibling's rules are inert rather than wrong, which is
  * what lets one list serve the whole walk.
  */
-const walk = (
-  dir: string,
-  root: string,
-  inherited: ReadonlyArray<IgnoreRule> = [],
-): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
+const walk = ({ dir, root, inherited = [] }: WalkRequest): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -1840,7 +1843,7 @@ const resolveInputs = (
           ...(yield* rulesAt(cursor, path.relative(root, cursor).split(path.sep).length)),
         )
       }
-      const nested = yield* walk(absolute, root, orderRules(chain))
+      const nested = yield* walk({ dir: absolute, root, inherited: orderRules(chain) })
       for (const file of nested.files) files.push(file)
       truncated = truncated || nested.truncated
       ignored += nested.ignored

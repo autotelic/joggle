@@ -374,7 +374,7 @@ export const collapseQuestionnaire: ClusterRule["questionnaire"] = (cluster, des
             ] ?? undefined
           : role === undefined || !("label" in role) || relationship === undefined || !("label" in relationship)
             ? undefined
-            : prescriptionFor(role.label, relationship.label)
+            : prescriptionFor({ role: role.label, relationship: relationship.label })
       // Ranked by consequence, gated by redundancy. A finding that does not
       // matter is still a finding and still reported; it sorts last.
       //
@@ -470,6 +470,12 @@ const commonDirectory = (paths: ReadonlyArray<string>): string => {
   return depth === 0 ? "." : first.slice(0, depth).join("/")
 }
 
+/** The role and the relationship the two cluster members have. */
+interface PrescriptionInput {
+  readonly role: string
+  readonly relationship: string
+}
+
 /**
  * What to do about it, from what the declaration IS and how the files relate.
  *
@@ -485,7 +491,7 @@ const commonDirectory = (paths: ReadonlyArray<string>): string => {
  * share a shape, not a module. A domain concept repeated across one is the
  * defect the architecture exists to prevent.
  */
-export const prescriptionFor = (role: string, relationship: string): string => {
+export const prescriptionFor = ({ role, relationship }: PrescriptionInput): string => {
   if (relationship === "same_module" || relationship === "same_package") {
     return "Delete the copies and import one: these files can reach each other."
   }
@@ -526,7 +532,7 @@ const prescription = (
   keep: Unit,
   drops: ReadonlyArray<Unit>,
 ): string => {
-  if (drops.every((unit) => canImport(layers, unit.file, keep.file))) {
+  if (drops.every((unit) => canImport({ layers, from: unit.file, to: keep.file }))) {
     return `Delete or import instead of redeclaring: ${memberList(drops)}.`
   }
   const shared = sharedLayerFor(

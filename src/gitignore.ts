@@ -55,12 +55,15 @@ const toRegExp = (pattern: string): RegExp | undefined => {
   )
 }
 
+/** Gitignore text, the directory it came from, and its depth in the walk. */
+interface GitignoreText {
+  readonly text: string
+  readonly base: string
+  readonly depth: number
+}
+
 /** Parse gitignore lines into rules, relative to the file's directory. */
-export const parseGitignore = (
-  text: string,
-  base: string,
-  depth: number,
-): ReadonlyArray<IgnoreRule> => {
+export const parseGitignore = ({ text, base, depth }: GitignoreText): ReadonlyArray<IgnoreRule> => {
   const rules: Array<IgnoreRule> = []
   for (const raw of text.split("\n")) {
     const line = raw.replace(/\s+$/, "")
@@ -104,5 +107,5 @@ export const rulesAt = (
     const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
     if (!exists) return []
     const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
-    return parseGitignore(text, directory, depth)
+    return parseGitignore({ text, base: directory, depth })
   })

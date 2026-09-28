@@ -56,6 +56,14 @@ export interface ImportGraph {
 
 const EXTENSIONS = ["", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", "/index.ts", "/index.tsx"]
 
+/** A specifier, the file it is written in, and the files that exist. */
+interface SpecifierRequest {
+  readonly from: string
+  readonly specifier: string
+  readonly known: ReadonlySet<string>
+  readonly path: Path.Path
+}
+
 /**
  * Resolve a specifier against the files we actually analysed.
  *
@@ -65,12 +73,7 @@ const EXTENSIONS = ["", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", "/index.ts
  * no extra filesystem calls. A package specifier fails to resolve, which is
  * correct: we cannot fix a file we did not analyse.
  */
-export const resolveSpecifier = (
-  from: string,
-  specifier: string,
-  known: ReadonlySet<string>,
-  path: Path.Path,
-): string | undefined => {
+export const resolveSpecifier = ({ from, specifier, known, path }: SpecifierRequest): string | undefined => {
   const bases: Array<string> = []
   if (specifier.startsWith(".")) {
     bases.push(path.join(path.dirname(from), specifier))
@@ -109,7 +112,7 @@ export const buildImportGraph = (
 
   for (const file of files) {
     for (const statement of file.imports) {
-      const target = resolveSpecifier(file.path, statement.specifier, known, path)
+      const target = resolveSpecifier({ from: file.path, specifier: statement.specifier, known, path })
       if (target === undefined) unresolved += 1
       edges.push({
         from: file.path,

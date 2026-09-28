@@ -1,3 +1,4 @@
+import type { Predicate } from "effect"
 import { matchesGlob, type JoggleConfig } from "./config.ts"
 import type { ImportGraph } from "./imports.ts"
 
@@ -44,6 +45,13 @@ export const layerOf = (
   file: string,
 ): Layer | undefined => layers.find((layer) => layer.include.some((glob) => matchesGlob(glob, file)))
 
+/** The declared layers and the two files an import would connect. */
+interface ImportEdge {
+  readonly layers: ReadonlyArray<Layer>
+  readonly from: string
+  readonly to: string
+}
+
 /**
  * Whether `from` may import `to`: downward, or sideways inside one layer.
  *
@@ -51,11 +59,7 @@ export const layerOf = (
  * describes what someone wrote down, and inventing a rule for the rest would be
  * reporting an architecture nobody declared.
  */
-export const canImport = (
-  layers: ReadonlyArray<Layer>,
-  from: string,
-  to: string,
-): boolean => {
+export const canImport: Predicate.Predicate<ImportEdge> = ({ layers, from, to }) => {
   const source = layerOf(layers, from)
   const target = layerOf(layers, to)
   if (source === undefined || target === undefined) return true

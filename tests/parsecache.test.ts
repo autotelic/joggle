@@ -36,12 +36,12 @@ const fingerprintOf = (workspace: Workspace): unknown =>
 test("a parse survives the disk and comes back the same", async () => {
   const dir = mkdtempSync(join(tmpdir(), "joggle-parses-"))
 
-  const cold = await run(loadParses(dir, "tool-one"))
+  const cold = await run(loadParses({ cacheDir: dir, tool: "tool-one" }))
   const first = await run(loadWorkspace(corpus, ["src"], undefined, undefined, cold.parses))
   await run(cold.save)
   expect(cold.parses.misses()).toBeGreaterThan(0)
 
-  const warm = await run(loadParses(dir, "tool-one"))
+  const warm = await run(loadParses({ cacheDir: dir, tool: "tool-one" }))
   const second = await run(loadWorkspace(corpus, ["src"], undefined, undefined, warm.parses))
   // Every file came from the cache, and nothing was parsed again.
   expect(warm.parses.hits()).toBe(first.files.length)
@@ -55,11 +55,11 @@ test("a cache from a different tool is not a cache hit", async () => {
   // The parser is part of the tool, so an entry it did not produce is a wrong
   // answer rather than a fast one. The whole cache is discarded, not repaired.
   const dir = mkdtempSync(join(tmpdir(), "joggle-parses-"))
-  const cold = await run(loadParses(dir, "tool-one"))
+  const cold = await run(loadParses({ cacheDir: dir, tool: "tool-one" }))
   await run(loadWorkspace(corpus, ["src"], undefined, undefined, cold.parses))
   await run(cold.save)
 
-  const other = await run(loadParses(dir, "tool-two"))
+  const other = await run(loadParses({ cacheDir: dir, tool: "tool-two" }))
   const workspace = await run(loadWorkspace(corpus, ["src"], undefined, undefined, other.parses))
   expect(other.parses.hits()).toBe(0)
   expect(other.parses.misses()).toBe(workspace.files.length)
@@ -67,7 +67,7 @@ test("a cache from a different tool is not a cache hit", async () => {
 
 test("no cache is a miss, not a failure", async () => {
   const dir = mkdtempSync(join(tmpdir(), "joggle-parses-"))
-  const cache = await run(loadParses(dir, "tool-one"))
+  const cache = await run(loadParses({ cacheDir: dir, tool: "tool-one" }))
   expect(cache.parses.hits()).toBe(0)
   // Reading a directory with no cache file is the first run, which is not an error.
   const workspace = await run(

@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, type Predicate } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { describeOperation, permitted, settle } from "../operation.ts"
@@ -223,7 +223,7 @@ const nameScore = ({ left, right }: NamePair): number => {
  * answering it (docs/rule-coupling.md). The filter keeps the structural part:
  * the two names are nested and differ by exactly one word.
  */
-export const worthJudging = (left: string, right: string): boolean => {
+export const worthJudging: Predicate.Predicate<NamePair> = ({ left, right }) => {
   if (left === right) return false
   const words = new Set(expanded(left))
   const other = new Set(expanded(right))
@@ -309,7 +309,7 @@ const find = (workspace: Workspace, scope: Scope): ReadonlyArray<Cluster> => {
         // an accessor verb like `get` or `calculate` do not distinguish anything.
         // That is a judgement the filter may make, because it is about shape
         // rather than about which of two names is right.
-        if (!worthJudging(one.name, two.name)) continue
+        if (!worthJudging({ left: one.name, right: two.name })) continue
 
         pairs.push({ left, right, score })
       }

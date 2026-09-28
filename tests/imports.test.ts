@@ -10,24 +10,24 @@ const empty = { callSites: [], jsx: [], objects: [], columns: [], stringSites: [
 it.effect("relative specifiers resolve exactly, including index files", () =>
   Effect.gen(function* () {
     const path = yield* Path.Path
-    expect(resolveSpecifier("src/a.ts", "./types", known, path)).toBe("src/types.ts")
-    expect(resolveSpecifier("src/deep/b.ts", "../types", known, path)).toBe("src/types.ts")
-    expect(resolveSpecifier("src/a.ts", "./utils", known, path)).toBe("src/utils/index.ts")
+    expect(resolveSpecifier({ from: "src/a.ts", specifier: "./types", known, path })).toBe("src/types.ts")
+    expect(resolveSpecifier({ from: "src/deep/b.ts", specifier: "../types", known, path })).toBe("src/types.ts")
+    expect(resolveSpecifier({ from: "src/a.ts", specifier: "./utils", known, path })).toBe("src/utils/index.ts")
   }).pipe(Effect.provide(Path.layer)),
 )
 
 it.effect("a bundler root alias resolves by walking up from the importer", () =>
   Effect.gen(function* () {
     const path = yield* Path.Path
-    expect(resolveSpecifier("app/routes/x.ts", "~/lib/helpers", known, path)).toBe("app/lib/helpers.ts")
+    expect(resolveSpecifier({ from: "app/routes/x.ts", specifier: "~/lib/helpers", known, path })).toBe("app/lib/helpers.ts")
   }).pipe(Effect.provide(Path.layer)),
 )
 
 it.effect("a package specifier stays unresolved rather than guessed", () =>
   Effect.gen(function* () {
     const path = yield* Path.Path
-    expect(resolveSpecifier("src/a.ts", "@remix-run/node", known, path)).toBeUndefined()
-    expect(resolveSpecifier("src/a.ts", "./missing", known, path)).toBeUndefined()
+    expect(resolveSpecifier({ from: "src/a.ts", specifier: "@remix-run/node", known, path })).toBeUndefined()
+    expect(resolveSpecifier({ from: "src/a.ts", specifier: "./missing", known, path })).toBeUndefined()
   }).pipe(Effect.provide(Path.layer)),
 )
 

@@ -28,7 +28,7 @@ test("a double star with a slash differs by syntax, on purpose", () => {
 it.effect("a gitignore rule matches at any depth, and a negation undoes it", () =>
   Effect.gen(function* () {
     const path = yield* Path.Path
-    const rules = orderRules(parseGitignore("generated/\n*.min.js\n!keep.min.js\n", ".", 0))
+    const rules = orderRules(parseGitignore({ text: "generated/\n*.min.js\n!keep.min.js\n", base: ".", depth: 0 }))
     expect(isIgnored(rules, path.resolve("generated/x.ts"), path)).toBe(true)
     expect(isIgnored(rules, path.resolve("a/b.min.js"), path)).toBe(true)
     expect(isIgnored(rules, path.resolve("a/keep.min.js"), path)).toBe(false)
