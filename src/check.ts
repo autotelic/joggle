@@ -4,8 +4,8 @@ import type { DecisionModel } from "effect/unstable/ai"
 import { layer as atomsLayer, type Atoms } from "./atoms.ts"
 import { isUnreachable, DecisionStats } from "./decision.ts"
 import { answerPlans, chunkPlans, type Plan, type PlanAnswers, type PlanChunk } from "./plans.ts"
-import { emptyTypeIndex, loadTypeFacts, type TypeIndex } from "./typetrace.ts"
-import { indexOfNodeTypes, typesAtPositions, type NodeTypeIndex } from "./typefacts.ts"
+import { emptyTypeIndex, loadTypeFacts, type TypeFactRequest, type TypeIndex } from "./typetrace.ts"
+import { indexOfNodeTypes, typesAtPositions, type NodeTypeIndex, type NodeTypeQuery } from "./typefacts.ts"
 import { shortHash } from "./state.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 import { loadParses } from "./parsecache.ts"
@@ -366,7 +366,7 @@ export const checkRepository = Effect.fn("joggle.check")(function* (options: Opt
       cacheDir: runCache,
       tool: toolFingerprint,
       manifest,
-    })
+    } satisfies TypeFactRequest)
     types = loaded.index
     typesFrom = loaded.from
     typeIssues.push(...loaded.issues)
@@ -395,7 +395,7 @@ export const checkRepository = Effect.fn("joggle.check")(function* (options: Opt
       .slice(0, 2000)
     if (requests.length > 0) {
       const found = yield* Effect.tryPromise(() =>
-        typesAtPositions({ cwd: options.cwd, tsconfig: "tsconfig.json", requests }),
+        typesAtPositions({ cwd: options.cwd, tsconfig: "tsconfig.json", requests } satisfies NodeTypeQuery),
       ).pipe(Effect.orElseSucceed(() => []))
       nodeTypes = indexOfNodeTypes(found)
     }

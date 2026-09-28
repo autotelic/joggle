@@ -293,6 +293,16 @@ export interface LoadedTypes {
 }
 
 /**
+ * Where a type trace is read from, and the tool fingerprint that keys it.
+ */
+export interface TypeFactRequest {
+  readonly root: string
+  readonly cacheDir: string
+  readonly tool: string
+  readonly manifest: string
+}
+
+/**
  * Resolve the declarations to their types, from the cache or from a fresh trace.
  *
  * The cache key is the same manifest the run already computed plus the tool
@@ -300,12 +310,7 @@ export interface LoadedTypes {
  * version, the tsconfig, and every file it checked. The manifest is content, not
  * mtimes, so a trace is reused exactly when the code it describes is unchanged.
  */
-export const loadTypeFacts = (input: {
-  readonly root: string
-  readonly cacheDir: string
-  readonly tool: string
-  readonly manifest: string
-}): Effect.Effect<
+export const loadTypeFacts = (input: TypeFactRequest): Effect.Effect<
   LoadedTypes,
   never,
   Tsgo | FileSystem.FileSystem | Path.Path | ChildProcessSpawner

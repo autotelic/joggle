@@ -46,16 +46,21 @@ export const indexOfNodeTypes = (entries: ReadonlyArray<NodeType>): NodeTypeInde
 }
 
 /**
+ * The project, its tsconfig, and the positions to resolve types at.
+ */
+export interface NodeTypeQuery {
+  readonly cwd: string
+  readonly tsconfig: string
+  readonly requests: ReadonlyArray<NodeTypeRequest>
+}
+
+/**
  * Ask the checker for the type at each position, in one program.
  *
  * @param input - the project root, the tsconfig to open, and the positions.
  * @returns one entry per position the checker resolved, in request order.
  */
-export const typesAtPositions = async (input: {
-  readonly cwd: string
-  readonly tsconfig: string
-  readonly requests: ReadonlyArray<NodeTypeRequest>
-}): Promise<ReadonlyArray<NodeType>> => {
+export const typesAtPositions = async (input: NodeTypeQuery): Promise<ReadonlyArray<NodeType>> => {
   if (input.requests.length === 0) return []
   const api = new API({ cwd: input.cwd })
   // The identifier is a PATH, and it must be absolute: a relative one is not found.

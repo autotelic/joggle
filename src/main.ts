@@ -21,8 +21,8 @@ import { verdictOf } from "./verdict.ts"
 import { everyFile, qualityOf, type DecisionAnswers, type PlannedRule } from "./rule.ts"
 import { allRules, builtIn, Rules } from "./rules/index.ts"
 import { layerFromConfig as tsgoLayer } from "./tsgo.ts"
-import { emptyTypeIndex, loadTypeFacts, type TypeIndex } from "./typetrace.ts"
-import { indexOfNodeTypes, typesAtPositions, type NodeTypeIndex } from "./typefacts.ts"
+import { emptyTypeIndex, loadTypeFacts, type TypeFactRequest, type TypeIndex } from "./typetrace.ts"
+import { indexOfNodeTypes, typesAtPositions, type NodeTypeIndex, type NodeTypeQuery } from "./typefacts.ts"
 import { manifestOf } from "./run-cache.ts"
 import { sourceFingerprint } from "./fingerprint.ts"
 
@@ -451,7 +451,7 @@ const calibrateCommand = Command.make(
         if (config.types) {
           const tool = yield* sourceFingerprint(policy.analysisVersion)
           const manifest = manifestOf(cwd, [], new Map(), rules.map((rule) => rule.id), tool)
-          const loaded = yield* loadTypeFacts({ root: cwd, cacheDir, tool, manifest })
+          const loaded = yield* loadTypeFacts({ root: cwd, cacheDir, tool, manifest } satisfies TypeFactRequest)
           types = loaded.index
         }
         const workspace = yield* loadWorkspace(cwd, inputs, { types })
@@ -462,7 +462,7 @@ const calibrateCommand = Command.make(
             .slice(0, 2000)
           if (requests.length > 0) {
             const found = yield* Effect.tryPromise(() =>
-              typesAtPositions({ cwd, tsconfig: "tsconfig.json", requests }),
+              typesAtPositions({ cwd, tsconfig: "tsconfig.json", requests } satisfies NodeTypeQuery),
             ).pipe(Effect.orElseSucceed(() => []))
             nodeTypes = indexOfNodeTypes(found)
           }
