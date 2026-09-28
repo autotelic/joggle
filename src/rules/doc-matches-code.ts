@@ -211,12 +211,12 @@ export const docMatchesCode: PlannedRule = {
 
         return outcome(
           diagnostics,
-          budgetNote(
-            "documented declarations",
-            budget,
-            candidates.length,
-            candidates.slice(budget).map(label),
-          ),
+          budgetNote({
+            kind: "documented declarations",
+            judged: budget,
+            found: candidates.length,
+            sample: candidates.slice(budget).map(label),
+          }),
           drops,
         )
       },

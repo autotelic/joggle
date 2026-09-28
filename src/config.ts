@@ -153,24 +153,33 @@ export interface IgnoreRule {
 
 export const emptyConfig: JoggleConfig = {}
 
+/** A glob and the value it is tested against. */
+interface GlobMatch {
+  readonly glob: string
+  readonly value: string
+}
+
 /**
  * Glob matching for path patterns: `*` stops at a separator, `**` does not.
  *
  * Exported because the architecture rules match file paths against declared
  * layers, and two matchers would be two behaviours for one config file.
  */
-export const matchesGlob = (glob: string, value: string): boolean =>
+export const matchesGlob: Predicate.Predicate<GlobMatch> = ({ glob, value }) =>
   globToRegExp(glob).test(value)
 
 const globToRegExp = (glob: string): RegExp =>
   new RegExp("^" + globSource(glob, { question: false, doubleStarSkipsSlash: false }) + "$")
 
+/** A config, a rule and a file: where a rule may speak. */
+interface RuleAt {
+  readonly config: JoggleConfig
+  readonly ruleId: string
+  readonly path: string
+}
+
 /** Whether a finding should be suppressed by the config's exceptions. */
-export const isIgnored = (
-  config: JoggleConfig,
-  ruleId: string,
-  path: string,
-): boolean =>
+export const isIgnored: Predicate.Predicate<RuleAt> = ({ config, ruleId, path }) =>
   (config.ignore ?? []).some((entry) => {
     if (entry.rule !== undefined && !globToRegExp(entry.rule).test(ruleId)) return false
     return globToRegExp(entry.path).test(path)
@@ -229,9 +238,9 @@ export const unavailableFor = (
  * all, and a duplicate across the boundary would vanish rather than be reported
  * or not. What is scoped is where the answer may be reported.
  */
-export const appliesAt = (config: JoggleConfig, ruleId: string, path: string): boolean => {
+export const appliesAt: Predicate.Predicate<RuleAt> = ({ config, ruleId, path }) => {
   const paths = settingFor(config, ruleId)?.paths
-  return paths === undefined || paths.some((glob) => matchesGlob(glob, path))
+  return paths === undefined || paths.some((glob) => matchesGlob({ glob, value: path }))
 }
 
 /** Whether a rule runs at all under this config. */

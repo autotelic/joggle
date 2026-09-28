@@ -280,14 +280,14 @@ export const fieldTypeDrift: PlannedRule = {
                     " were skipped: the two declarations are in different packages and neither imports the other",
                 ]
               : []),
-            ...budgetNote(
-              "declarations",
-              policy.fieldTypeDrift.maxFindings,
-              candidates.length,
-              candidates
+            ...budgetNote({
+              kind: "declarations",
+              judged: policy.fieldTypeDrift.maxFindings,
+              found: candidates.length,
+              sample: candidates
                 .slice(policy.fieldTypeDrift.maxFindings)
                 .map((group) => group.unit),
-            ),
+            }),
           ],
           drops,
         )

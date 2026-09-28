@@ -199,12 +199,12 @@ export const oneConceptOneType: PlannedRule = {
               " exported type name(s) with a resolved type; " +
               divergent +
               " resolve to more than one",
-            ...budgetNote(
-              "names",
-              policy.oneConceptOneType.maxFindings,
-              candidates.length,
-              candidates.slice(policy.oneConceptOneType.maxFindings).map((candidate) => candidate.name),
-            ),
+            ...budgetNote({
+              kind: "names",
+              judged: policy.oneConceptOneType.maxFindings,
+              found: candidates.length,
+              sample: candidates.slice(policy.oneConceptOneType.maxFindings).map((candidate) => candidate.name),
+            }),
           ],
           drops,
         )

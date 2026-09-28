@@ -344,12 +344,12 @@ export const namingDrift: PlannedRule = {
     const phase = yield* planClusters(spec, clusters.slice(0, budget), scope, workspace)
     const layers = layersFrom(context.config)
     const unjudged = clusters.slice(budget)
-    const notes = budgetNote(
-      "pairs",
-      budget,
-      clusters.length,
-      unjudged.slice(0, 3).map((cluster) => nameList(cluster)),
-    )
+    const notes = budgetNote({
+      kind: "pairs",
+      judged: budget,
+      found: clusters.length,
+      sample: unjudged.slice(0, 3).map((cluster) => nameList(cluster)),
+    })
     return {
       plans: phase.planned.map((entry) => entry.plan),
       read: (answers) => {

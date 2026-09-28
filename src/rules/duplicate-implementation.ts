@@ -93,7 +93,12 @@ export const duplicateImplementation: PlannedRule = {
       .map((cluster) => unverifiedFinding(report, spec, cluster))
       .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
     const notes = [
-      ...budgetNote("clusters", budget, clusters.length, largestOf(clusters.slice(budget))),
+      ...budgetNote({
+        kind: "clusters",
+        judged: budget,
+        found: clusters.length,
+        sample: largestOf(clusters.slice(budget)),
+      }),
       // Visibility for the missing type signal. In a `.js` codebase every
       // cluster is shape-only, and a reader who cannot see that will read the
       // findings as typed evidence.

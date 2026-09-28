@@ -211,12 +211,12 @@ export const shallowModule: PlannedRule = {
         })
         return outcome(
           diagnostics,
-          budgetNote(
-            "wide, thin files",
-            budget,
-            candidates.length,
-            candidates.slice(budget).map((file) => file.path),
-          ),
+          budgetNote({
+            kind: "wide, thin files",
+            judged: budget,
+            found: candidates.length,
+            sample: candidates.slice(budget).map((file) => file.path),
+          }),
           drops,
         )
       },

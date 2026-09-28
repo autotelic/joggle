@@ -235,12 +235,12 @@ export const singlePath: PlannedRule = {
         })
         return outcome(
           diagnostics,
-          budgetNote(
-            "string sites",
-            budget,
-            candidates.length,
-            candidates.slice(budget).map((candidate) => candidate.unit.name),
-          ),
+          budgetNote({
+            kind: "string sites",
+            judged: budget,
+            found: candidates.length,
+            sample: candidates.slice(budget).map((candidate) => candidate.unit.name),
+          }),
           drops,
         )
       },

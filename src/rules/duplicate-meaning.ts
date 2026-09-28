@@ -204,7 +204,12 @@ export const duplicateMeaning: PlannedRule = {
     }))
 
     const notes = [
-      ...budgetNote("clusters", budget, clusters.length, largest),
+      ...budgetNote({
+        kind: "clusters",
+        judged: budget,
+        found: clusters.length,
+        sample: largest,
+      }),
       ...(oversized.length === 0
         ? []
         : [

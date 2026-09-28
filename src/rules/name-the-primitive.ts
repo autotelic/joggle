@@ -243,12 +243,12 @@ export const nameThePrimitive: PlannedRule = {
         })
         return outcome(
           diagnostics,
-          budgetNote(
-            "groups",
-            maxFindings,
-            candidates.length,
-            candidates.slice(maxFindings).map((entry) => entry.fields.join(", ")),
-          ),
+          budgetNote({
+            kind: "groups",
+            judged: maxFindings,
+            found: candidates.length,
+            sample: candidates.slice(maxFindings).map((entry) => entry.fields.join(", ")),
+          }),
           drops,
         )
       },

@@ -260,12 +260,12 @@ export const objectShape: PlannedRule = {
         })
         return outcome(
           diagnostics,
-          budgetNote(
-            "shapes",
-            maxFindings,
-            repeated.length,
-            repeated.slice(maxFindings).map(([signature]) => signature.split("\u0000").join("; ")),
-          ),
+          budgetNote({
+            kind: "shapes",
+            judged: maxFindings,
+            found: repeated.length,
+            sample: repeated.slice(maxFindings).map(([signature]) => signature.split("\u0000").join("; ")),
+          }),
           drops,
         )
       },

@@ -230,16 +230,19 @@ export interface Planned {
   readonly read: (answers: ReadonlyArray<unknown>) => RuleOutcome
 }
 
+/** A rule's candidate budget: the kind, the counts, and the largest unjudged. */
+interface BudgetNote {
+  readonly kind: string
+  readonly judged: number
+  readonly found: number
+  readonly sample: ReadonlyArray<string>
+}
+
 /**
  * Standard wording for a bound a rule hit, so that no rule invents its own and
  * no reader has to guess whether silence meant "nothing there".
  */
-export const budgetNote = (
-  kind: string,
-  judged: number,
-  found: number,
-  sample: ReadonlyArray<string>,
-): ReadonlyArray<string> =>
+export const budgetNote = ({ kind, judged, found, sample }: BudgetNote): ReadonlyArray<string> =>
   found <= judged
     ? []
     : [

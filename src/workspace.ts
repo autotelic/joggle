@@ -1525,7 +1525,14 @@ const describeParseErrors = (errors: ReadonlyArray<unknown>): string => {
   return errors.length > 1 ? message + " (and " + (errors.length - 1) + " more)" : message
 }
 
-const sourceFileFrom = (file: string, text: string, parsed: ParsedSource): SourceFile => {
+/** A file's path and text, and the parse read from them. */
+interface ParsedFileText {
+  readonly file: string
+  readonly text: string
+  readonly parsed: ParsedSource
+}
+
+const sourceFileFrom = ({ file, text, parsed }: ParsedFileText): SourceFile => {
   const program: unknown = parsed.program
   const identifiers = collectIdentifiers(program)
   const comments = parsed.comments.map((comment) => ({
@@ -1627,11 +1634,11 @@ interface FileText {
 const parseSourceFile = ({ file, text }: FileText): ParseOutcome => {
   const lang = langOf(file)
   const first = parseSync(file, text, { sourceType: "module", lang })
-  if (first.errors.length === 0) return { ok: true, file: sourceFileFrom(file, text, first) }
+  if (first.errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: first }) }
 
   if (lang === "js") {
     const retry = parseSync(file, text, { sourceType: "module", lang: "jsx" })
-    if (retry.errors.length === 0) return { ok: true, file: sourceFileFrom(file, text, retry) }
+    if (retry.errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: retry }) }
   }
   return { ok: false, reason: describeParseErrors(first.errors) }
 }

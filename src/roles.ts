@@ -289,12 +289,12 @@ export const classifyModules = (
         ...(ranks.size === 0
           ? ["the roles could not be ordered, so no direction was checked"]
           : ["roles ordered lowest first: " + orderOf(ranks)]),
-        ...budgetNote(
-          "modules",
-          policy.moduleRoles.maxModules,
-          modules.size,
-          [...modules.keys()].slice(policy.moduleRoles.maxModules),
-        ),
+        ...budgetNote({
+          kind: "modules",
+          judged: policy.moduleRoles.maxModules,
+          found: modules.size,
+          sample: [...modules.keys()].slice(policy.moduleRoles.maxModules),
+        }),
       ],
       drops,
     }

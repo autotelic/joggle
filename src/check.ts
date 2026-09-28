@@ -907,10 +907,10 @@ export const checkRepository = Effect.fn("joggle.check")(function* (options: Opt
     .map((entry) => ({ entry, severity: severityFor(options.config, entry.ruleId, entry.severity) }))
     .filter((item): item is { entry: Diagnostic; severity: import("./schema.ts").Severity } => item.severity !== "off")
     .map((item) => ({ ...item.entry, severity: item.severity }))
-    .filter((entry) => !isIgnored(options.config, entry.ruleId, entry.location.file))
+    .filter((entry) => !isIgnored({ config: options.config, ruleId: entry.ruleId, path: entry.location.file }))
     // Scoped out by configuration: this rule is not configured to speak about
     // this file. A finding, not a rule, is what gets scoped.
-    .filter((entry) => appliesAt(options.config, entry.ruleId, entry.location.file))
+    .filter((entry) => appliesAt({ config: options.config, ruleId: entry.ruleId, path: entry.location.file }))
 
   // The workspace's own phases, alongside the per-rule timings. A run that says
   // "workspace 4.4s" and nothing else is a run nobody can make faster.

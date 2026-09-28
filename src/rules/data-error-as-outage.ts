@@ -505,12 +505,12 @@ export const dataErrorAsOutage: PlannedRule = {
         })
         return outcome(
           diagnostics,
-          budgetNote(
-            "handlers",
-            budget,
-            all.length,
-            all.slice(budget).map(labelOf),
-          ),
+          budgetNote({
+            kind: "handlers",
+            judged: budget,
+            found: all.length,
+            sample: all.slice(budget).map(labelOf),
+          }),
           drops,
         )
       },

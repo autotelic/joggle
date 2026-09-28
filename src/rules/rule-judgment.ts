@@ -273,12 +273,12 @@ export const ruleJudgment: PlannedRule = {
 
         return outcome(
           diagnostics,
-          budgetNote(
-            "rules",
-            budget,
-            candidates.length,
-            candidates.slice(budget).map((candidate) => candidate.id),
-          ),
+          budgetNote({
+            kind: "rules",
+            judged: budget,
+            found: candidates.length,
+            sample: candidates.slice(budget).map((candidate) => candidate.id),
+          }),
           drops,
         )
       },

@@ -237,12 +237,12 @@ export const nameAsAddress: PlannedRule = {
 
         return outcome(
           diagnostics,
-          budgetNote(
-            "common names",
-            maxFiles,
-            candidates.length,
-            candidates.slice(maxFiles).map((c) => c.unit.name),
-          ),
+          budgetNote({
+            kind: "common names",
+            judged: maxFiles,
+            found: candidates.length,
+            sample: candidates.slice(maxFiles).map((c) => c.unit.name),
+          }),
           drops,
         )
       },

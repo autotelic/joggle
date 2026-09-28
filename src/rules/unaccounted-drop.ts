@@ -175,12 +175,12 @@ export const unaccountedDrop: PlannedRule = {
         })
         return outcome(
           diagnostics,
-          budgetNote(
-            "skipping paths",
-            budget,
-            candidates.length,
-            candidates.slice(budget).map((unit) => unit.name),
-          ),
+          budgetNote({
+            kind: "skipping paths",
+            judged: budget,
+            found: candidates.length,
+            sample: candidates.slice(budget).map((unit) => unit.name),
+          }),
           drops,
         )
       },

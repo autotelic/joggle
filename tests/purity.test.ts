@@ -40,18 +40,18 @@ test("a layer's forbidden imports are an import-graph fact", async () => {
 test("a pattern without a wildcard matches only itself", () => {
   // Which is the difference between forbidding one package and forbidding a
   // whole family, and it is worth being able to say either.
-  expect(matchesGlob("react", "react")).toBe(true)
-  expect(matchesGlob("react", "react-dom")).toBe(false)
-  expect(matchesGlob("react*", "react-dom")).toBe(true)
-  expect(matchesGlob("@remix-run/*", "@remix-run/react")).toBe(true)
+  expect(matchesGlob({ glob: "react", value: "react" })).toBe(true)
+  expect(matchesGlob({ glob: "react", value: "react-dom" })).toBe(false)
+  expect(matchesGlob({ glob: "react*", value: "react-dom" })).toBe(true)
+  expect(matchesGlob({ glob: "@remix-run/*", value: "@remix-run/react" })).toBe(true)
 })
 
 test("a rule can be scoped to where it is meant to speak", () => {
   const scoped = { rules: { "joggle/layer-purity": { severity: "warn" as const, paths: ["packages/domain/**"] } } }
-  expect(appliesAt(scoped, "joggle/layer-purity", "packages/domain/user.ts")).toBe(true)
+  expect(appliesAt({ config: scoped, ruleId: "joggle/layer-purity", path: "packages/domain/user.ts" })).toBe(true)
   // Same rule, same file shape, a path it was not configured for.
-  expect(appliesAt(scoped, "joggle/layer-purity", "services/ui/route.tsx")).toBe(false)
+  expect(appliesAt({ config: scoped, ruleId: "joggle/layer-purity", path: "services/ui/route.tsx" })).toBe(false)
   // A rule with no paths applies everywhere: scoping is opt-in.
-  expect(appliesAt({ rules: { "joggle/layer-purity": "warn" } }, "joggle/layer-purity", "anything.ts")).toBe(true)
-  expect(appliesAt({}, "joggle/layer-purity", "anything.ts")).toBe(true)
+  expect(appliesAt({ config: { rules: { "joggle/layer-purity": "warn" } }, ruleId: "joggle/layer-purity", path: "anything.ts" })).toBe(true)
+  expect(appliesAt({ config: {}, ruleId: "joggle/layer-purity", path: "anything.ts" })).toBe(true)
 })

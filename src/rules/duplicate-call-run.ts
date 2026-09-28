@@ -248,7 +248,12 @@ export const duplicateCallRun: PlannedRule = {
         })
         return outcome(
           diagnostics,
-          budgetNote("runs", maxFindings, reported.length, reported.slice(maxFindings).map((run) => run.left.name + "/" + run.right.name)),
+          budgetNote({
+            kind: "runs",
+            judged: maxFindings,
+            found: reported.length,
+            sample: reported.slice(maxFindings).map((run) => run.left.name + "/" + run.right.name),
+          }),
           drops,
         )
       },

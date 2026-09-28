@@ -309,12 +309,12 @@ export const hoistToDomain: PlannedRule = {
 
         return outcome(
           diagnostics,
-          budgetNote(
-            "declarations",
-            budget,
-            candidates.length,
-            candidates.slice(budget).map(label),
-          ),
+          budgetNote({
+            kind: "declarations",
+            judged: budget,
+            found: candidates.length,
+            sample: candidates.slice(budget).map(label),
+          }),
           drops,
         )
       },

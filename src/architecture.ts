@@ -43,7 +43,7 @@ export const layersFrom = (config: JoggleConfig): ReadonlyArray<Layer> =>
 export const layerOf = (
   layers: ReadonlyArray<Layer>,
   file: string,
-): Layer | undefined => layers.find((layer) => layer.include.some((glob) => matchesGlob(glob, file)))
+): Layer | undefined => layers.find((layer) => layer.include.some((glob) => matchesGlob({ glob, value: file })))
 
 /** The declared layers and the two files an import would connect. */
 interface ImportEdge {
@@ -121,7 +121,7 @@ export const purityViolations = (
     const layer = layerOf(layers, edge.from)
     if (layer === undefined || layer.forbid.length === 0) continue
     for (const pattern of layer.forbid) {
-      if (matchesGlob(pattern, edge.specifier)) {
+      if (matchesGlob({ glob: pattern, value: edge.specifier })) {
         found.push({
           from: edge.from,
           specifier: edge.specifier,

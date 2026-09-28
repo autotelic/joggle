@@ -27,22 +27,22 @@ describe("a repository's answers", () => {
 
   test("except a rule at a path", () => {
     expect(
-      isIgnored(
+      isIgnored({
         config,
-        "joggle/bundle-dot-notation",
-        "services/ui/app/routes/legacy/components/index.ts",
-      ),
+        ruleId: "joggle/bundle-dot-notation",
+        path: "services/ui/app/routes/legacy/components/index.ts",
+      }),
     ).toBe(true)
     // The same rule elsewhere is not excepted.
-    expect(isIgnored(config, "joggle/bundle-dot-notation", "services/ui/app/components/a/index.ts")).toBe(false)
+    expect(isIgnored({ config, ruleId: "joggle/bundle-dot-notation", path: "services/ui/app/components/a/index.ts" })).toBe(false)
     // A rule outside the glob is not excepted, even at that path.
     expect(
-      isIgnored(config, "joggle/duplicate-meaning", "services/ui/app/routes/legacy/a.ts"),
+      isIgnored({ config, ruleId: "joggle/duplicate-meaning", path: "services/ui/app/routes/legacy/a.ts" }),
     ).toBe(false)
   })
 
   test("except every rule at a path when no rule is named", () => {
-    expect(isIgnored(config, "joggle/anything", "app/components/a.stories.tsx")).toBe(true)
+    expect(isIgnored({ config, ruleId: "joggle/anything", path: "app/components/a.stories.tsx" })).toBe(true)
   })
 
   test("choose what a rule does when no judgement reaches it", () => {
@@ -64,6 +64,6 @@ describe("a repository's answers", () => {
 
   test("an empty config changes nothing", () => {
     expect(severityFor({}, "joggle/duplicate-meaning", "warn")).toBe("warn")
-    expect(isIgnored({}, "joggle/duplicate-meaning", "src/a.ts")).toBe(false)
+    expect(isIgnored({ config: {}, ruleId: "joggle/duplicate-meaning", path: "src/a.ts" })).toBe(false)
   })
 })

@@ -7,10 +7,10 @@ import { globSource } from "../src/glob.ts"
 
 test("the config syntax treats a question mark as a literal", () => {
   expect(globSource("a?b", { question: false, doubleStarSkipsSlash: false })).toBe("a\\?b")
-  expect(matchesGlob("react*", "react-dom")).toBe(true)
+  expect(matchesGlob({ glob: "react*", value: "react-dom" })).toBe(true)
   // A star stops at a separator.
-  expect(matchesGlob("react*", "react/dom")).toBe(false)
-  expect(matchesGlob("react", "react-dom")).toBe(false)
+  expect(matchesGlob({ glob: "react*", value: "react/dom" })).toBe(false)
+  expect(matchesGlob({ glob: "react", value: "react-dom" })).toBe(false)
 })
 
 test("the gitignore syntax treats a question mark as one character", () => {

@@ -197,7 +197,12 @@ export const callPattern: PlannedRule = {
         })
         return outcome(
           diagnostics,
-          budgetNote("groups", maxFindings, candidates.length, candidates.slice(maxFindings).map(([, units]) => units.map((unit) => unit.name).join(", "))),
+          budgetNote({
+            kind: "groups",
+            judged: maxFindings,
+            found: candidates.length,
+            sample: candidates.slice(maxFindings).map(([, units]) => units.map((unit) => unit.name).join(", ")),
+          }),
           drops,
         )
       },
