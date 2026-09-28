@@ -419,5 +419,36 @@ export default {
       files: ["src/decision.ts", "src/plugins.ts", "src/check.ts"],
       rules: { "typescript/no-misused-spread": "off" },
     },
+    {
+      // Module-scope lookup helpers. Absence is the ordinary answer -- a file in
+      // no layer, a module that could not be classified, a pattern that does not
+      // parse, a manifest with no entry -- and each miss is already recorded as
+      // a fact: a layer of undefined is handled, an unclassified module is
+      // counted, a parse failure is reported. Wrapping each hop in Option would
+      // move the same branch to a dozen call sites without adding a distinction
+      // the domain has, which is the exception the four groups above already
+      // record for the lookups they name.
+      files: [
+        "src/roles.ts",
+        "src/gitignore.ts",
+        "src/config.ts",
+        "src/bundles.ts",
+        "src/architecture.ts",
+        "src/fingerprint.ts",
+        "src/parsecache.ts",
+        "src/vocabulary.ts",
+        "src/rules/reimplemented-primitive.ts",
+        "src/main.ts",
+      ],
+      rules: { "plumb-effect/guarded-op-must-return-option": "off" },
+    },
+    {
+      // `@effect-expect-leaking` is the Effect language service's own marker for
+      // a dependency a service passes through on purpose. The jsdoc plugin does
+      // not know the tag, so the two rulebooks disagree about it; the tag is
+      // required and the name check is what loses.
+      files: ["src/tsgo.ts"],
+      rules: { "jsdoc/check-tag-names": "off" },
+    },
   ],
 };

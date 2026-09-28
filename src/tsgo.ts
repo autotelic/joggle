@@ -40,6 +40,15 @@ export interface Interface {
   ) => Effect.Effect<void, TsgoError, ChildProcessSpawner>
 }
 
+/**
+ * The tsgo process surface.
+ *
+ * `ChildProcessSpawner` is passed through on purpose: running the compiler IS
+ * this service's job, and the spawner is the tool it runs with. The requirement
+ * is the service's purpose, not a leak.
+ *
+ * @effect-expect-leaking ChildProcessSpawner
+ */
 export class Service extends Context.Service<Service, Interface>()("@joggle/Tsgo") {}
 
 /* -------------------------------------------------------------------------- */

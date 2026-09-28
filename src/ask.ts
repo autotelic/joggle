@@ -170,17 +170,20 @@ export const ask = (
 
     // Cut and retry. A model that was never reached is not a bad answer, so it
     // is not retried; a request the provider rejected as too large is.
-    const answered = yield* Effect.gen(function* () {
-      let list = candidates
-      for (;;) {
-        const outcome = yield* Effect.result(attempt(list))
-        if (Result.isSuccess(outcome)) return outcome.success
-        if (list.length <= 1 || isUnreachable(outcome.failure)) {
-          return yield* outcome.failure
+    const attemptWithinBudget = () =>
+      Effect.gen(function* () {
+        let list = candidates
+        for (;;) {
+          const outcome = yield* Effect.result(attempt(list))
+          if (Result.isSuccess(outcome)) return outcome.success
+          if (list.length <= 1 || isUnreachable(outcome.failure)) {
+            return yield* outcome.failure
+          }
+          list = list.slice(0, Math.max(1, Math.ceil(list.length / 2)))
         }
-        list = list.slice(0, Math.max(1, Math.ceil(list.length / 2)))
-      }
-    })
+      })
+
+    const answered = yield* attemptWithinBudget()
 
     const exists = answered.decided.answers["exists"]
     const probability = exists !== undefined && "probability" in exists ? exists.probability : 0
