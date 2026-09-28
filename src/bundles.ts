@@ -1,3 +1,4 @@
+import type { Predicate } from "effect"
 import type { SourceFile, Workspace } from "./workspace.ts"
 
 /**
@@ -189,6 +190,13 @@ export const findBundles = (workspace: Workspace): ReadonlyArray<Bundle> => {
   return bundles.sort((a, b) => (a.dir < b.dir ? -1 : 1))
 }
 
+/** A bundle's name, its dot-export key, and the name a block declares. */
+interface KeyName {
+  readonly bundleName: string
+  readonly key: string
+  readonly name: string
+}
+
 /**
  * Whether a declared name is the component an index key refers to.
  *
@@ -199,7 +207,7 @@ export const findBundles = (workspace: Workspace): ReadonlyArray<Bundle> => {
  * `Counter.Display` to `CounterDisplay`. The fixture caught this because the
  * compliant bundle was reported as broken.
  */
-export const keyMatchesName = (bundleName: string, key: string, name: string): boolean =>
+export const keyMatchesName: Predicate.Predicate<KeyName> = ({ bundleName, key, name }) =>
   name === key || name === bundleName + key || name.endsWith(key)
 
 /** Names the index promises that no block file declares. */
@@ -209,7 +217,7 @@ export const unexportedBlocks = (bundle: Bundle): ReadonlyArray<string> => {
     (key) =>
       key !== "Provider" &&
       !/^use[A-Z]/.test(key) &&
-      !declared.some((name) => keyMatchesName(bundle.name, key, name)),
+      !declared.some((name) => keyMatchesName({ bundleName: bundle.name, key, name })),
   )
 }
 
@@ -217,7 +225,7 @@ export const unexportedBlocks = (bundle: Bundle): ReadonlyArray<string> => {
 export const orphanBlocks = (bundle: Bundle): ReadonlyArray<string> => {
   const names = bundle.blocks.flatMap((file) => declares(file))
   return names.filter(
-    (name) => !bundle.dotExportKeys.some((key) => keyMatchesName(bundle.name, key, name)),
+    (name) => !bundle.dotExportKeys.some((key) => keyMatchesName({ bundleName: bundle.name, key, name })),
   )
 }
 

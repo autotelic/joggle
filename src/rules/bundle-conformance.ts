@@ -71,7 +71,7 @@ const ruleFor = (spec: Spec): PlannedRule => ({
     if (candidates.length === 0) {
       return {
         plans: [],
-        read: () => outcome([], bundleNote(bundles.length, 0)),
+        read: () => outcome([], bundleNote({ bundles: bundles.length, broken: 0 })),
       }
     }
 
@@ -158,7 +158,7 @@ const ruleFor = (spec: Spec): PlannedRule => ({
           const review = quality.quality === "review"
           diagnostics.push(findingFor(report, spec, bundle, problems, verdict.confidence, undefined, review))
         })
-        return outcome(diagnostics, bundleNote(bundles.length, diagnostics.length), drops)
+        return outcome(diagnostics, bundleNote({ bundles: bundles.length, broken: diagnostics.length }), drops)
       },
     }
   }),

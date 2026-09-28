@@ -246,8 +246,14 @@ export const budgetNote = (
         `${found - judged} of ${found} ${kind} were not judged (budget ${judged}). Largest unjudged: ${sample.join("; ")}`,
       ]
 
+/** A count of bundles and how many of them broke the pattern. */
+interface BundleTally {
+  readonly bundles: number
+  readonly broken: number
+}
+
 /** One line for the producer rules: how many bundles were well formed. */
-export const bundleNote = (bundles: number, broken: number): ReadonlyArray<string> =>
+export const bundleNote = ({ bundles, broken }: BundleTally): ReadonlyArray<string> =>
   bundles === 0 ? [] : [`${bundles - broken} of ${bundles} composition bundle(s) follow the pattern`]
 
 /** A value together with its position in the workspace, for union-find below. */
