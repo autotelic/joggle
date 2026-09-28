@@ -744,13 +744,14 @@ const program = Command.run(cli, { version: policy.version }).pipe(Effect.provid
  * right for a defect and wrong for "you did not pass a path": the one line that
  * matters ends up buried under the machinery that produced it.
  */
-const describeFailure = (failure: unknown): string | undefined => {
-  if (!isRecord(failure)) return undefined
-  const record = failure
+const describeFailure = (cause: unknown): string | undefined => {
+  if (!isRecord(cause)) return undefined
+  const record = cause
   const tag = record["_tag"]
   if (tag === "joggle/WorkspaceError") {
-    const cause = record["cause"]
-    const detail = cause instanceof Error ? cause.message : Predicate.isString(cause) ? cause : ""
+    const original = record["cause"]
+    const detail =
+      original instanceof Error ? original.message : Predicate.isString(original) ? original : ""
     return String(record["operation"]) + ": " + detail
   }
   // Git and tsgo already carry the one sentence that matters: the command and

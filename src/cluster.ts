@@ -1,3 +1,4 @@
+import { Order } from "effect"
 import type { Unit } from "./workspace.ts"
 
 /**
@@ -72,8 +73,10 @@ export const components = (
   return [...groups.values()]
 }
 
-const byPath = (a: Unit, b: Unit): number =>
-  a.file === b.file ? a.start - b.start : a.file < b.file ? -1 : 1
+const byPath: Order.Order<Unit> = Order.combine(
+  Order.mapInput(Order.String, (unit: Unit) => unit.file),
+  Order.mapInput(Order.Number, (unit: Unit) => unit.start),
+)
 
 /**
  * Build a cluster: its members in path order, whether they are identical, how

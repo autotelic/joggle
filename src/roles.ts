@@ -354,7 +354,3 @@ export const roleOfFile = (
   const unit = workspace.units.find((candidate) => candidate.file === file)
   return unit === undefined ? undefined : roles.get(moduleOf(unit))
 }
-
-/** Lift a possibly-absent value into Option. */
-export const optionOf = <A>(value: A | undefined): Option.Option<A> =>
-  value === undefined ? Option.none() : Option.some(value)
