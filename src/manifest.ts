@@ -13,7 +13,7 @@ import { Effect, FileSystem, Path, Result, Schema, SchemaParser } from "effect"
  */
 export interface PackageManifest {
   readonly name: string
-  readonly description: string | undefined
+  readonly summary: string | undefined
   /**
    * What the package declares that it depends on.
    *
@@ -67,7 +67,7 @@ export const manifestAt = (
     }
     return {
       name: decoded.name,
-      description: decoded.description,
+      summary: decoded.description,
       declares,
     }
   })

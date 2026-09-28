@@ -165,7 +165,7 @@ const unitFrom = (
     typeRefs: entry.typeRefs,
     typed: entry.typed,
     fieldTypes: new Map(Object.entries(entry.fieldTypes)),
-    composed: (entry.bases ?? []).map((name) => ({ name, resolved: "" })),
+    composed: (entry.bases ?? []).map((name) => ({ name, resolvedTo: "" })),
     test: entry.test,
     // Three fields the resolution pass fills in, so none is stored: the calls a
     // declaration makes depend on the whole file set, exactly as its resolved

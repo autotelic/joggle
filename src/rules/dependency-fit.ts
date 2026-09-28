@@ -271,7 +271,7 @@ export const dependencyFit: PlannedRule = {
           // a package should import a framework while being told nothing about
           // the package -- and answers correctly for the wrong package.
           name: manifest?.name ?? null,
-          describes_itself_as: manifest?.description ?? null,
+          describes_itself_as: manifest?.summary ?? null,
           imports_this_in: dependency.count,
           examples: dependency.examples,
         },

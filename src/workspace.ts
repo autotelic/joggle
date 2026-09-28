@@ -768,7 +768,7 @@ const referenceName = (node: unknown): string | undefined => {
  */
 export interface ComposedBase {
   readonly name: string
-  readonly resolved: string
+  readonly resolvedTo: string
 }
 
 const fieldsOf = (node: Record<string, unknown>, text: string): FieldSet => {
@@ -1623,7 +1623,7 @@ const sourceFileFrom = ({ file, text, parsed }: ParsedFileText): SourceFile => {
         typeRefs,
         typed: typeRefs.length > 0,
         fieldTypes: site.fieldTypes,
-        composed: site.bases.map((name) => ({ name, resolved: "" })),
+        composed: site.bases.map((name) => ({ name, resolvedTo: "" })),
         calls: [],
         callSignature: "",
         test: policy.testFiles.test(file),
@@ -2048,7 +2048,7 @@ export const loadWorkspace = (
         // set is only complete once `extends`/`&` bases are followed.
         unit.composed = unit.composed.map((base) => ({
           name: base.name,
-          resolved: resolveRef(file.path, base.name),
+          resolvedTo: resolveRef(file.path, base.name),
         }))
         unit.typeSignature = unit.typeRefs
           .map((name) => resolveRef(file.path, name))

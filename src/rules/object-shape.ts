@@ -79,7 +79,7 @@ export const objectShape: PlannedRule = {
       next.add(id)
       const fields = new Set(unitFields(unit))
       for (const base of unit.composed) {
-        const target = byId.get(base.resolved)
+        const target = byId.get(base.resolvedTo)
         if (target === undefined) continue
         for (const field of fieldsOfUnit(target, next)) fields.add(field)
       }
