@@ -305,7 +305,7 @@ export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
       let diagnostics = report.diagnostics
       let note: Skipped | undefined
       if (options.baselinePath !== undefined) {
-        const known = yield* readBaseline(fs, baselinePath(path, options.baselinePath))
+        const known = yield* readBaseline(fs, path, baselinePath(path, options.baselinePath))
         if (known !== undefined) {
           const before = diagnostics.length
           diagnostics = diagnostics.filter(

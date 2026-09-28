@@ -1,0 +1,2 @@
+a60921da7651fe1c	1790624340	{"confidence":0.95,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.96,"stale_reference":0,"wrong_behavior":0.03,"wrong_contract":0.01}}
+a6472b75a13a7631	1790624340	{"kind":"Probability","probability":0.36}

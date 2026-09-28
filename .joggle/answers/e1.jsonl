@@ -1,0 +1,2 @@
+e1069c1ba0046e32	1790624340	{"confidence":0.93,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.94,"stale_reference":0.01,"wrong_behavior":0.04,"wrong_contract":0.01}}
+e109aff146c09ec8	1790624340	{"confidence":0.44,"kind":"Classify","label":"framework_glue","probabilities":{"domain_concept":0.2,"framework_glue":0.57,"implementation_detail":0.02,"wire_contract":0.21}}

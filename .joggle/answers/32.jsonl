@@ -1,0 +1,2 @@
+32474a747666e8c7	1790624340	{"confidence":0.47,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.01,"name_meaning":0.08,"no_issue":0.31,"semantic_verdict":0.6}}
+32d11be215987ba0	1790624340	{"confidence":0.94,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.96,"stale_reference":0,"wrong_behavior":0.03,"wrong_contract":0.01}}

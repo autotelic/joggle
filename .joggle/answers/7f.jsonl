@@ -1,0 +1,5 @@
+7f0c59d25ab3b4c8	1790624340	{"confidence":0.98,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.99,"stale_reference":0,"wrong_behavior":0.01,"wrong_contract":0}}
+7f266c3ecdf72418	1790624340	{"confidence":0.95,"kind":"Classify","label":"implementation_detail","probabilities":{"domain_concept":0.04,"framework_glue":0,"implementation_detail":0.96,"wire_contract":0}}
+7f622771d5dd47f9	1790624340	{"confidence":0.82,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.87,"stale_reference":0,"wrong_behavior":0.08,"wrong_contract":0.05}}
+7f8dc3d4b98878e0	1790624340	{"confidence":0.86,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.9,"stale_reference":0.03,"wrong_behavior":0.02,"wrong_contract":0.05}}
+7ff39d9f0dcefae5	1790624340	{"confidence":0.45,"kind":"Classify","label":"same_package","probabilities":{"different_deployables":0,"same_module":0.41,"same_package":0.59,"sibling_packages":0}}

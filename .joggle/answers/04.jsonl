@@ -1,0 +1,2 @@
+04ace525d35e5635	1790624340	{"confidence":0.94,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.96,"stale_reference":0,"wrong_behavior":0.03,"wrong_contract":0.01}}
+04cf7e37b9bca235	1790624340	{"confidence":0.48,"kind":"Classify","label":"same_package","probabilities":{"different_deployables":0,"same_module":0.39,"same_package":0.61,"sibling_packages":0}}

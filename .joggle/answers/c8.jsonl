@@ -1,0 +1,2 @@
+c8d51c6f84df0978	1790624340	{"confidence":0.23,"kind":"Classify","label":"collapse","probabilities":{"collapse":0.48,"keep_variants":0.42,"no_issue":0.1}}
+c8edddfd175c3e05	1790624340	{"confidence":0.99,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":1,"stale_reference":0,"wrong_behavior":0,"wrong_contract":0}}

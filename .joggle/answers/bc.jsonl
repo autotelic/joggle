@@ -1,0 +1,1 @@
+bc609b7f60f946aa	1790624340	{"confidence":0.93,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.94,"stale_reference":0,"wrong_behavior":0.04,"wrong_contract":0.02}}

@@ -1,0 +1,2 @@
+eeb5226b8db6a10d	1790624340	{"confidence":0.95,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.96,"stale_reference":0.01,"wrong_behavior":0.01,"wrong_contract":0.02}}
+eeba00eca8da679c	1790624340	{"confidence":0.87,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.9,"stale_reference":0,"wrong_behavior":0.08,"wrong_contract":0.02}}

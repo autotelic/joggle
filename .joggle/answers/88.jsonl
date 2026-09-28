@@ -1,0 +1,2 @@
+88568ccd3842017b	1790624340	{"confidence":0.71,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.01,"name_meaning":0,"no_issue":0.2,"semantic_verdict":0.79}}
+88b3b56525ed3049	1790624340	{"confidence":0.64,"kind":"Rate","label":"no_difference","probabilities":{"meaningfully_better":0.04,"no_difference":0.71,"removes_a_hazard":0.01,"slightly_clearer":0.24},"rating":0.36}

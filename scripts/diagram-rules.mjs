@@ -128,7 +128,7 @@ const RY = 992
 p.push(box(64, RY, W - 128, 84, { fill: SOFT, stroke: RULE }))
 p.push(t(86, RY + 32, "REPLAY", { size: 11.5, w: 700, fill: MUTED, ls: 1 }))
 p.push(t(86, RY + 58, "key = question version + model + evidence + questions", { size: 13, mono: true, fill: CODE }))
-p.push(t(700, RY + 58, "commit .joggle/answers.json  →  CI replays --offline with no key", { size: 13, fill: INK }))
+p.push(t(700, RY + 58, "commit .joggle/answers/  →  CI replays --offline with no key", { size: 13, fill: INK }))
 p.push(t(W - 86, RY + 32, "SCOPE", { size: 11.5, w: 700, fill: MUTED, ls: 1, anchor: "end" }))
 p.push(t(W - 86, RY + 58, "changed · since <rev> · pr · all", { size: 13, mono: true, fill: CODE, anchor: "end" }))
 

@@ -1,0 +1,3 @@
+f23ea7d1c678bb9b	1790624340	{"confidence":0.97,"kind":"Classify","label":"implementation_detail","probabilities":{"domain_concept":0.02,"framework_glue":0,"implementation_detail":0.98,"wire_contract":0}}
+f288ef7fbd7358a8	1790624340	{"confidence":0.91,"kind":"Classify","label":"domain_concept","probabilities":{"domain_concept":0.92,"framework_glue":0.01,"implementation_detail":0.01,"wire_contract":0.06}}
+f2f4670dc319ba3a	1790624340	{"confidence":0.77,"kind":"Classify","label":"member_0","probabilities":{"member_0":0.89,"member_1":0.11}}

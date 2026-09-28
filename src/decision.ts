@@ -16,12 +16,13 @@ import {
   Semaphore,
 } from "effect"
 import * as AiError from "effect/unstable/ai/AiError"
-import { Decision, DecisionModel } from "effect/unstable/ai"
+import { DecisionModel } from "effect/unstable/ai"
 import type * as HttpClient from "effect/unstable/http/HttpClient"
 import { TypeSafeClient, TypeSafeDecisionModel, TypeSafeSchema } from "@effect/ai-typesafe"
 import { canonical } from "./canonical.ts"
 import { policy } from "./policy.ts"
-import { answerOf, memoize, PlanAnswers, StoredAnswer, storedOf, type PlanAnswerStore } from "./plans.ts"
+import { make as makeAnswerStore } from "./answer-store.ts"
+import { answerOf, memoize, PlanAnswers, storedOf, type PlanAnswerStore } from "./plans.ts"
 import type { DecisionTotals } from "./schema.ts"
 
 // The judged half of joggle, as Effect's own DecisionModel.
@@ -261,44 +262,17 @@ export const layer = (
       // lose every question's answer when one of them changed. This one is keyed
       // on the question and the atoms it read, which is what makes a batched
       // request keep the independence a per-candidate request had.
-      const answersFile = path.join(options.cacheDir, "answers.json")
-      const AnswerFile = Schema.Struct({
-        version: Schema.String,
-        entries: Schema.Record(Schema.String, StoredAnswer),
-      })
-      const loadAnswers = Effect.gen(function* () {
-        const empty: Record<string, Decision.Answer<Decision.Any>> = {}
-        const exists = yield* Effect.orElseSucceed(fs.exists(answersFile), () => false)
-        if (!exists) return empty
-        const text = yield* Effect.orElseSucceed(fs.readFileString(answersFile), () => "")
-        if (text.trim() === "") return empty
-        const decoded = Result.getOrUndefined(
-          SchemaParser.decodeUnknownResult(Schema.fromJsonString(AnswerFile))(text),
-        )
-        if (decoded === undefined) return empty
-        const out: Record<string, Decision.Answer<Decision.Any>> = {}
-        for (const [key, value] of Object.entries(decoded.entries)) out[key] = answerOf(value)
-        return out
-      })
-      const answerEntries = yield* Ref.make(yield* loadAnswers)
-      const flushAnswers = writer.withPermits(1)(
-        Effect.gen(function* () {
-          const current = yield* Ref.get(answerEntries)
-          const entries = Object.fromEntries(
-            Object.entries(current).map(([key, answer]) => [key, storedOf(answer)]),
-          )
-          const body = JSON.stringify({ version: policy.version, entries }, null, 2)
-          yield* Effect.orElseSucceed(fs.makeDirectory(options.cacheDir, { recursive: true }), () => undefined)
-          yield* Effect.orElseSucceed(fs.writeFileString(answersFile, body), () => undefined)
-        }),
-      )
+      //
+      // The store is sharded and content-addressed: one file per shard, one
+      // entry per line, sorted, with the key naming the shard. Two branches that
+      // judge different candidates never touch the same line, and the shipped
+      // merge driver resolves the residual case by key. A legacy single
+      // `answers.json` is read and migrated on the first write. See
+      // `docs/artifacts.md`.
+      const answers = yield* makeAnswerStore(fs, path, options.cacheDir)
       const planAnswers: PlanAnswerStore = {
-        get: (key) => Effect.map(Ref.get(answerEntries), (current) => Option.fromUndefinedOr(current[key])),
-        put: (key, answer) =>
-          Effect.gen(function* () {
-            yield* Ref.update(answerEntries, (current) => ({ ...current, [key]: answer }))
-            yield* flushAnswers
-          }),
+        get: (key) => Effect.map(answers.get(key), (stored) => Option.map(stored, answerOf)),
+        put: (key, answer) => answers.put(key, storedOf(answer)),
       }
 
       // Every answer is remembered per decision, so the committed cache is the

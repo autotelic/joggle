@@ -204,7 +204,7 @@ those two want different things.
 | `--since <rev>` | scope to what changed since a git revision, working tree included |
 | `--pr` | scope to the pull request for the current branch (resolved with `gh`) |
 | `--pr-number <n\|url>` | scope to a specific pull request |
-| `--cache-dir <path>` | where `answers.json` lives (default `.joggle`) |
+| `--cache-dir <path>` | where the answer cache lives: `<cwd>/.joggle` when it exists, else the machine cache |
 | `--cwd <path>` | project root |
 
 ## CI and replay
@@ -219,8 +219,14 @@ It is serialised with sorted keys, so the same candidate produces the same key
 on every machine — which means **run from the repository root**. Evidence
 carries root-relative paths; running from a subdirectory changes the key and
 misses every cached verdict. Successful judgements are written to
-`.joggle/answers.json`; commit that file and CI replays them with
-`--offline` and **no API key at all**. Bump `policy.decisionVersion` when you
+`.joggle/answers/`, one sharded, sorted, line-oriented file per key prefix;
+commit that directory and CI replays them with `--offline` and **no API key at
+all**. A new answer is a new line in a shard it shares with few others, so two
+branches that judge different candidates merge as a directory merge, and
+`joggle cache prune` keeps the store from growing without a ceiling. A legacy
+single `answers.json` is still read, and the next write migrates it. The layout,
+the merge driver and the deployment modes are in
+[docs/artifacts.md](./docs/artifacts.md). Bump `policy.decisionVersion` when you
 change a question's wording, and every cached answer for it is invalidated at
 once instead of silently replayed against newer questions.
 
@@ -411,8 +417,8 @@ and two belong to the machine.
 
 | artifact | lives in | committed | what it is |
 | --- | --- | --- | --- |
-| `answers.json` | `<root>/.joggle/` | **yes** | one answer per decision, keyed by the decision and the state it read. **This is the replay path**: CI replays it with no API key and no tokens. |
-| `baseline.json` | `<root>/.joggle/` | **yes** | the findings already accepted: the ratchet. |
+| `answers/` | `<root>/.joggle/` | **yes** | one shard per key prefix, one line per answer, keyed by the decision and the state it read. **This is the replay path**: CI replays it with no API key and no tokens. |
+| `baseline/` | `<root>/.joggle/` | **yes** | the findings already accepted, one fragment per finding: the ratchet. |
 | `wire.json` | `<machine cache>/joggle/<root>/` | no | every wire request's response, keyed by the request. A performance artifact, and far too large to commit: 11.5 megabytes on a 2,493-file repository. |
 | `last-run.json` | `<machine cache>/joggle/<root>/` | no | a manifest and the last report. A performance artifact. |
 
@@ -426,15 +432,21 @@ somebody else's checkout writes nothing into it.
 ### Running against a diff
 
 ```sh
-joggle check --update-baseline          # on main: record what is accepted
-joggle check --baseline .joggle/baseline.json   # on a branch: only what is new
-joggle check                            # nothing changed: the previous run
+joggle check --update-baseline .joggle/baseline   # on main: record what is accepted
+joggle check --baseline .joggle/baseline          # on a branch: only what is new
+joggle check                                       # nothing changed: the previous run
+joggle cache prune --max-age 90                    # the cache is regenerable; keep it small
 ```
 
 The baseline is by identity, not by line: rule, kept symbol and cluster
 membership. Code moves constantly, and a baseline that reports every edit as a
 new finding is a baseline nobody reads. A rename or a new member does change the
 identity, which is correct — the finding is a different finding then.
+
+It is stored as **fragments**: one file per accepted finding, named by the
+identity's hash, under the target directory. A new acceptance is a new file, so
+two branches that accept different findings cannot conflict. A target ending in
+`.json` is still written as the old single file.
 
 ### Why an unchanged run costs nothing
 
@@ -560,7 +572,7 @@ succeed.
   - `verdict` (Choice) — is the absent row normal, or a broken invariant?
 - **Composed in code:** report only when the branch IS about a row and the
   absence is normal. `row_absence_is_normal` reports; `row_absence_is_an_error`
-  drops; a deliberate 5xx is pinned in `.joggle/answers.json`.
+  drops; a deliberate 5xx is pinned in `.joggle/answers/`.
 
 A nullish guard with a 5xx inside is specific enough to report unverified when no
 model is available; a bare `catch` is not — every ordinary error handler has one —

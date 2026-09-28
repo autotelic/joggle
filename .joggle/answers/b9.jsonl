@@ -1,0 +1,3 @@
+b93b133123140685	1790624340	{"confidence":0.79,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.03,"name_meaning":0.01,"no_issue":0.12,"semantic_verdict":0.84}}
+b9716c26eeb1a28d	1790624340	{"confidence":0.77,"kind":"Classify","label":"member_0","probabilities":{"member_0":0.89,"member_1":0.11}}
+b9e8c8a47385050f	1790624340	{"confidence":0.31,"kind":"Rate","label":"slightly_clearer","probabilities":{"meaningfully_better":0.37,"no_difference":0.09,"removes_a_hazard":0.11,"slightly_clearer":0.43},"rating":1.51}

@@ -93,21 +93,44 @@ export const writeStored = (
     )
   })
 
+/** One accepted finding: the fragment a baseline directory holds. */
+const Fragment = Schema.Struct({ identity: Schema.String })
+
 /**
  * Reads the accepted findings, or nothing when there is no baseline.
  *
+ * A baseline is a directory of fragments -- one file per accepted finding, the
+ * changesets/towncrier shape -- or, for a repository written before that shape
+ * existed, the single JSON file. Which one it is comes from the filesystem, so
+ * both are read without the caller saying which.
+ *
  * @param fs - The file system to read from.
- * @param file - The baseline file.
+ * @param path - The path service.
+ * @param target - The baseline directory, or the single file.
  * @returns The accepted identities, or `undefined` for a miss.
  */
 export const readBaseline = (
   fs: FileSystem.FileSystem,
-  file: string,
+  path: Path.Path,
+  target: string,
 ): Effect.Effect<ReadonlySet<string> | undefined> =>
   Effect.gen(function* () {
-    const exists = yield* Effect.orElseSucceed(fs.exists(file), () => false)
-    if (!exists) return undefined
-    const text = yield* Effect.orElseSucceed(fs.readFileString(file), () => "")
+    const info = yield* fs.stat(target).pipe(Effect.orElseSucceed(() => undefined))
+    if (info === undefined) return undefined
+
+    if (info.type === "Directory") {
+      const names = yield* fs.readDirectory(target).pipe(Effect.orElseSucceed(() => []))
+      const identities = new Set<string>()
+      for (const name of names) {
+        if (!name.endsWith(".json")) continue
+        const text = yield* fs.readFileString(path.join(target, name)).pipe(Effect.orElseSucceed(() => ""))
+        const decoded = Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(Fragment))(text))
+        if (decoded !== undefined) identities.add(decoded.identity)
+      }
+      return identities.size === 0 ? undefined : identities
+    }
+
+    const text = yield* fs.readFileString(target).pipe(Effect.orElseSucceed(() => ""))
     const decoded = Result.getOrUndefined(SchemaParser.decodeUnknownResult(Schema.fromJsonString(Baseline))(text))
     return decoded === undefined ? undefined : new Set(decoded.identities)
   })
@@ -115,24 +138,52 @@ export const readBaseline = (
 /**
  * Writes the accepted findings as the new baseline.
  *
+ * A target ending in `.json` is the single file and is written as one. A target
+ * that is not is a directory of fragments: one file per identity, named by the
+ * identity's hash, so two branches that accept different findings never touch
+ * the same file. A fragment no longer in the set is removed, so the directory is
+ * the whole baseline and not a log of every acceptance.
+ *
  * @param fs - The file system to write to.
  * @param path - The path service.
- * @param file - The baseline file.
+ * @param target - The baseline directory, or a `.json` file for the old shape.
  * @param identities - The finding identities to accept.
  */
 export const writeBaseline = (
   fs: FileSystem.FileSystem,
   path: Path.Path,
-  file: string,
+  target: string,
   identities: ReadonlyArray<string>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const parent = path.dirname(file)
-    yield* Effect.orElseSucceed(fs.makeDirectory(parent, { recursive: true }), () => undefined)
-    const body = JSON.stringify(
-      { version: policy.version, identities: [...identities].sort((left, right) => left.localeCompare(right)) },
-      null,
-      2,
-    )
-    yield* Effect.orElseSucceed(fs.writeFileString(file, body), () => undefined)
+    if (target.endsWith(".json")) {
+      const parent = path.dirname(target)
+      yield* Effect.orElseSucceed(fs.makeDirectory(parent, { recursive: true }), () => undefined)
+      const body = JSON.stringify(
+        { version: policy.version, identities: [...identities].sort((left, right) => left.localeCompare(right)) },
+        null,
+        2,
+      )
+      yield* Effect.orElseSucceed(fs.writeFileString(target, body), () => undefined)
+      return
+    }
+
+    yield* Effect.orElseSucceed(fs.makeDirectory(target, { recursive: true }), () => undefined)
+    const desired = new Map<string, string>()
+    for (const identity of identities) desired.set(shortHash(identity) + ".json", identity)
+    const present = new Set(yield* fs.readDirectory(target).pipe(Effect.orElseSucceed(() => [])))
+    for (const [name, identity] of desired) {
+      if (!present.has(name)) {
+        yield* Effect.orElseSucceed(
+          fs.writeFileString(path.join(target, name), JSON.stringify({ identity }, null, 2) + "\n"),
+          () => undefined,
+        )
+      }
+      present.delete(name)
+    }
+    // What is left is an acceptance the run no longer makes: delete the file.
+    for (const name of present) {
+      if (!name.endsWith(".json")) continue
+      yield* Effect.orElseSucceed(fs.remove(path.join(target, name)), () => undefined)
+    }
   })

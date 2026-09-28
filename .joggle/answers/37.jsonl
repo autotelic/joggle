@@ -1,0 +1,4 @@
+373f510ff5967cdd	1790624340	{"confidence":0.87,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.03,"name_meaning":0.04,"no_issue":0.03,"semantic_verdict":0.9}}
+375057482d2196eb	1790624340	{"kind":"Probability","probability":0.52}
+37752620fccdb097	1790624340	{"confidence":0.65,"kind":"Classify","label":"no_issue","probabilities":{"magic_threshold":0.03,"name_meaning":0,"no_issue":0.74,"semantic_verdict":0.23}}
+37b248c7cd75e365	1790624340	{"confidence":0.36,"kind":"Classify","label":"member_0","probabilities":{"member_0":0.68,"member_1":0.32}}

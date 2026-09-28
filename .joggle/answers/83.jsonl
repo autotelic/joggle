@@ -1,0 +1,2 @@
+8337e26a66ba3a2d	1790624340	{"kind":"Probability","probability":0.48}
+8366b9d85c472c51	1790624340	{"confidence":0.83,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.87,"stale_reference":0.01,"wrong_behavior":0.09,"wrong_contract":0.03}}

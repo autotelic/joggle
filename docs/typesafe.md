@@ -109,14 +109,14 @@ then:
    the plan that asked them.
 3. **Sends only what is not already answered.** Each answer is cached by (the
    decision + the state it read + the model + `decisionVersion`), in
-   `.joggle/answers.json`. That is the piece that makes batching safe: adding a
+   `.joggle/answers/`. That is the piece that makes batching safe: adding a
    question, or changing a declaration another question does not name, leaves
    every other answer's key unchanged. A cached answer is re-validated through
    `DecisionModel` before it is used, so the cache is not a path around the checks.
 
    The same cache wraps the `DecisionModel` itself (`memoize` in
    `src/plans.ts`), so a rule that is not on the plan engine replays too. That is
-   what makes `answers.json` the sole replay path: the wire cache is keyed on a
+   what makes the answer cache the sole replay path: the wire cache is keyed on a
    whole request, changes when any question in the request changes, and reached
    11.5 megabytes on shakti-v2, so it lives in the machine cache and is never
    committed.

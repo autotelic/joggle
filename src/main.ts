@@ -1,12 +1,13 @@
-import { Cause, Config, Console, Effect, Exit, Layer, Option, Path, Predicate, Result, Runtime } from "effect"
+import { Cause, Config, Console, Effect, Exit, FileSystem, Layer, Option, Path, Predicate, Result, Runtime } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import { DecisionModel } from "effect/unstable/ai"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { runCheck } from "./check.ts"
 import { layer as decisionLayer } from "./decision.ts"
+import { make as makeAnswerStore, mergeShardText, prune as pruneAnswers } from "./answer-store.ts"
 import { ask } from "./ask.ts"
-import { runCacheDirFor } from "./state.ts"
+import { cacheDirFor, runCacheDirFor } from "./state.ts"
 import { loadConfig, isEnabled, severityFor } from "./config.ts"
 import { layer as gitLayer, Service as Git } from "./git.ts"
 import { loadPlugins, withDefaults } from "./plugins.ts"
@@ -135,7 +136,7 @@ const check = Command.make(
       Flag.optional,
     ),
     cacheDir: Flag.String("cache-dir").pipe(
-      Flag.withDescription("Where the committed answer cache lives (default <cwd>/.joggle)."),
+      Flag.withDescription("Where the answer cache lives: <cwd>/.joggle when it exists (an onboarded repository), otherwise the machine cache."),
       Flag.optional,
     ),
     cwd: Flag.String("cwd").pipe(
@@ -154,7 +155,7 @@ const check = Command.make(
       // file list against the root, git's changed files against the workspace --
       // and a relative root makes those comparisons fail quietly.
       const cwd = path.resolve(Option.getOrUndefined(config.cwd) ?? process.cwd())
-      const cacheDir = Option.getOrUndefined(config.cacheDir) ?? path.join(cwd, ".joggle")
+      const cacheDir = yield* cacheDirFor(cwd, Option.getOrUndefined(config.cacheDir))
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
       const ruleFlag = Option.getOrUndefined(config.rule)
       const rules =
@@ -275,7 +276,7 @@ const askCommand = Command.make(
       Argument.variadic(),
     ),
     cacheDir: Flag.String("cache-dir").pipe(
-      Flag.withDescription("Where the committed answer cache lives (default <cwd>/.joggle)."),
+      Flag.withDescription("Where the answer cache lives: <cwd>/.joggle when it exists (an onboarded repository), otherwise the machine cache."),
       Flag.optional,
     ),
     maxTokens: Flag.Int("max-tokens").pipe(
@@ -291,7 +292,7 @@ const askCommand = Command.make(
     Effect.gen(function* () {
       const path = yield* Path.Path
       const cwd = path.resolve(Option.getOrUndefined(config.cwd) ?? process.cwd())
-      const cacheDir = Option.getOrUndefined(config.cacheDir) ?? path.join(cwd, ".joggle")
+      const cacheDir = yield* cacheDirFor(cwd, Option.getOrUndefined(config.cacheDir))
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
       const workspace = yield* loadWorkspace(cwd, config.paths.length > 0 ? config.paths : ["."])
       const answer = yield* ask(workspace, config.query, { maxInputTokens: config.maxTokens }).pipe(
@@ -401,7 +402,7 @@ const calibrateCommand = Command.make(
       Flag.optional,
     ),
     cacheDir: Flag.String("cache-dir").pipe(
-      Flag.withDescription("Where answers are cached (default <cwd>/.joggle)."),
+      Flag.withDescription("Where answers are cached: <cwd>/.joggle when it exists, otherwise the machine cache."),
       Flag.optional,
     ),
     format: Flag.Literals("format", ["text", "json"]).pipe(
@@ -431,7 +432,7 @@ const calibrateCommand = Command.make(
           isEnabled(ruleSet.effective, rule.id, rule.severity) &&
           (wanted === undefined || wanted.includes(rule.id)),
       )
-      const cacheDir = Option.getOrUndefined(config.cacheDir) ?? path.join(cwd, ".joggle")
+      const cacheDir = yield* cacheDirFor(cwd, Option.getOrUndefined(config.cacheDir))
       const apiKey = yield* Config.option(Config.String("TYPESAFE_API_KEY"))
       const inputs = config.paths.length > 0 ? config.paths : ["."]
 
@@ -579,6 +580,135 @@ const calibrateCommand = Command.make(
   ]),
 )
 
+/**
+ * The merge driver git invokes for one answer shard, registered in
+ * `.joggle/.gitattributes` and in the user's git config.
+ *
+ * A shard is line-oriented and keyed, so a union by key is the whole merge. It
+ * declines (non-zero, no write) when a side is not a shard at all, so git
+ * records an ordinary conflict rather than a union that dropped lines.
+ */
+const mergeAnswers = Command.make(
+  "merge-answers",
+  {
+    base: Argument.String("base").pipe(Argument.withDescription("The merge base shard (git %O). Not consulted: every line is either present or not.")),
+    ours: Argument.String("ours").pipe(
+      Argument.withDescription("Our shard, and where the result is written (git %A)."),
+    ),
+    theirs: Argument.String("theirs").pipe(Argument.withDescription("Their shard (git %B).")),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const read = (file: string): Effect.Effect<string> => fs.readFileString(file).pipe(Effect.orElseSucceed(() => ""))
+      const merged = yield* Effect.result(
+        mergeShardText({ ours: yield* read(config.ours), theirs: yield* read(config.theirs) }),
+      )
+      if (Result.isFailure(merged)) {
+        yield* write(
+          "joggle: merge-answers: the " + merged.failure.side + " side is not an answer shard; resolve this conflict by hand",
+        )
+        yield* Effect.sync(() => {
+          process.exitCode = 1
+        })
+        return
+      }
+      yield* fs.writeFileString(config.ours, merged.success).pipe(Effect.orElseSucceed(() => undefined))
+    }),
+).pipe(
+  Command.withDescription(
+    "Merge one answer shard by key. A git merge driver, not a command to run by hand; see docs/artifacts.md.",
+  ),
+  Command.withShortDescription("Merge one answer shard (git driver)."),
+)
+
+const cachePrune = Command.make(
+  "prune",
+  {
+    cwd: Flag.String("cwd").pipe(
+      Flag.withDescription("Project root whose cache to prune (default: the current directory)."),
+      Flag.optional,
+    ),
+    cacheDir: Flag.String("cache-dir").pipe(
+      Flag.withDescription("Where the answer cache lives: <cwd>/.joggle when it exists, otherwise the machine cache."),
+      Flag.optional,
+    ),
+    maxAge: Flag.Int("max-age").pipe(
+      Flag.withDescription("Drop entries written more than this many days ago."),
+      Flag.optional,
+    ),
+    maxBytes: Flag.Int("max-bytes").pipe(
+      Flag.withDescription("After the age cut, drop oldest-first until the store is at or under this many bytes."),
+      Flag.optional,
+    ),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const cwd = path.resolve(Option.getOrUndefined(config.cwd) ?? process.cwd())
+      const dir = yield* cacheDirFor(cwd, Option.getOrUndefined(config.cacheDir))
+      const days = Option.getOrUndefined(config.maxAge)
+      const result = yield* pruneAnswers(fs, path, dir, {
+        olderThanSeconds: days === undefined ? undefined : days * 24 * 60 * 60,
+        maxBytes: Option.getOrUndefined(config.maxBytes),
+      })
+      const noun = result.removed === 1 ? "entry" : "entries"
+      yield* write(
+        "joggle: pruned " + result.removed + " " + noun + "; " + result.kept + " kept, " + result.bytes + " bytes",
+      )
+    }),
+).pipe(
+  Command.withDescription(
+    "Drop old answer-cache entries by age and size. The cache is regenerable; pruning it is safe, and a store that only grows is not a cache.",
+  ),
+  Command.withShortDescription("Prune the answer cache."),
+  Command.withExamples([
+    { command: "joggle cache prune --max-age 90", description: "Drop answers older than 90 days." },
+    {
+      command: "joggle cache prune --max-bytes 4000000",
+      description: "Cap the committed cache, oldest answers first.",
+    },
+  ]),
+)
+
+const cacheMigrate = Command.make(
+  "migrate",
+  {
+    cwd: Flag.String("cwd").pipe(
+      Flag.withDescription("Project root whose cache to migrate (default: the current directory)."),
+      Flag.optional,
+    ),
+    cacheDir: Flag.String("cache-dir").pipe(
+      Flag.withDescription("Where the answer cache lives: <cwd>/.joggle when it exists, otherwise the machine cache."),
+      Flag.optional,
+    ),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const cwd = path.resolve(Option.getOrUndefined(config.cwd) ?? process.cwd())
+      const dir = yield* cacheDirFor(cwd, Option.getOrUndefined(config.cacheDir))
+      const store = yield* makeAnswerStore(fs, path, dir)
+      const written = yield* store.migrate
+      yield* write("joggle: wrote " + written + " answer(s) to " + path.join(dir, "answers"))
+    }),
+).pipe(
+  Command.withDescription(
+    "Rewrite the cache in the sharded shape, and remove a legacy answers.json. Idempotent.",
+  ),
+  Command.withShortDescription("Migrate the cache to shards."),
+)
+
+const cacheCommand = Command.make("cache", {}, () =>
+  write("joggle cache: run `joggle cache prune`, or read docs/artifacts.md for the layout."),
+).pipe(
+  Command.withDescription("Work on the answer cache itself: prune it, migrate it, and see how it is laid out."),
+  Command.withShortDescription("Prune the answer cache."),
+  Command.withSubcommands([cachePrune, cacheMigrate]),
+)
+
 const cli = Command.make("joggle").pipe(
   Command.withDescription(
     "Cross-file patterns and idioms for TypeScript, enforced like a linter: deterministic where it can prove, System One where it has to judge.",
@@ -591,7 +721,7 @@ const cli = Command.make("joggle").pipe(
     { command: "joggle check --since origin/main", description: "Check only what this branch changed." },
     { command: "joggle rules", description: "See what is enforced here." },
   ]),
-  Command.withSubcommands([check, askCommand, rules, calibrateCommand]),
+  Command.withSubcommands([check, askCommand, rules, calibrateCommand, cacheCommand, mergeAnswers]),
 )
 
 const services = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, builtIn)

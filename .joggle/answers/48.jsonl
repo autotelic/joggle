@@ -1,0 +1,2 @@
+4803b661ecab30f2	1790624340	{"confidence":0.94,"kind":"Classify","label":"same_module","probabilities":{"different_deployables":0,"same_module":0.96,"same_package":0.04,"sibling_packages":0}}
+4883ea64b2aa4a05	1790624340	{"confidence":1,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":1,"stale_reference":0,"wrong_behavior":0,"wrong_contract":0}}

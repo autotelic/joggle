@@ -1,10 +1,9 @@
 {
   "note": "Known plumb findings, by identity and count. `pnpm lint:update` accepts the current state; `pnpm lint` fails when a count rises or a new identity appears.",
-  "total": 160,
+  "total": 155,
   "census": {
     "eslint(no-unused-vars)\u0000src/roles.ts\u0000Variable 'unit' is declared but never used. Unused variables should start with a '_'.": 1,
     "eslint(no-useless-escape)\u0000src/rules/cluster-verdict.ts\u0000Unnecessary escape character '`'": 2,
-    "eslint(no-useless-escape)\u0000src/rules/name-as-address.ts\u0000Unnecessary escape character '`'": 2,
     "plumb-effect(guarded-op-must-return-effect)\u0000src/roles.ts\u0000`Option.Option` hides why the operation failed. Return `Effect.Effect<T, MoneyError>` (or `Either<T, MoneyError>` in sync cores) with Schema.TaggedError reasons so callers can match Overflow vs InvalidInput vs ZeroDivisor. Options buried in tuples, records or arrays hide it just as well.": 1,
     "plumb-effect(guarded-op-must-return-option)\u0000src/architecture.ts\u0000This function returns `Layer | undefined`, conflating absence with a value. Return Option<Layer> and express absence as Option.none().": 2,
     "plumb-effect(guarded-op-must-return-option)\u0000src/bundles.ts\u0000This function returns `ReadonlyArray<string> | undefined`, conflating absence with a value. Return Option<ReadonlyArray<string>> and express absence as Option.none().": 1,
@@ -32,7 +31,6 @@
     "plumb(no-generic-export-names)\u0000src/check.ts\u0000Exported symbol `check.run.Check` stays generic, so searching it lands on hundreds of unrelated hits. Add a domain word to the name (e.g. `create` -> `createStripeClient`) or move it into a domain-named module so callers read `check.runCheck`.": 1,
     "plumb(no-generic-export-names)\u0000src/main.ts\u0000Exported symbol `main.check` stays generic, so searching it lands on hundreds of unrelated hits. Add a domain word to the name (e.g. `create` -> `createStripeClient`) or move it into a domain-named module so callers read `main.check`.": 1,
     "plumb(no-known-value-widening)\u0000src/report.ts\u0000The explicit open dictionary type on binding `rank` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.": 1,
-    "plumb(no-known-value-widening)\u0000src/rules/import-architecture.ts\u0000The explicit anonymous object type on return value of `lineOf` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.": 3,
     "plumb(no-known-value-widening)\u0000src/rules/language-drift.ts\u0000The explicit open dictionary type on binding `criteria` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.": 1,
     "plumb(no-known-value-widening)\u0000src/rules/naming-drift.ts\u0000The explicit open dictionary type on binding `abbreviations` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.": 1,
     "plumb(no-known-value-widening)\u0000src/vocabulary.ts\u0000The explicit open dictionary type on binding `pageVerdictByRole` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.": 1,

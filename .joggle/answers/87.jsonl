@@ -1,0 +1,2 @@
+873583916f4b83cd	1790624340	{"confidence":0.69,"kind":"Classify","label":"member_0","probabilities":{"member_0":0.8,"member_1":0.08,"member_2":0.12}}
+87b23bcf49d9ac63	1790624340	{"confidence":0.88,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0,"name_meaning":0,"no_issue":0.09,"semantic_verdict":0.91}}

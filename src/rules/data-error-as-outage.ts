@@ -313,7 +313,7 @@ const findingFor = (report: Report, outage: Outage, unverified: string | undefin
       describe: describe(outage),
       closing:
         unverified === undefined
-          ? "Pin a deliberate 5xx in .joggle/answers.json so the question is not asked again."
+          ? "Pin a deliberate 5xx in .joggle/answers/ so the question is not asked again."
           : "Not verified: " + unverified + ".",
     },
     helpId: "outage_help",

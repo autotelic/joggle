@@ -1,0 +1,3 @@
+b71ba5ace3abc689	1790624340	{"confidence":0.9,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.01,"name_meaning":0,"no_issue":0.06,"semantic_verdict":0.93}}
+b77de0d5445cd90d	1790624340	{"confidence":0.4,"kind":"Classify","label":"keep_variants","probabilities":{"collapse":0.14,"keep_variants":0.6,"no_issue":0.26}}
+b7c1ba2f1a37656f	1790624340	{"kind":"Probability","probability":0.5}

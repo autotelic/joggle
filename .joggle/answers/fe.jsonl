@@ -1,0 +1,2 @@
+fe3a9dc589c83ef0	1790624340	{"kind":"Probability","probability":0.48}
+fe72ae10cbd85bcc	1790624340	{"confidence":0.26,"kind":"Classify","label":"member_2","probabilities":{"member_0":0.28,"member_1":0.17,"member_2":0.41,"member_3":0.05,"member_4":0.09}}

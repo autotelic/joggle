@@ -1,0 +1,2 @@
+0647a4ddcdb07d4c	1790624340	{"kind":"Probability","probability":0.47}
+06a8f697613cbbce	1790624340	{"confidence":0.59,"kind":"Classify","label":"keep_variants","probabilities":{"collapse":0.13,"keep_variants":0.73,"no_issue":0.14}}

@@ -1,0 +1,4 @@
+a5473d2f96eafc45	1790624340	{"confidence":0.46,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.01,"name_meaning":0.01,"no_issue":0.39,"semantic_verdict":0.59}}
+a5a3d83076cb2644	1790624340	{"kind":"Probability","probability":0.32}
+a5abd02c02a7e3e1	1790624340	{"confidence":0.45,"kind":"Classify","label":"member_0","probabilities":{"member_0":0.73,"member_1":0.27}}
+a5f1e4694d64b14f	1790624340	{"confidence":0.93,"kind":"Classify","label":"same_module","probabilities":{"different_deployables":0,"same_module":0.95,"same_package":0.05,"sibling_packages":0}}

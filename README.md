@@ -41,8 +41,10 @@ among named options, a spectrum) with calibrated probabilities, and code keeps t
 thresholds: a decisive answer prints, an unsure one is recorded as a notice, a no is
 silent. Arithmetic, counts, spans and orderings all stay in code.
 
-Verdicts are cached per question in `.joggle/answers.json`, so commit that file and
-CI replays every judgement with no key and no tokens. A yes/no is asked three times
+Verdicts are cached per question in `.joggle/answers/`, one sharded file per key
+prefix, so commit that directory and CI replays every judgement with no key and no
+tokens. The shards are line-oriented and keyed, so a branch merge is a directory
+merge, and `joggle cache prune` keeps them from growing without a ceiling. A yes/no is asked three times
 and the **agreement** across the asks becomes its confidence, because one number on
 its own has no margin. [How joggle uses TypeSafe](./docs/typesafe.md).
 

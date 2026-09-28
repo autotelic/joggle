@@ -99,7 +99,7 @@ const machineCache = (target: string): string => {
 /**
  * Where this run's answers go.
  *
- * `.joggle/answers.json` is a committed artifact in a repository being
+ * `.joggle/answers/` is a committed artifact in a repository being
  * onboarded, and a side effect in one being inspected. The extension is global
  * and pi runs it in repositories it does not own, so it only writes the
  * committed cache where one already exists; otherwise the answers go to the

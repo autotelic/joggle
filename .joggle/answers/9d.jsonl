@@ -1,0 +1,2 @@
+9d10e87305c1342b	1790624340	{"kind":"Probability","probability":0.4}
+9dc8e41c163dbf95	1790624340	{"confidence":0.71,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.01,"name_meaning":0,"no_issue":0.2,"semantic_verdict":0.79}}

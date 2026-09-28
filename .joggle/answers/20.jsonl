@@ -1,0 +1,2 @@
+20217e0896f5ca99	1790624340	{"confidence":0.72,"kind":"Classify","label":"same_module","probabilities":{"different_deployables":0,"same_module":0.79,"same_package":0.21,"sibling_packages":0}}
+204a92881f822a83	1790624340	{"kind":"Probability","probability":0.34}

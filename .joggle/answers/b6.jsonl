@@ -1,0 +1,2 @@
+b674ac0c2a2388bb	1790624340	{"confidence":0.87,"kind":"Classify","label":"implementation_detail","probabilities":{"domain_concept":0.02,"framework_glue":0,"implementation_detail":0.91,"wire_contract":0.07}}
+b6a0a08d740d898f	1790624340	{"confidence":0.88,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0,"name_meaning":0,"no_issue":0.09,"semantic_verdict":0.91}}

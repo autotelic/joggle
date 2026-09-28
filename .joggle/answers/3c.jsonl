@@ -1,0 +1,2 @@
+3c0a5a3ef776e57f	1790624340	{"confidence":0.91,"kind":"Classify","label":"domain_concept","probabilities":{"domain_concept":0.92,"framework_glue":0.01,"implementation_detail":0.01,"wire_contract":0.06}}
+3cba2622d3ce0e77	1790624340	{"confidence":0.77,"kind":"Classify","label":"implementation_detail","probabilities":{"domain_concept":0.17,"framework_glue":0,"implementation_detail":0.83,"wire_contract":0}}

@@ -14,6 +14,7 @@ design notes it rests on.
 | [types-over-logic.md](./types-over-logic.md) | the rule that pushes toward refining types instead of adding logic |
 | [typesafe.md](./typesafe.md) | how joggle uses TypeSafe, held against the vendor's own guidance |
 | [calibration.md](./calibration.md) | what the questions are worth, and the measurements behind the tuning |
+| [artifacts.md](./artifacts.md) | what is committed and what is cached: the sharded store, the baseline fragments, the merge driver, and the prior art each is modelled on |
 
 ## Building on it
 
