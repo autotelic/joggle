@@ -37,7 +37,7 @@ const RULE_ID = "joggle/page-needs-composition"
 
 /** A page is a route, a page, or a modal -- not merely something under routes/. */
 interface Page {
-  readonly file: SourceFile
+  readonly source: SourceFile
   readonly localState: number
   readonly inlineElements: number
   readonly lines: number
@@ -69,7 +69,7 @@ const candidatesIn = (workspace: Workspace): ReadonlyArray<Page> => {
     const inlineElements = file.facts.jsx.length
     if (localState < minLocalState || inlineElements < minInlineElements) continue
     pages.push({
-      file,
+      source: file,
       localState,
       inlineElements,
       lines: file.text.split("\n").length,
@@ -112,7 +112,7 @@ const PageRole = Decision.make({
 
 const findingFor = (report: Report, page: Page, answers: DecisionAnswers): Result => {
   const dropOf = (stage: DropStage, reason: string): Result => ({
-    drop: { ruleId: RULE_ID, subject: page.file.path, stage, reason },
+    drop: { ruleId: RULE_ID, subject: page.source.path, stage, reason },
   })
   const verdict = answers["verdict"]
   if (verdict === undefined || !("label" in verdict)) {
@@ -138,10 +138,10 @@ const findingFor = (report: Report, page: Page, answers: DecisionAnswers): Resul
   const missing = gaps(page)
   return {
     diagnostic: report({
-      at: page.file,
+      at: page.source,
       messageId: "state_pressure",
       data: {
-        file: page.file.path,
+        file: page.source.path,
         state: page.localState,
         inline: page.inlineElements,
         gaps: missing.join("; "),
@@ -151,7 +151,7 @@ const findingFor = (report: Report, page: Page, answers: DecisionAnswers): Resul
             : ` Start with: ${gap.label.replace(/_/g, " ")}.`,
       },
       helpId: missing.length === 0 ? "state_pressure_help_none" : "state_pressure_help_gaps",
-      identity: [RULE_ID, page.file.path].join("\u0000"),
+      identity: [RULE_ID, page.source.path].join("\u0000"),
       confidence,
       score: probability ?? confidence,
       judged: true,
@@ -175,7 +175,7 @@ export const pageNeedsComposition = defineRule({
   }),
   run: Effect.fn("joggle/page-needs-composition")(function* (workspace: Workspace, scope: Scope) {
     const report = reporter(pageNeedsComposition, locator(workspace))
-    const pages = candidatesIn(workspace).filter((page) => inScope(scope, page.file.path))
+    const pages = candidatesIn(workspace).filter((page) => inScope(scope, page.source.path))
     if (pages.length === 0) {
       return outcome([], [
         "no file looks like a page under state pressure: the trigger is " +
@@ -190,7 +190,7 @@ export const pageNeedsComposition = defineRule({
     const judged = pages.slice(0, budget)
     const evidenceFor = (page: Page) => ({
       page: {
-        path: page.file.path,
+        path: page.source.path,
         lines: page.lines,
         local_state_calls: page.localState,
         inline_elements: page.inlineElements,
@@ -220,7 +220,7 @@ export const pageNeedsComposition = defineRule({
     const roles: Array<{ page: Page; role: string }> = []
     const drops: Array<Drop> = pages.slice(budget).map((page) => ({
       ruleId: RULE_ID,
-      subject: page.file.path,
+      subject: page.source.path,
       stage: "budget" as const,
       reason: `the run judged ${budget} page(s) and this one was past the budget`,
     }))
@@ -230,7 +230,7 @@ export const pageNeedsComposition = defineRule({
       if (role === undefined || Option.isNone(role)) {
         drops.push({
           ruleId: RULE_ID,
-          subject: page.file.path,
+          subject: page.source.path,
           stage: "unreadable",
           reason: "the response did not classify this file",
         })
@@ -239,7 +239,7 @@ export const pageNeedsComposition = defineRule({
       if (declined(role.value)) {
         drops.push({
           ruleId: RULE_ID,
-          subject: page.file.path,
+          subject: page.source.path,
           stage: "declined",
           reason: "the model classified it as not a page, modal or layout",
         })
@@ -288,7 +288,7 @@ export const pageNeedsComposition = defineRule({
       if (result === undefined || Option.isNone(result)) {
         drops.push({
           ruleId: RULE_ID,
-          subject: page.file.path,
+          subject: page.source.path,
           stage: "unreadable",
           reason: "the response contained nothing for this candidate",
         })

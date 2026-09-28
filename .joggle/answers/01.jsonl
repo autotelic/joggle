@@ -1,1 +1,2 @@
 0113a65b6c1322f1	1790624340	{"confidence":0.65,"kind":"Classify","label":"member_0","probabilities":{"member_0":0.76,"member_1":0.11,"member_2":0.13}}
+01403f0fc4568ea0	1790631747	{"confidence":0.33,"kind":"Classify","label":"value","probabilities":{"meaning":0.45,"unclear":0,"value":0.55}}

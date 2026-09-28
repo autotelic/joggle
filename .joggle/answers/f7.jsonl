@@ -1,1 +1,3 @@
+f75bf3671c132fd3	1790631747	{"confidence":0.77,"kind":"Classify","label":"internal_only","probabilities":{"accounted_elsewhere":0.08,"internal_only":0.84,"unaccounted":0.08}}
+f76702eac8f38b1e	1790631747	{"confidence":0.32,"kind":"Classify","label":"drift","probabilities":{"compatible":0.25,"drift":0.54,"two_concepts":0.21}}
 f7db798171f9dc04	1790624340	{"kind":"Probability","probability":0.46}

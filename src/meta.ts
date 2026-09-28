@@ -15,7 +15,8 @@
 export interface RuleSource {
   /** The file's basename without `.ts`, which is also the test file's basename. */
   readonly name: string
-  readonly source: string
+  /** The rule module's own text, read off disk. */
+  readonly text: string
   /** True when the module needs the model. */
   readonly judged: boolean
   /** The names the module exports, so a test can name any of them. */
@@ -68,7 +69,7 @@ export const atomPayloads = (source: string): ReadonlyArray<string> => {
  * True when the payload carries a whole file rather than a slice of one.
  *
  * The signal is a literal `.text` (or `text:`) with no `.slice(` beside it. A
- * named field such as `source: candidate.source` is the rule's own bounded
+ * named field such as `source: candidate.text` is the rule's own bounded
  * sample, whose bound is set where the candidate is built, and this check cannot
  * see that far -- so it does not guess.
  */
@@ -176,7 +177,7 @@ export const metaFindings = (input: {
     // reason. The opt-out is explicit and greppable, the way a recorded decision
     // is: an author can make the exception, but not hide it.
     const push = (metaRule: string, detail: string): void => {
-      if (!new RegExp("meta-allow:\\s*" + metaRule).test(rule.source)) {
+      if (!new RegExp("meta-allow:\\s*" + metaRule).test(rule.text)) {
         found.push({ metaRule, rule: rule.name, detail })
       }
     }
@@ -197,7 +198,7 @@ export const metaFindings = (input: {
     // A judged rule that builds plans must declare what violates it, or
     // calibration cannot reduce its question. A rule that answers its own
     // question has no plan to reduce and is outside that.
-    if (rule.source.includes("plan:") && !rule.source.includes("violations")) {
+    if (rule.text.includes("plan:") && !rule.text.includes("violations")) {
       if (!(rule.delegates && input.shared.includes("violations"))) {
         push(
           "require-violations",
@@ -208,7 +209,7 @@ export const metaFindings = (input: {
     // A judged rule must read a judgement's quality and act on every band. A band
     // is not a reason to discard an answer, and it is not a reason to shout one
     // either: the rule decides what each band does.
-    if (!rule.source.includes("qualityOf")) {
+    if (!rule.text.includes("qualityOf")) {
       if (!(rule.delegates && input.shared.includes("qualityOf"))) {
         push(
           "band-the-answer",
@@ -216,14 +217,14 @@ export const metaFindings = (input: {
         )
       }
     }
-    for (const payload of atomPayloads(rule.source)) {
+    for (const payload of atomPayloads(rule.text)) {
       if (unbounded(payload)) {
         push("bounded-atoms", "an atom carries a whole file; put a bounded sample in it")
       }
     }
     // How the rule DECIDES, not what it declares: a regex or a literal
     // vocabulary that classifies meaning belongs to Jev (docs/rule-coupling.md).
-    for (const coupling of couplingIn(rule.source)) {
+    for (const coupling of couplingIn(rule.text)) {
       push("no-pattern-classifier", coupling.kind + " -- " + coupling.detail)
     }
   }

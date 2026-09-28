@@ -76,12 +76,12 @@ const ruleReview = (id: string) => ({
 })
 
 interface Candidate {
-  readonly file: SourceFile
+  readonly source: SourceFile
   readonly id: string
   readonly judged: boolean
   readonly preset: boolean
   readonly message: string
-  readonly source: string
+  readonly ruleSource: string
 }
 
 /**
@@ -132,7 +132,7 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Candida
       // to the `run` body alone lost them and raised the false-positive count.
       const source = file.text.slice(site.start, site.end)
       found.push({
-        file,
+        source: file,
         message: messageLiterals(source).join(" \u00b7 "),
         id:
           /id:\s*"([^"]+)"/.exec(source)?.[1] ??
@@ -140,7 +140,7 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Candida
           file.path + " (rule " + (index + 1) + ")",
         judged: /judged:\s*true/.test(source),
         preset,
-        source: source.slice(0, policy.evidence.maxSourceChars * 8),
+        ruleSource: source.slice(0, policy.evidence.maxSourceChars * 8),
       })
     })
   }
@@ -176,11 +176,11 @@ export const ruleJudgment: PlannedRule = {
       const id = yield* atoms.add({
         rule: {
           id: candidate.id,
-          path: candidate.file.path,
+          path: candidate.source.path,
           judged: candidate.judged,
           preset: candidate.preset,
           message: candidate.message,
-          source: candidate.source,
+          source: candidate.ruleSource,
         },
       })
       planned.push({
@@ -188,7 +188,7 @@ export const ruleJudgment: PlannedRule = {
         plan: {
           ruleId: RULE_ID,
           subject: candidate.id,
-          concerns: [candidate.file.path],
+          concerns: [candidate.source.path],
           atoms: [id],
           violations: { decides_in_code: [] },
           decisions: ruleReview(id),
@@ -254,7 +254,7 @@ export const ruleJudgment: PlannedRule = {
       const review = quality.quality === "review"
       diagnostics.push(
         report({
-                  at: candidate.file,
+                  at: candidate.source,
                   messageId: "code_decides",
                   data: {
                     id: candidate.id,

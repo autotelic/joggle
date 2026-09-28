@@ -1,2 +1,5 @@
 053acbd7acfce95a	1790624340	{"confidence":0.59,"kind":"Classify","label":"same_module","probabilities":{"different_deployables":0,"same_module":0.69,"same_package":0.31,"sibling_packages":0}}
+05716e8c88707267	1790631748	{"confidence":0.76,"kind":"Classify","label":"already_there","probabilities":{"already_there":0.82,"component_or_feature":0,"not_applicable":0.17,"route_or_handler":0.01}}
+059442200883b8cb	1790631748	{"confidence":0.75,"kind":"Classify","label":"already_there","probabilities":{"already_there":0.81,"component_or_feature":0.01,"not_applicable":0.17,"route_or_handler":0.01}}
+0594e0f15bb5d26c	1790631747	{"confidence":0.99,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.99,"stale_reference":0,"wrong_behavior":0.01,"wrong_contract":0}}
 059e8b6fbbe0e536	1790624340	{"confidence":0.59,"kind":"Classify","label":"same_module","probabilities":{"different_deployables":0,"same_module":0.69,"same_package":0.31,"sibling_packages":0}}

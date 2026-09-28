@@ -630,7 +630,15 @@ export const tokenize = (shape: string): ReadonlyArray<string> => {
 
 
 
-const lineStartsOf = (text: string): ReadonlyArray<number> => {
+/**
+ * One offset per line, counted in UTF-8 BYTES.
+ *
+ * The parser reports byte offsets, so a location is a byte offset and its table
+ * has to agree. `cascade.lineStarts` counts UTF-16 code units instead -- it
+ * serves locations the parser did not produce -- and the two are different
+ * functions with different units, not one helper spelled twice.
+ */
+const byteLineStarts = (text: string): ReadonlyArray<number> => {
   const bytes = Buffer.from(text, "utf8")
   const starts: Array<number> = [0]
   for (let index = 0; index < bytes.length; index += 1) {
@@ -833,6 +841,22 @@ const fieldsOf = (node: Record<string, unknown>, text: string): FieldSet => {
 
 /** The property names a type declaration lists, in order: the keys of `fieldTypes`. */
 export const unitFields = (unit: Unit): ReadonlyArray<string> => [...unit.fieldTypes.keys()]
+
+/**
+ * A predicate for the declarations that are named types with at least
+ * `minFields` fields.
+ *
+ * Two rules ask this with different thresholds; one predicate keeps the test
+ * itself in one place, so "what counts as a type worth comparing" cannot drift
+ * between them.
+ *
+ * @param minFields - The least number of fields worth comparing.
+ * @returns A predicate over units.
+ */
+export const typeUnits =
+  (minFields: number): ((unit: Unit) => boolean) =>
+  (unit) =>
+    (unit.kind === "interface" || unit.kind === "type") && unitFields(unit).length >= minFields
 
 /** True when every parameter is optional or has a default. */
 const paramsAllOptional = (node: unknown): boolean => {
@@ -1558,7 +1582,7 @@ const sourceFileFrom = ({ file, text, parsed }: ParsedFileText): SourceFile => {
     }
     return best?.value.replace(/^\s*\*+\s?/gm, "").trim() || undefined
   }
-  const starts = lineStartsOf(text)
+  const starts = byteLineStarts(text)
 
   const units: Array<Unit> = []
   const sites = isRecord(program) ? sitesIn(program, text) : []

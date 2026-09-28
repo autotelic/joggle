@@ -14,7 +14,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import { unitFields, type Unit, type Workspace } from "../workspace.ts"
+import { typeUnits, unitFields, type Unit, type Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/name-the-primitive"
 
@@ -32,10 +32,6 @@ const VIOLATIONS = { verdict: ["one_thing"] } as const
 // of the declarations that carry a pair, gives GROUPS without mining every subset
 // of every declaration. What a person then decides -- is this genuinely one
 // thing? -- used to be left to the reader. It is now asked.
-const isTypeUnit = (unit: Unit): boolean =>
-  (unit.kind === "interface" || unit.kind === "type") &&
-  unitFields(unit).length >= policy.nameThePrimitive.minFields
-
 const signatureOf = (fields: ReadonlyArray<string>): string => [...fields].sort(Order.String).join("\u0000")
 
 export const nameThePrimitive: PlannedRule = {
@@ -54,7 +50,7 @@ export const nameThePrimitive: PlannedRule = {
   plan: Effect.fn("joggle/name-the-primitive")(function* (workspace: Workspace, scope: Scope) {
     const report = reporter(nameThePrimitive, locator(workspace))
     const { minFields, minOccurrences, maxFindings } = policy.nameThePrimitive
-    const types = workspace.units.filter(isTypeUnit)
+    const types = workspace.units.filter(typeUnits(policy.nameThePrimitive.minFields))
     if (types.length === 0) {
       return {
         plans: [],

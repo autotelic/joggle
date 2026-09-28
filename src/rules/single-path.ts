@@ -14,7 +14,7 @@ import {
   type RunContext,
   type Scope,
 } from "../rule.ts"
-import { mayYield, returnTypesOf } from "../result.ts"
+import { returnTypesOf } from "../result.ts"
 import { verdictOf } from "../verdict.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
 import type { StringSite, Unit, Workspace } from "../workspace.ts"
@@ -50,18 +50,28 @@ type Helper = {
 }
 
 /**
- * Return types that cannot produce a string, from policy.
+ * Whether a printed return type can BE a string.
  *
- * The list is a DECLARED convention, not a fact about one repository, so it
- * lives in `policy.singlePath` where it is reviewable and overridable -- the same
- * place `temporalCoupling.pairs` lives. The node-type layer answers the checker's
- * type at a return expression's argument; a helper whose every recorded return is
- * one of these provably cannot be the single path for a string, so it is not a
- * candidate. `string`, a union and `Promise<string>` all keep the helper: the
- * filter must never lose a real path, only the paths that provably cannot build
- * one.
+ * The filter above removes the scalars; this keeps only the helpers whose return
+ * is a string, so an object, a `Set<string>` or a `string[]` is not offered just
+ * because a `string` appears somewhere inside it. `Set<string>` is not a string
+ * and cannot be the single string path; `string`, `string | undefined` and
+ * `Promise<string>` are.
  */
-const nonStringReturns = new Set<string>(policy.singlePath.nonStringReturns)
+const stringCapable = (type: string): boolean => {
+  const trimmed = type.trim()
+  return trimmed === "string" || trimmed === "Promise<string>" || trimmed.split("|").some((member) => member.trim() === "string")
+}
+
+/**
+ * Whether a declaration's recorded returns leave it a candidate.
+ *
+ * Unknown -- no type layer, no recorded return, an untyped return -- keeps the
+ * helper: a filter must never lose a real path. A helper whose every recorded
+ * return is a known non-string type is not the single string path.
+ */
+const canBuildString = (types: ReadonlyArray<string | undefined>): boolean =>
+  types.length === 0 || types.some((type) => type === undefined || stringCapable(type))
 
 /** How many files call each declaration, from the resolved call graph. */
 const callersOf = (workspace: Workspace): ReadonlyMap<string, ReadonlySet<string>> => {
@@ -111,7 +121,7 @@ export const singlePath: PlannedRule = {
         if (callers === undefined || callers.size < 2) continue
         const declaration = byIdentity.get(identity)
         if (declaration === undefined) continue
-        if (!mayYield(returnTypesOf(declaration, filesByPath.get(declaration.file), context.nodeTypes), nonStringReturns)) continue
+        if (!canBuildString(returnTypesOf(declaration, filesByPath.get(declaration.file), context.nodeTypes))) continue
         helpers.push({
           name: declaration.name,
           file: declaration.file,

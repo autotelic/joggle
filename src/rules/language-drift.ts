@@ -64,7 +64,7 @@ const termsOf = (doc: string): ReadonlyArray<string> => {
 }
 
 interface Candidate {
-  readonly file: SourceFile
+  readonly source: SourceFile
   readonly words: ReadonlyArray<string>
   readonly docs: ReadonlyArray<string>
 }
@@ -117,7 +117,7 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Candida
       .filter(([, count]) => count >= policy.languageDrift.minMentions)
       .map(([word]) => word)
       .sort((left, right) => left.localeCompare(right))
-    if (words.length > 0) found.push({ file, words, docs })
+    if (words.length > 0) found.push({ source: file, words, docs })
   }
   return found
 }
@@ -151,7 +151,7 @@ export const languageDrift: PlannedRule = {
     for (const candidate of judged) {
       const id = yield* atoms.add({
         file: {
-          path: candidate.file.path,
+          path: candidate.source.path,
           words: candidate.words,
           docs: candidate.docs.join("\n\n"),
         },
@@ -160,8 +160,8 @@ export const languageDrift: PlannedRule = {
         candidate,
         plan: {
           ruleId: RULE_ID,
-          subject: candidate.file.path,
-          concerns: [candidate.file.path],
+          subject: candidate.source.path,
+          concerns: [candidate.source.path],
           atoms: [id],
           violations: { concept: candidate.words },
           decisions: languageReview(id, candidate.words),
@@ -172,7 +172,7 @@ export const languageDrift: PlannedRule = {
 
     const overflow: ReadonlyArray<Drop> = candidates.slice(budget).map((candidate) => ({
       ruleId: RULE_ID,
-      subject: candidate.file.path,
+      subject: candidate.source.path,
       stage: "budget" as const,
       reason: "past the budget of " + budget + " files with prose words",
     }))
@@ -187,17 +187,17 @@ export const languageDrift: PlannedRule = {
           const candidate = entry.candidate
           const answer = verdicts[index]
           if (answer === undefined) {
-        drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "unreadable", reason: "the response did not judge this file" })
+        drops.push({ ruleId: RULE_ID, subject: candidate.source.path, stage: "unreadable", reason: "the response did not judge this file" })
         return
       }
       const concept = answer["concept"]
       const verdict = verdictOf(concept, candidate.words)
       if (verdict === undefined) {
-        drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "unreadable", reason: "the response did not contain a verdict" })
+        drops.push({ ruleId: RULE_ID, subject: candidate.source.path, stage: "unreadable", reason: "the response did not contain a verdict" })
         return
       }
       if (verdict.label === "none" || declined(verdict.label)) {
-        drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "declined", reason: "none of the words names a concept" })
+        drops.push({ ruleId: RULE_ID, subject: candidate.source.path, stage: "declined", reason: "none of the words names a concept" })
         return
       }
       const quality = qualityOf({
@@ -212,13 +212,13 @@ export const languageDrift: PlannedRule = {
       // reported -- unlike the duplicate rules, where an unsure answer still
       // points at two declarations a reader can compare.
       if (quality.quality === "drop") {
-        drops.push({ ruleId: RULE_ID, subject: candidate.file.path, stage: "gated", reason: quality.reason })
+        drops.push({ ruleId: RULE_ID, subject: candidate.source.path, stage: "gated", reason: quality.reason })
         return
       }
       const review = quality.quality === "review"
       diagnostics.push(
         report({
-                  at: candidate.file,
+                  at: candidate.source,
                   messageId: "prose_word_not_named",
                   data: { word: verdict.label ?? "" },
                   helpId: "prose_word_not_named_help",
@@ -237,7 +237,7 @@ export const languageDrift: PlannedRule = {
             kind: "files with prose words",
             judged: budget,
             found: candidates.length,
-            sample: candidates.slice(budget).map((candidate) => candidate.file.path),
+            sample: candidates.slice(budget).map((candidate) => candidate.source.path),
           }),
           drops,
         )

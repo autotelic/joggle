@@ -1,6 +1,7 @@
 {
   "$schema": "./schema/config.json",
   "presets": ["@autotelic/joggle/presets/composition"],
+  "unavailable": "count",
   "rules": {
     "joggle/bundle-dot-notation": "warn",
     "joggle/bundle-tripartite-value": "warn",

@@ -13,7 +13,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import { unitFields, type Unit, type Workspace } from "../workspace.ts"
+import { typeUnits, unitFields, type Unit, type Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/compose-types"
 
@@ -31,10 +31,6 @@ const VIOLATIONS = { verdict: ["composes", "same_name_drift"] } as const
 // proper subset means B is A plus something. Whether B is GENUINELY an A -- or two
 // declarations that happen to share field names, or the same name declared twice
 // with different fields -- is the judgement, and it used to be left to the reader.
-const isTypeUnit = (unit: Unit): boolean =>
-  (unit.kind === "interface" || unit.kind === "type") &&
-  unitFields(unit).length >= policy.composeTypes.minFields
-
 /** A field set as a comparable key, order-insensitive. */
 const signatureOf = (unit: Unit): string => [...unitFields(unit)].sort(Order.String).join("\u0000")
 
@@ -67,7 +63,7 @@ export const composeTypes: PlannedRule = {
   }),
   plan: Effect.fn("joggle/compose-types")(function* (workspace: Workspace, scope: Scope) {
     const report = reporter(composeTypes, locator(workspace))
-    const all = workspace.units.filter(isTypeUnit)
+    const all = workspace.units.filter(typeUnits(policy.composeTypes.minFields))
     if (all.length === 0) {
       return {
         plans: [],

@@ -1,4 +1,8 @@
 900ec3e022ffc57a	1790624340	{"confidence":0.7,"kind":"Classify","label":"semantic_verdict","probabilities":{"magic_threshold":0.03,"name_meaning":0.02,"no_issue":0.18,"semantic_verdict":0.77}}
 90503a984ec27888	1790624340	{"confidence":1,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":1,"stale_reference":0,"wrong_behavior":0,"wrong_contract":0}}
+90abd3f0ae56f3fb	1790631747	{"confidence":0.72,"kind":"Classify","label":"independent","probabilities":{"appropriate":0.18,"independent":0.81,"meaning_switched":0.01}}
+90b79ccaf4e65bcb	1790631747	{"confidence":0.78,"kind":"Classify","label":"domain_logic","probabilities":{"domain_logic":0.8,"infrastructure":0,"input_adaptation":0,"mechanical":0.1,"not_applicable":0.03,"orchestration":0.07,"rendering":0,"request_validation":0,"transport_concern":0}}
+90cfbd05fbad9477	1790631748	{"confidence":0.45,"kind":"Classify","label":"domain_logic","probabilities":{"domain_logic":0.5,"infrastructure":0,"input_adaptation":0.01,"mechanical":0.39,"not_applicable":0.09,"orchestration":0,"rendering":0.01,"request_validation":0,"transport_concern":0}}
+90ebd398fa473887	1790631747	{"confidence":0.33,"kind":"Classify","label":"drift","probabilities":{"compatible":0.03,"drift":0.56,"two_concepts":0.41}}
 90ed32515d9fdcf2	1790624340	{"kind":"Probability","probability":0.25}
 90f7133c97fe2725	1790624340	{"confidence":0.99,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":1,"stale_reference":0,"wrong_behavior":0,"wrong_contract":0}}

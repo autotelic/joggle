@@ -1,1 +1,2 @@
 c90baa3ed59948f0	1790624340	{"confidence":0.59,"kind":"Classify","label":"no_issue","probabilities":{"no_issue":0.69,"stale_reference":0,"wrong_behavior":0.26,"wrong_contract":0.05}}
+c9c447697decea7d	1790632045	{"confidence":0.4,"kind":"Classify","label":"same_module","probabilities":{"different_deployables":0,"same_module":0.56,"same_package":0.44,"sibling_packages":0}}

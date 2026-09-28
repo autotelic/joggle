@@ -21,7 +21,7 @@ const sourcesIn = (dir: string): ReadonlyArray<RuleSource> =>
       const source = read(entry.name === "index.ts" ? dir + "/" + entry.name : dir + "/" + entry.name)
       return {
         name: entry.name.replace(/\.ts$/, ""),
-        source,
+        text: source,
         judged: /judged:\s*true/.test(source),
         names: [...source.matchAll(/export const (\w+)/g)].map((match) => match[1] ?? ""),
         ruleIds: [...source.matchAll(/"(joggle\/[\w-]+)"/g)].map((match) => match[1] ?? ""),

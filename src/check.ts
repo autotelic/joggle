@@ -148,8 +148,8 @@ const typecheckFindings = (output: ReadonlyArray<{ readonly file: string; readon
  * `--changed` and `--pr` answer a move the same way.
  */
 interface SinceStored {
-  readonly changed: ReadonlySet<string>
-  readonly moved: ReadonlySet<string>
+  readonly changed: ReadonlyArray<string>
+  readonly moved: ReadonlyArray<string>
 }
 
 const changedSince = (stored: StoredRun, hashOf: ReadonlyMap<string, string>): SinceStored => {
@@ -174,7 +174,7 @@ const changedSince = (stored: StoredRun, hashOf: ReadonlyMap<string, string>): S
   for (const file of before.keys()) {
     if (!hashOf.has(file)) changed.add(file)
   }
-  return { changed, moved }
+  return { changed: [...changed], moved: [...moved] }
 }
 
 /** Exported declaration names by root-relative path. */
@@ -469,19 +469,19 @@ export const checkRepository = Effect.fn("joggle.check")(function* (options: Opt
         (stored.sources ?? []).map((source) => [source.path, source.exports]),
       )
       const affected = affectedBy(
-        since.changed,
+        new Set(since.changed),
         workspace.imports,
         beforeExports,
         exportsOf(workspace),
       )
-      scope = { changed: affected, moved: since.moved }
+      scope = { changed: affected, moved: new Set(since.moved) }
       notes.push({
         ruleId: "joggle",
         reason:
           `scoped to ${affected.size} file(s) that moved` +
-          (since.moved.size === 0
+          (since.moved.length === 0
             ? ""
-            : ` and ${since.moved.size} pure rename(s), which the content rules skip`) +
+            : ` and ${since.moved.length} pure rename(s), which the content rules skip`) +
           ": this answers what the change introduced, not what is wrong with the repository",
       })
     }
