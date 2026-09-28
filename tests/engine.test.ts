@@ -1,7 +1,7 @@
 import { expect, it } from "@effect/vitest"
 import { Effect, Layer, Option, Ref } from "effect"
 import { DecisionModel } from "effect/unstable/ai"
-import { runCheck } from "../src/check.ts"
+import { checkRepository } from "../src/check.ts"
 import { DecisionStats } from "../src/decision.ts"
 import { PlanAnswers } from "../src/plans.ts"
 import { builtIn } from "../src/rules/index.ts"
@@ -58,7 +58,7 @@ const engineLayer = (calls: Ref.Ref<number>): Layer.Layer<DecisionModel.Decision
 it.effect("every planned rule's questions are answered in one request", () =>
   Effect.gen(function* () {
     const calls = yield* Ref.make(0)
-    const report = yield* runCheck({
+    const report = yield* checkRepository({
       cwd: corpus,
       paths: ["src"],
       // Only the planned rules, so the count is the batch and nothing else. A

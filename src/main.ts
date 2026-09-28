@@ -3,7 +3,7 @@ import { Argument, Command, Flag } from "effect/unstable/cli"
 import { DecisionModel } from "effect/unstable/ai"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import { runCheck } from "./check.ts"
+import { checkRepository } from "./check.ts"
 import { layer as decisionLayer } from "./decision.ts"
 import { make as makeAnswerStore, mergeShardText, prune as pruneAnswers } from "./answer-store.ts"
 import { ask } from "./ask.ts"
@@ -66,7 +66,7 @@ const ruleSetFor = (cwd: string, configFile: string | undefined) =>
     }
   })
 
-const check = Command.make(
+const checkCommand = Command.make(
   "check",
   {
     paths: Argument.String("paths").pipe(
@@ -202,7 +202,7 @@ const check = Command.make(
       // per-decision answer cache in `cacheDir` is the one CI replays.
       const machineCache = yield* runCacheDirFor(cwd)
 
-      const report = yield* runCheck({
+      const report = yield* checkRepository({
         config: effective,
         plugins: loaded,
         cwd,
@@ -725,7 +725,7 @@ const cli = Command.make("joggle").pipe(
     { command: "joggle check --since origin/main", description: "Check only what this branch changed." },
     { command: "joggle rules", description: "See what is enforced here." },
   ]),
-  Command.withSubcommands([check, askCommand, rules, calibrateCommand, cacheCommand, mergeAnswers]),
+  Command.withSubcommands([checkCommand, askCommand, rules, calibrateCommand, cacheCommand, mergeAnswers]),
 )
 
 const services = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, builtIn)

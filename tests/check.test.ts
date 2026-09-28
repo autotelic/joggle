@@ -1,6 +1,6 @@
 import { expect, it } from "@effect/vitest"
 import { Effect, Option } from "effect"
-import { runCheck } from "../src/check.ts"
+import { checkRepository } from "../src/check.ts"
 import { layer as decisionLayer } from "../src/decision.ts"
 import { builtIn } from "../src/rules/index.ts"
 import { corpus, nodeLayer, tsgoStub } from "./support.ts"
@@ -9,7 +9,7 @@ const cacheDir = "/tmp/joggle-check-test"
 
 it.effect("refuses to persist judgements for code outside the analysis root", () =>
   Effect.gen(function* () {
-    const report = yield* runCheck({
+    const report = yield* checkRepository({
       cwd: `${corpus}/src`,
       paths: ["../../outside"],
       rules: undefined,
@@ -81,7 +81,7 @@ it.effect("refuses to persist judgements for code outside the analysis root", ()
 
 it.effect("runs the deterministic rules and reports judged rules as skipped", () =>
   Effect.gen(function* () {
-    const report = yield* runCheck({
+    const report = yield* checkRepository({
       cwd: corpus,
       paths: ["src"],
       rules: undefined,
@@ -131,7 +131,7 @@ it.effect("runs the deterministic rules and reports judged rules as skipped", ()
 it.effect("a run-wide count keeps unjudged candidates out of the report", () =>
   Effect.gen(function* () {
     const run = (config: object) =>
-      runCheck({
+      checkRepository({
         cwd: "tests/fixtures/unaccounted-drop",
         paths: ["src"],
         rules: ["joggle/unaccounted-drop"],
@@ -165,7 +165,7 @@ it.effect("a run-wide count keeps unjudged candidates out of the report", () =>
 
 it.effect("a rule filter runs exactly one rule and skips nothing", () =>
   Effect.gen(function* () {
-    const report = yield* runCheck({
+    const report = yield* checkRepository({
       cwd: corpus,
       paths: ["src"],
       rules: ["joggle/duplicate-implementation"],

@@ -224,7 +224,7 @@ const affectedBy = (
  * One pass over the workspace: deterministic candidates, then judgement for
  * the rules that ask for it, then a single sorted report.
  */
-export const runCheck = Effect.fn("joggle.check")(function* (options: Options) {
+export const checkRepository = Effect.fn("joggle.check")(function* (options: Options) {
   const started = yield* Clock.currentTimeMillis
   // The rule set comes from the context, where a plugin's rules have already
   // been merged with the built-in ones. A run does not know or care where a rule

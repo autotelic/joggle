@@ -334,7 +334,7 @@ const rankRoles = (
     for (const role of distinct) {
       const rank = rankOfLabel[role]
       if (rank === undefined) continue
-      ranks.set(role, rank - base + (rank < base ? 0 : 0))
+      ranks.set(role, rank - base)
     }
     return ranks
   })

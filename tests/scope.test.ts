@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Atoms } from "../src/atoms.ts"
-import { runCheck } from "../src/check.ts"
+import { checkRepository } from "../src/check.ts"
 import { DecisionStats } from "../src/decision.ts"
 import { PlanAnswers, type Plan } from "../src/plans.ts"
 import { policy } from "../src/policy.ts"
@@ -133,7 +133,7 @@ test("a candidate outside the run's scope is never judged and never reported", a
         elapsedMs: 0,
       }),
     )
-    const report = yield* runCheck({
+    const report = yield* checkRepository({
       cwd: corpus,
       paths: ["src"],
       rules: undefined,
@@ -176,7 +176,7 @@ test("a git-changed scope judges only the files that moved", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const seen = yield* Ref.make<ReadonlyArray<string>>([])
-      const report = yield* runCheck({
+      const report = yield* checkRepository({
         cwd: corpus,
         paths: ["src"],
         rules: undefined,
@@ -220,7 +220,7 @@ test("an empty git scope says so instead of looking like a clean repository", as
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const seen = yield* Ref.make<ReadonlyArray<string>>([])
-      const report = yield* runCheck({
+      const report = yield* checkRepository({
         cwd: corpus,
         paths: ["src"],
         rules: undefined,
@@ -260,7 +260,7 @@ test("a candidate past the run's token budget is reported, not judged", async ()
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const seen = yield* Ref.make<ReadonlyArray<string>>([])
-      const report = yield* runCheck({
+      const report = yield* checkRepository({
         cwd: corpus,
         paths: ["src"],
         rules: undefined,
