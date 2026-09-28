@@ -474,5 +474,22 @@ export default {
       files: ["src/typefacts.ts"],
       rules: { "effecttsgo/async-function": "off" },
     },
+    {
+      // `Options` is a bag of independent run choices -- carry tsgo's own
+      // diagnostics, resolve types, discover with tsgo, replay, scope -- not a
+      // state machine. Every combination is meaningful and none is invalid, so
+      // there is no union to classify into. The rule assumes boolean flags that
+      // encode one state; these do not.
+      files: ["src/check.ts"],
+      rules: { "plumb/no-boolean-field-signals": "off" },
+    },
+    {
+      // `exported`, `typed` and `test` are three independent facts about a
+      // declaration, each read on its own. None implies another and no
+      // combination is invalid, so a tagged union would model a state that does
+      // not exist.
+      files: ["src/workspace.ts"],
+      rules: { "plumb/no-boolean-field-signals": "off" },
+    },
   ],
 };

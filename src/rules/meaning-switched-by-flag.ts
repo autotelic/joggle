@@ -15,7 +15,7 @@ import {
 } from "../rule.ts"
 import { verdictOf } from "../verdict.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import type { GuardSite, Unit, Workspace } from "../workspace.ts"
+import { unitFields, type GuardSite, type Unit, type Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/meaning-switched-by-flag"
 
@@ -68,7 +68,7 @@ export const meaningSwitchedByFlag: PlannedRule = {
         // `fieldTypes` keeps the annotation with its colon: ": boolean".
         if (annotation.replace(/^\s*:\s*/, "").trim() !== "boolean") continue
         if (!flags.has(field)) {
-          flags.set(field, { field, unit: unit.name, file: unit.file, fields: unit.fields })
+          flags.set(field, { field, unit: unit.name, file: unit.file, fields: unitFields(unit) })
         }
       }
     }

@@ -44,7 +44,7 @@ import {
  * size, and the talk is honest about the overheads -- memory, and "global
  * algorithms harm incrementality" -- that such a system brings with it.
  */
-export const CACHE_VERSION = "7"
+export const CACHE_VERSION = "8"
 
 /** A file's text: the pair a parse's cache key is built from. */
 interface FileText {
@@ -68,7 +68,6 @@ const encodeUnit = (unit: Unit): typeof EncodedUnit.Type => ({
   shapeHash: unit.shapeHash,
   typeRefs: unit.typeRefs,
   typed: unit.typed,
-  fields: unit.fields,
   fieldTypes: Object.fromEntries(unit.fieldTypes),
   bases: unit.composed.map((base) => base.name),
   test: unit.test,
@@ -107,7 +106,6 @@ const EncodedUnit = Schema.Struct({
   shapeHash: Schema.String,
   typeRefs: Schema.Array(Schema.String),
   typed: Schema.Boolean,
-  fields: Schema.Array(Schema.String),
   fieldTypes: Schema.Record(Schema.String, Schema.String),
   // Absent in caches written before composition was recorded; the version bump
   // rebuilds them, and this keeps a stale entry decodable rather than an issue.
@@ -184,7 +182,6 @@ const unitFrom = (
     shapeHash: entry.shapeHash,
     typeRefs: entry.typeRefs,
     typed: entry.typed,
-    fields: entry.fields,
     fieldTypes: new Map(Object.entries(entry.fieldTypes)),
     composed: (entry.bases ?? []).map((name) => ({ name, resolved: "" })),
     test: entry.test,

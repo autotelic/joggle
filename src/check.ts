@@ -376,14 +376,12 @@ export const checkRepository = Effect.fn("joggle.check")(function* (options: Opt
   // The parse cache is a performance artifact, like the run cache and the wire
   // cache, so it lives in the machine cache and never in the repository.
   const parseCache = yield* loadParses({ cacheDir: runCache, tool: toolFingerprint })
-  const workspace = yield* loadWorkspace(
-    options.cwd,
-    options.paths,
-    files,
+  const workspace = yield* loadWorkspace(options.cwd, options.paths, {
+    discovered: files,
     contents,
-    parseCache.parses,
+    parses: parseCache.parses,
     types,
-  )
+  })
   // Written after the load, and only when something was actually parsed.
   yield* parseCache.save
 

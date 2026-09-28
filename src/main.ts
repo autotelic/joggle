@@ -454,7 +454,7 @@ const calibrateCommand = Command.make(
           const loaded = yield* loadTypeFacts({ root: cwd, cacheDir, tool, manifest })
           types = loaded.index
         }
-        const workspace = yield* loadWorkspace(cwd, inputs, undefined, undefined, undefined, types)
+        const workspace = yield* loadWorkspace(cwd, inputs, { types })
         let nodeTypes: NodeTypeIndex | undefined
         if (config.types) {
           const requests = workspace.files

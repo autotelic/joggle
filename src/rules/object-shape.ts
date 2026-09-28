@@ -15,7 +15,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import type { Unit, Workspace } from "../workspace.ts"
+import { unitFields, type Unit, type Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/object-shape"
 
@@ -74,10 +74,10 @@ export const objectShape: PlannedRule = {
       const id = unit.file + "#" + unit.name
       const cached = complete.get(id)
       if (cached !== undefined) return cached
-      if (seen.has(id)) return new Set(unit.fields)
+      if (seen.has(id)) return new Set(unitFields(unit))
       const next = new Set(seen)
       next.add(id)
-      const fields = new Set(unit.fields)
+      const fields = new Set(unitFields(unit))
       for (const base of unit.composed) {
         const target = byId.get(base.resolved)
         if (target === undefined) continue

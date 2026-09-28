@@ -13,7 +13,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import type { Unit, Workspace } from "../workspace.ts"
+import { unitFields, type Unit, type Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/compose-types"
 
@@ -33,10 +33,10 @@ const VIOLATIONS = { verdict: ["composes", "same_name_drift"] } as const
 // with different fields -- is the judgement, and it used to be left to the reader.
 const isTypeUnit = (unit: Unit): boolean =>
   (unit.kind === "interface" || unit.kind === "type") &&
-  unit.fields.length >= policy.composeTypes.minFields
+  unitFields(unit).length >= policy.composeTypes.minFields
 
 /** A field set as a comparable key, order-insensitive. */
-const signatureOf = (unit: Unit): string => [...unit.fields].sort(Order.String).join("\u0000")
+const signatureOf = (unit: Unit): string => [...unitFields(unit)].sort(Order.String).join("\u0000")
 
 /**
  * Whether two declarations of one field can compose.
@@ -92,12 +92,12 @@ export const composeTypes: PlannedRule = {
     const candidates: Array<{ whole: Unit; part: Unit; added: ReadonlyArray<string> }> = []
     for (const whole of bounded) {
       if (scope.changed !== undefined && !scope.changed.has(whole.file)) continue
-      const wholeFields = new Set(whole.fields)
+      const wholeFields = new Set(unitFields(whole))
       let best: Unit | undefined
       for (const [signature, part] of parts) {
-        if (part.fields.length >= whole.fields.length) continue
-        if (best !== undefined && part.fields.length <= best.fields.length) continue
-        if (whole.fields.length - part.fields.length > part.fields.length) continue
+        if (unitFields(part).length >= unitFields(whole).length) continue
+        if (best !== undefined && unitFields(part).length <= unitFields(best).length) continue
+        if (unitFields(whole).length - unitFields(part).length > unitFields(part).length) continue
         // Field-NAME containment, which is a fact. Whether the two types are
         // compatible is the question's business, not the generator's: the
         // word-subset test that used to live here decided a type question in code
@@ -106,7 +106,7 @@ export const composeTypes: PlannedRule = {
         if (contained) best = part
       }
       if (best === undefined) continue
-      const added = whole.fields.filter((field) => !best.fields.includes(field))
+      const added = unitFields(whole).filter((field) => !unitFields(best).includes(field))
       candidates.push({ whole, part: best, added })
     }
 
@@ -130,7 +130,7 @@ export const composeTypes: PlannedRule = {
         const sameName = whole.name === part.name
         // The state is the pair and the fields they share, with the declared type
         // of each shared field, so the question can weigh "is B genuinely an A".
-        const shared = part.fields.map((field) => ({
+        const shared = unitFields(part).map((field) => ({
           field,
           partType: part.fieldTypes.get(field) ?? null,
           wholeType: whole.fieldTypes.get(field) ?? null,
@@ -151,7 +151,7 @@ export const composeTypes: PlannedRule = {
           decisions: {
             verdict: Decision.classify({
               instructions: [
-                `\`atoms[${id}].whole\` (${whole.name}) lists all ${part.fields.length} field(s) of \`atoms[${id}].part\` (${part.name}) and adds ${added.length}: ${added.join(", ")}.`,
+                `\`atoms[${id}].whole\` (${whole.name}) lists all ${unitFields(part).length} field(s) of \`atoms[${id}].part\` (${part.name}) and adds ${added.length}: ${added.join(", ")}.`,
                 sameName
                   ? "The two declarations share a NAME."
                   : "The two declarations have different names.",
@@ -255,7 +255,7 @@ const findingFor = (
       part: part.name,
       count: added.length,
       fields: added.join(drifted ? ", " : "; "),
-      partFields: part.fields.length,
+      partFields: unitFields(part).length,
       wholeAt: whole.file + ":" + whole.location.line,
       partAt: part.file + ":" + part.location.line,
       unverified: unverifiedReason === undefined ? "" : " Not verified: " + unverifiedReason + ".",

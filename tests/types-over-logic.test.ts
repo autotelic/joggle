@@ -39,14 +39,7 @@ const types = indexOf([
 ])
 
 const fixture = () =>
-  loadWorkspace(
-    "tests/fixtures/types-over-logic",
-    ["src"],
-    undefined,
-    undefined,
-    undefined,
-    types,
-  )
+  loadWorkspace("tests/fixtures/types-over-logic", ["src"], { types })
 
 it.effect("guards on values the checker left wide are the candidates", () =>
   Effect.gen(function* () {

@@ -14,7 +14,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import type { Unit, Workspace } from "../workspace.ts"
+import { unitFields, type Unit, type Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/name-the-primitive"
 
@@ -34,7 +34,7 @@ const VIOLATIONS = { verdict: ["one_thing"] } as const
 // thing? -- used to be left to the reader. It is now asked.
 const isTypeUnit = (unit: Unit): boolean =>
   (unit.kind === "interface" || unit.kind === "type") &&
-  unit.fields.length >= policy.nameThePrimitive.minFields
+  unitFields(unit).length >= policy.nameThePrimitive.minFields
 
 const signatureOf = (fields: ReadonlyArray<string>): string => [...fields].sort(Order.String).join("\u0000")
 
@@ -69,11 +69,11 @@ export const nameThePrimitive: PlannedRule = {
 
     // Every field set that already has a name, so a group that is one of them is
     // not a candidate: that is `compose-types`' finding, and it is the better one.
-    const named = new Set(types.map((unit) => signatureOf(unit.fields)))
+    const named = new Set(types.map((unit) => signatureOf(unitFields(unit))))
 
     const pairOccurrences = new Map<string, Array<Unit>>()
     for (const unit of types) {
-      const fields = [...new Set(unit.fields)]
+      const fields = [...new Set(unitFields(unit))]
       for (let a = 0; a < fields.length; a += 1) {
         for (let b = a + 1; b < fields.length; b += 1) {
           const left = fields[a]
@@ -95,9 +95,9 @@ export const nameThePrimitive: PlannedRule = {
     for (const [, units] of considered) {
       const first = units[0]
       if (first === undefined) continue
-      let group = new Set(first.fields)
+      let group = new Set(unitFields(first))
       for (const unit of units) {
-        const fields = new Set(unit.fields)
+        const fields = new Set(unitFields(unit))
         group = new Set([...group].filter((field) => fields.has(field)))
       }
       if (group.size < minFields) continue
