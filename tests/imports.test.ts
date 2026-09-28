@@ -35,9 +35,9 @@ it.effect("the graph records importers by file and by name", () =>
   Effect.gen(function* () {
     const path = yield* Path.Path
     const files = [
-      { path: "src/types.ts", text: "", units: [], imports: [], facts: empty },
-      { path: "src/a.ts", text: "", units: [], imports: [{ specifier: "./types", names: ["Task"], typeOnly: false }], facts: empty },
-      { path: "src/b.ts", text: "", units: [], imports: [{ specifier: "./types", names: [], typeOnly: false }], facts: empty },
+      { path: "src/types.ts", text: "", units: [], importStatements: [], facts: empty },
+      { path: "src/a.ts", text: "", units: [], importStatements: [{ specifier: "./types", names: ["Task"], typeOnly: false }], facts: empty },
+      { path: "src/b.ts", text: "", units: [], importStatements: [{ specifier: "./types", names: [], typeOnly: false }], facts: empty },
     ]
     const graph = buildImportGraph(files, path)
     expect(graph.unresolved).toBe(0)

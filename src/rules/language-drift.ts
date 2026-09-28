@@ -95,7 +95,7 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Candida
     for (const segment of unit.file.split("/")) for (const word of wordsOf(segment)) identifiers.add(word)
   }
   for (const file of workspace.files) {
-    for (const imported of file.imports) {
+    for (const imported of file.importStatements) {
       for (const name of imported.names) for (const word of wordsOf(name)) identifiers.add(word)
     }
   }

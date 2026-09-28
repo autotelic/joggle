@@ -347,7 +347,7 @@ export interface SourceFile {
   readonly text: string
   readonly units: ReadonlyArray<Unit>
   /** Raw import/re-export statements, before resolution. */
-  readonly imports: ReadonlyArray<ParsedImport>
+  readonly importStatements: ReadonlyArray<ParsedImport>
   /** Names the file spells: what it calls, what it renders, what it declares. */
   readonly facts: StructureFacts
 }
@@ -1637,7 +1637,7 @@ const sourceFileFrom = ({ file, text, parsed }: ParsedFileText): SourceFile => {
   const allOptionalFunctions = sites
     .filter((site) => site.kind === "function" && site.allParamsOptional)
     .map((site) => site.name)
-  return { path: file, text, units, imports, facts: structureIn(program, allOptionalFunctions) }
+  return { path: file, text, units, importStatements: imports, facts: structureIn(program, allOptionalFunctions) }
 }
 
 /** A file we read, and either parsed or could not. */

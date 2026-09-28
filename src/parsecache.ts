@@ -45,7 +45,7 @@ import {
  * size, and the talk is honest about the overheads -- memory, and "global
  * algorithms harm incrementality" -- that such a system brings with it.
  */
-export const CACHE_VERSION = "8"
+export const CACHE_VERSION = "9"
 
 /** One parse's key: which file, and what it said. */
 export const keyOf = ({ file, text }: FileText): string =>
@@ -71,7 +71,7 @@ const encodeUnit = (unit: Unit): typeof EncodedUnit.Type => ({
 
 const encodeSourceFile = (file: SourceFile): typeof EncodedFile.Type => ({
   units: file.units.map(encodeUnit),
-  imports: file.imports,
+  imports: file.importStatements,
   facts: file.facts,
 })
 
@@ -195,7 +195,7 @@ const sourceFileFrom = (
     path: source.file,
     text: source.text,
     units,
-    imports: entry.imports,
+    importStatements: entry.imports,
     facts: entry.facts,
   }
 }

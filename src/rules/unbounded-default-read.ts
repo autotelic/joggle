@@ -67,7 +67,7 @@ export const unboundedDefaultRead: PlannedRule = {
     const report = reporter(unboundedDefaultRead, locator(workspace))
     const dataFiles = new Set<string>()
     for (const file of workspace.files) {
-      if (file.imports.some((entry) => isDataPackage(entry.specifier))) dataFiles.add(file.path)
+      if (file.importStatements.some((entry) => isDataPackage(entry.specifier))) dataFiles.add(file.path)
     }
     const byIdentity = new Map<string, Unit>()
     for (const unit of workspace.units) byIdentity.set(unit.file + "#" + unit.name, unit)

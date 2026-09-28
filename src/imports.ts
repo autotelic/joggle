@@ -111,7 +111,7 @@ export const buildImportGraph = (
   let unresolved = 0
 
   for (const file of files) {
-    for (const statement of file.imports) {
+    for (const statement of file.importStatements) {
       const target = resolveSpecifier({ from: file.path, specifier: statement.specifier, known, path })
       if (target === undefined) unresolved += 1
       edges.push({
