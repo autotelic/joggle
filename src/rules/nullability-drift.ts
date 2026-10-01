@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
-import { lineAt, lineStarts } from "../cascade.ts"
+import { lineAt } from "../cascade.ts"
 import { type PlannedCandidate } from "../plans.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
 import { locator, messages, reporter, type Report } from "../reporting.ts"
@@ -14,7 +14,7 @@ import {
   type Scope,
 } from "../rule.ts"
 import type { Diagnostic, Drop } from "../schema.ts"
-import type { Workspace } from "../workspace.ts"
+import { lineStarts, type Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/nullability-drift"
 

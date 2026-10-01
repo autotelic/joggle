@@ -1,19 +1,5 @@
 import type { Edit } from "./schema.ts"
-import type { Unit, Workspace } from "./workspace.ts"
-
-/**
- * The offset at which each line of a file begins.
- *
- * @param text - The file's text.
- * @returns One offset per line, the first being 0.
- */
-export const lineStarts = (text: string): ReadonlyArray<number> => {
-  const found: Array<number> = [0]
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] === "\n") found.push(index + 1)
-  }
-  return found
-}
+import { lineStarts, type Unit, type Workspace } from "./workspace.ts"
 
 /**
  * The 1-based line of a character offset.
