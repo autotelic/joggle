@@ -10,6 +10,9 @@ import {
 } from "./imports.ts"
 import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
 import { shortHash } from "./state.ts"
+import { blockingErrors, componentName, isAstro, parseInputOf } from "./astro.ts"
+import { tsconfigScope } from "./tsconfig-scope.ts"
+import { looksLikeSource } from "./source.ts"
 import { manifestAt, type PackageManifest } from "./manifest.ts"
 
 export type { PackageManifest } from "./manifest.ts"
@@ -630,20 +633,20 @@ export const tokenize = (shape: string): ReadonlyArray<string> => {
 
 
 /**
- * One offset per line, counted in UTF-8 BYTES.
+ * The offset at which each line of a file begins, in UTF-16 code units.
  *
- * The parser reports byte offsets, so a location is a byte offset and its table
- * has to agree. `cascade.lineStarts` counts UTF-16 code units instead -- it
- * serves locations the parser did not produce -- and the two are different
- * functions with different units, not one helper spelled twice.
+ * The unit the parser reports, so a parser offset and a line table agree. A
+ * table in UTF-8 bytes put every declaration after an em dash on the wrong line.
+ *
+ * @param text - The file's text.
+ * @returns One offset per line, the first being 0.
  */
-const byteLineStarts = (text: string): ReadonlyArray<number> => {
-  const bytes = Buffer.from(text, "utf8")
-  const starts: Array<number> = [0]
-  for (let index = 0; index < bytes.length; index += 1) {
-    if (bytes[index] === 0x0a) starts.push(index + 1)
+export const lineStarts = (text: string): ReadonlyArray<number> => {
+  const found: Array<number> = [0]
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "\n") found.push(index + 1)
   }
-  return starts
+  return found
 }
 
 const locate = (starts: ReadonlyArray<number>, offset: number): { line: number; column: number } => {
@@ -662,24 +665,6 @@ const locate = (starts: ReadonlyArray<number>, offset: number): { line: number; 
 /* -------------------------------------------------------------------------- */
 /* Extraction                                                                  */
 /* -------------------------------------------------------------------------- */
-
-/**
- * What counts as source.
- *
- * This used to be TypeScript only, and it was never a decision: the extension
- * list arrived with the first rebuild and nobody revisited it. On one real
- * repository that meant 1,457 JavaScript files -- an entire API and an entire
- * admin UI -- were never read, while the report said "287 files" with no hint
- * that four fifths of the tree was missing. A partial analysis that looks
- * complete is the worst output this program can produce.
- *
- * Declarations stay out: a `.d.ts` describes a build's output rather than a
- * source file, and analysing one reports on code nobody wrote.
- */
-const looksLikeSource = (file: string): boolean => {
-  if (file.endsWith(".d.ts") || file.endsWith(".d.mts") || file.endsWith(".d.cts")) return false
-  return /\.(?:[cm]?[jt]sx?)$/.test(file)
-}
 
 type Lang = "js" | "jsx" | "ts" | "tsx"
 
@@ -703,6 +688,7 @@ const langOf = (file: string): Lang => {
     case ".ts":
     case ".mts":
     case ".cts":
+    case ".astro":
       return "ts"
     default:
       return "js"
@@ -1581,7 +1567,7 @@ const sourceFileFrom = ({ file, text, parsed }: ParsedFileText): SourceFile => {
     }
     return best?.value.replace(/^\s*\*+\s?/gm, "").trim() || undefined
   }
-  const starts = byteLineStarts(text)
+  const starts = lineStarts(text)
 
   const units: Array<Unit> = []
   const sites = isRecord(program) ? sitesIn(program, text) : []
@@ -1651,6 +1637,19 @@ export interface FileText {
   readonly text: string
 }
 
+/** An `.astro` file's `Props`, named after its component; any other file unchanged. */
+const withComponentProps = (source: SourceFile): SourceFile =>
+  !isAstro(source.path)
+    ? source
+    : {
+        ...source,
+        units: source.units.map((unit) =>
+          unit.name === "Props" && (unit.kind === "interface" || unit.kind === "type")
+            ? { ...unit, name: componentName(source.path) + "Props" }
+            : unit,
+        ),
+      }
+
 /**
  * Parse a file, giving `.js` a second reading as JSX.
  *
@@ -1661,14 +1660,15 @@ export interface FileText {
  */
 const parseSourceFile = ({ file, text }: FileText): ParseOutcome => {
   const lang = langOf(file)
-  const first = parseSync(file, text, { sourceType: "module", lang })
-  if (first.errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: first }) }
+  const first = parseSync(file, parseInputOf({ file, text }), { sourceType: "module", lang })
+  const errors = blockingErrors(file, first.errors)
+  if (errors.length === 0) return { ok: true, file: withComponentProps(sourceFileFrom({ file, text, parsed: first })) }
 
   if (lang === "js") {
     const retry = parseSync(file, text, { sourceType: "module", lang: "jsx" })
     if (retry.errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: retry }) }
   }
-  return { ok: false, reason: describeParseErrors(first.errors) }
+  return { ok: false, reason: describeParseErrors(errors) }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1903,12 +1903,20 @@ export const discoverFiles = (
   discovered: ReadonlyArray<string> | undefined,
 ): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   discovered !== undefined
-    ? Effect.succeed({
-        files: discovered,
-        skippedExtensions: [],
-        truncated: false,
-        ignored: 0,
-        ignoredDirectories: 0,
+    ? Effect.gen(function* () {
+        const path = yield* Path.Path
+        const inScope = yield* tsconfigScope(root)
+        const walked = yield* resolveInputs(root, ["."])
+        const astro = walked.files.filter(
+          (file) => isAstro(file) && inScope(path.relative(root, file).split(path.sep).join("/")),
+        )
+        return {
+          files: [...discovered, ...astro].sort(Order.String),
+          skippedExtensions: [],
+          truncated: walked.truncated,
+          ignored: 0,
+          ignoredDirectories: 0,
+        }
       })
     : resolveInputs(root, inputs.length > 0 ? inputs : ["."])
 

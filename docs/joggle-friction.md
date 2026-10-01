@@ -389,3 +389,66 @@ confidence 0.56 is the model saying it cannot tell. The rule now reports only a
 confident answer and drops an unsure one with the reason -- unlike the duplicate
 rules, where an unsure answer still points at two declarations a reader can
 compare.
+
+
+## Round six: the first Astro site
+
+`auto-emdash/site`: an emdash CMS on Astro, 44 `.astro` files and 3 `.ts` files
+under `src/`, server-rendered, no islands. Before `.astro` support joggle read the
+3 `.ts` files. With it, `joggle check src` parses all 47 with none unparsed, in
+0.7s, asking 14 questions on about 20,000 input tokens.
+
+**What it found.** Four findings, two verified:
+
+- `object-shape` (verified): six pages build `{ path, siteTitle, siteUrl }` with
+  no type. Real.
+- `duplicate-meaning` (notice, margin 0.18): `hrefWith` in `Filters.astro` and
+  `pageHref` in `InsightList.astro` both copy the query string, edit one
+  parameter and rebuild a link. A fair thing to put in front of a reviewer.
+- `duplicate-implementation` (printed, though its question answered no at 0.39):
+  three cards share the `Props` shape `{ entry: any }`. The model is right that
+  they are not one concept; what they share is that none of them uses the
+  generated `Insight`, `People` or `Project` type. That is the candidate
+  `astro/prop-skips-content-type` is for.
+- `dependency-fit`: "site imports `astro:content` but does not declare it". A
+  false positive. `astro:*` specifiers are virtual modules the `astro` package
+  provides, and the site declares `astro`. **Open.**
+
+**What it missed, and why.** The `buttons` array built identically in
+`Text.astro` and `SplitTextMedia.astro`, and `entry.data.terms?.category?.[0]` in
+five files, were not reported. Both are top-level frontmatter statements, and a
+unit is a function, an interface, a type or a class: top-level code in a `.ts`
+file is equally invisible. In a `.ts` codebase that is a small blind spot; in an
+Astro one the frontmatter's top level IS most of the logic. **Open**, and the
+largest gap this run found.
+
+**A keyless run is replayed after the key arrives (open).** The first run had no
+`TYPESAFE_API_KEY`; the second, through `scripts/joggle.sh`, had one and printed
+"replayed the previous run: nothing it depends on changed", with every judged
+rule still reported as missing its key. Whether a model is reachable is an input
+to the report and is not in the run manifest. Deleting `last-run.json` under the
+machine cache was the workaround.
+
+**No-paths falls back to the walk without saying so (open).** The site does not
+install `tsgo` (Astro projects typecheck with `astro check`), so `tsgo
+--listFilesOnly` failed and the no-paths run walked the whole tree instead: 58
+files including `scripts/` and config files, and a "not parsed" note listing 103
+images, markdown files and JSON. The fallback is reasonable; that nothing says
+tsgo was unavailable is not.
+
+**An answer replayed from the wire cache can miss `.joggle/answers/` (fixed).**
+Onboarding the site (`site/.joggle/`, first judged run with the key) wrote 55
+shards, but an `--offline` run with an empty machine cache still reported "2
+unavailable": one Classify decision, asked twice through `memoize`, was absent
+from the committed store. A second keyed run with the run cache deleted still
+left it missing; a third (`--no-replay`) found it absent, replayed it from
+`wire.json` and wrote it. CI would have reported those findings as unavailable.
+
+The cause was in the store, not the wire. `put` marked its shard dirty outside
+the writer permit, and `flush` read the dirty set, wrote it, then cleared the
+whole set, so a put that landed mid-flush lost its mark and its own flush found
+nothing to write. The answer stayed in memory, so the run looked right. With 64
+concurrent puts, one reached disk. `flush` now takes and clears the set in one
+step inside the permit. The check that caught it, an `--offline` run with
+`XDG_CACHE_HOME` pointed at an empty directory, is worth doing after any
+onboarding.
