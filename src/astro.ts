@@ -1,3 +1,6 @@
+import type { Predicate } from "effect"
+import type { FileText } from "./workspace.ts"
+
 /*
  * The TypeScript inside an `.astro` file, located so the parser can read it in place.
  *
@@ -67,3 +70,22 @@ export const blankOutside = (text: string, regions: ReadonlyArray<Region>): stri
   }
   return out + blank(cursor, text.length)
 }
+
+/** A path to an Astro component or page. */
+export const isAstro: Predicate.Predicate<string> = (file) => file.endsWith(".astro")
+
+/** What the parser reads for a file: the blanked copy for `.astro`, the text otherwise. */
+export const parseInputOf = ({ file, text }: FileText): string =>
+  isAstro(file) ? blankOutside(text, astroRegions(text)) : text
+
+/**
+ * oxc's message for a `return` outside a function. Astro frontmatter may
+ * `return Astro.redirect(...)`, and oxc still returns the whole tree with it.
+ */
+const TOP_LEVEL_RETURN = "A 'return' statement can only be used within a function body."
+
+/** The errors that make a parse unusable: for `.astro`, all but a top-level `return`. */
+export const blockingErrors = <E extends { readonly message: string }>(
+  file: string,
+  errors: ReadonlyArray<E>,
+): ReadonlyArray<E> => (isAstro(file) ? errors.filter((error) => error.message !== TOP_LEVEL_RETURN) : errors)

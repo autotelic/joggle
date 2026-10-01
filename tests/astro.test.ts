@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest"
+import { Effect } from "effect"
+import { NodeServices } from "@effect/platform-node"
 import { astroRegions, blankOutside } from "../src/astro.ts"
+import { loadWorkspace } from "../src/workspace.ts"
+
+const astroWorkspace = () =>
+  Effect.runPromise(loadWorkspace("tests/fixtures/astro", ["src"]).pipe(Effect.provide(NodeServices.layer)))
 
 const read = (text: string): ReadonlyArray<string> =>
   astroRegions(text).map((region) => text.slice(region.start, region.end))
@@ -35,5 +41,40 @@ describe("blankOutside", () => {
     const blanked = blankOutside(text, astroRegions(text))
     expect(blanked.length).toBe(text.length)
     expect(blanked).toBe("   \nconst a = 1\n   \n        \n")
+  })
+})
+
+describe("parsing .astro files", () => {
+  test("frontmatter declarations are units with their real text and lines", async () => {
+    const workspace = await astroWorkspace()
+    const heading = workspace.units.find((unit) => unit.name === "heading")
+    expect(heading?.file).toBe("src/components/Card.astro")
+    expect(heading?.location.line).toBe(11)
+    expect(heading?.text).toBe("(): string => formatTitle(title)")
+  })
+
+  test("a script's declarations are units, located past non-ASCII template text", async () => {
+    const workspace = await astroWorkspace()
+    const toggle = workspace.units.find((unit) => unit.name === "toggleCard")
+    expect(toggle?.file).toBe("src/components/Card.astro")
+    expect(toggle?.location.line).toBe(17)
+    expect(toggle?.text.startsWith("function toggleCard")).toBe(true)
+  })
+
+  test("a top-level return in the frontmatter is allowed", async () => {
+    const workspace = await astroWorkspace()
+    expect(workspace.units.some((unit) => unit.name === "destination")).toBe(true)
+  })
+
+  test("any other syntax error leaves the file unparsed, and says so", async () => {
+    const workspace = await astroWorkspace()
+    expect(workspace.unparsed.map((file) => file.path)).toEqual(["src/pages/broken.astro"])
+  })
+
+  test("an import of an .astro file resolves to it", async () => {
+    const workspace = await astroWorkspace()
+    const edge = workspace.imports.edges.find((entry) => entry.specifier === "../components/Card.astro")
+    expect(edge?.resolution).toBe("resolved")
+    expect(edge?.to).toBe("src/components/Card.astro")
   })
 })

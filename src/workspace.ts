@@ -10,6 +10,7 @@ import {
 } from "./imports.ts"
 import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
 import { shortHash } from "./state.ts"
+import { blockingErrors, parseInputOf } from "./astro.ts"
 import { looksLikeSource } from "./source.ts"
 import { manifestAt, type PackageManifest } from "./manifest.ts"
 
@@ -686,6 +687,7 @@ const langOf = (file: string): Lang => {
     case ".ts":
     case ".mts":
     case ".cts":
+    case ".astro":
       return "ts"
     default:
       return "js"
@@ -1644,14 +1646,15 @@ export interface FileText {
  */
 const parseSourceFile = ({ file, text }: FileText): ParseOutcome => {
   const lang = langOf(file)
-  const first = parseSync(file, text, { sourceType: "module", lang })
-  if (first.errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: first }) }
+  const first = parseSync(file, parseInputOf({ file, text }), { sourceType: "module", lang })
+  const errors = blockingErrors(file, first.errors)
+  if (errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: first }) }
 
   if (lang === "js") {
     const retry = parseSync(file, text, { sourceType: "module", lang: "jsx" })
     if (retry.errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: retry }) }
   }
-  return { ok: false, reason: describeParseErrors(first.errors) }
+  return { ok: false, reason: describeParseErrors(errors) }
 }
 
 /* -------------------------------------------------------------------------- */

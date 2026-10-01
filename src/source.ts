@@ -15,9 +15,10 @@ import type { Predicate } from "effect"
  * source.
  *
  * Declarations stay out: a `.d.ts` describes a build's output rather than a
- * source file, and analysing one reports on code nobody wrote.
+ * source file, and analysing one reports on code nobody wrote. `.astro` files
+ * count: their frontmatter and scripts are TypeScript, read through `astro.ts`.
  */
 export const looksLikeSource: Predicate.Predicate<string> = (file) => {
   if (file.endsWith(".d.ts") || file.endsWith(".d.mts") || file.endsWith(".d.cts")) return false
-  return /\.(?:[cm]?[jt]sx?)$/.test(file)
+  return /\.(?:[cm]?[jt]sx?|astro)$/.test(file)
 }
