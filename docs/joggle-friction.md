@@ -435,3 +435,16 @@ install `tsgo` (Astro projects typecheck with `astro check`), so `tsgo
 files including `scripts/` and config files, and a "not parsed" note listing 103
 images, markdown files and JSON. The fallback is reasonable; that nothing says
 tsgo was unavailable is not.
+
+**An answer replayed from the wire cache can miss `.joggle/answers/` (open).**
+Onboarding the site (`site/.joggle/`, first judged run with the key) wrote 55
+shards, but an `--offline` run with an empty machine cache still reported "2
+unavailable": one Classify decision, asked twice through `memoize`, was absent
+from the committed store. A second keyed run with the run cache deleted still
+left it missing; a third (`--no-replay`) found it absent, replayed it from
+`wire.json` and wrote it. Something on the first runs dropped the put. The
+suspects are the same decision being put twice concurrently, or the run cache
+replaying around the store. CI would have reported those findings as
+unavailable. The check that caught it was an `--offline` run with
+`XDG_CACHE_HOME` pointed at an empty directory, which is worth doing after any
+onboarding.
