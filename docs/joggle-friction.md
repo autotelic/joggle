@@ -436,15 +436,19 @@ files including `scripts/` and config files, and a "not parsed" note listing 103
 images, markdown files and JSON. The fallback is reasonable; that nothing says
 tsgo was unavailable is not.
 
-**An answer replayed from the wire cache can miss `.joggle/answers/` (open).**
+**An answer replayed from the wire cache can miss `.joggle/answers/` (fixed).**
 Onboarding the site (`site/.joggle/`, first judged run with the key) wrote 55
 shards, but an `--offline` run with an empty machine cache still reported "2
 unavailable": one Classify decision, asked twice through `memoize`, was absent
 from the committed store. A second keyed run with the run cache deleted still
 left it missing; a third (`--no-replay`) found it absent, replayed it from
-`wire.json` and wrote it. Something on the first runs dropped the put. The
-suspects are the same decision being put twice concurrently, or the run cache
-replaying around the store. CI would have reported those findings as
-unavailable. The check that caught it was an `--offline` run with
-`XDG_CACHE_HOME` pointed at an empty directory, which is worth doing after any
+`wire.json` and wrote it. CI would have reported those findings as unavailable.
+
+The cause was in the store, not the wire. `put` marked its shard dirty outside
+the writer permit, and `flush` read the dirty set, wrote it, then cleared the
+whole set, so a put that landed mid-flush lost its mark and its own flush found
+nothing to write. The answer stayed in memory, so the run looked right. With 64
+concurrent puts, one reached disk. `flush` now takes and clears the set in one
+step inside the permit. The check that caught it, an `--offline` run with
+`XDG_CACHE_HOME` pointed at an empty directory, is worth doing after any
 onboarding.
