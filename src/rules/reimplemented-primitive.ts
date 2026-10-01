@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
-import { lineAt, lineStarts } from "../cascade.ts"
+import { lineAt } from "../cascade.ts"
 import { policy } from "../policy.ts"
 import { verdictsOf, type Plan } from "../plans.ts"
 import { locator, messages, reporter, type Report } from "../reporting.ts"
@@ -16,7 +16,7 @@ import {
 } from "../rule.ts"
 import { stripFile } from "./call-pattern.ts"
 import type { Diagnostic, Drop, Edit } from "../schema.ts"
-import type { Unit, Workspace } from "../workspace.ts"
+import { lineStarts, type Unit, type Workspace } from "../workspace.ts"
 
 const RULE_ID = "joggle/reimplemented-primitive"
 

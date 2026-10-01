@@ -1,8 +1,8 @@
 import type { Diagnostic, Repair, Severity, SourceLocation } from "./schema.ts"
 import type { Move } from "./moves.ts"
 import { RuleAuthoringError } from "./schema.ts"
-import type { SourceFile, Unit, Workspace } from "./workspace.ts"
-import { lineAt, lineStarts } from "./cascade.ts"
+import { lineStarts, type SourceFile, type Unit, type Workspace } from "./workspace.ts"
+import { lineAt } from "./cascade.ts"
 import { finding } from "./rule.ts"
 
 /**
