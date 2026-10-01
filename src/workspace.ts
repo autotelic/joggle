@@ -10,7 +10,7 @@ import {
 } from "./imports.ts"
 import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
 import { shortHash } from "./state.ts"
-import { blockingErrors, parseInputOf } from "./astro.ts"
+import { blockingErrors, componentName, isAstro, parseInputOf } from "./astro.ts"
 import { looksLikeSource } from "./source.ts"
 import { manifestAt, type PackageManifest } from "./manifest.ts"
 
@@ -1636,6 +1636,19 @@ export interface FileText {
   readonly text: string
 }
 
+/** An `.astro` file's `Props`, named after its component; any other file unchanged. */
+const withComponentProps = (source: SourceFile): SourceFile =>
+  !isAstro(source.path)
+    ? source
+    : {
+        ...source,
+        units: source.units.map((unit) =>
+          unit.name === "Props" && (unit.kind === "interface" || unit.kind === "type")
+            ? { ...unit, name: componentName(source.path) + "Props" }
+            : unit,
+        ),
+      }
+
 /**
  * Parse a file, giving `.js` a second reading as JSX.
  *
@@ -1648,7 +1661,7 @@ const parseSourceFile = ({ file, text }: FileText): ParseOutcome => {
   const lang = langOf(file)
   const first = parseSync(file, parseInputOf({ file, text }), { sourceType: "module", lang })
   const errors = blockingErrors(file, first.errors)
-  if (errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: first }) }
+  if (errors.length === 0) return { ok: true, file: withComponentProps(sourceFileFrom({ file, text, parsed: first })) }
 
   if (lang === "js") {
     const retry = parseSync(file, text, { sourceType: "module", lang: "jsx" })

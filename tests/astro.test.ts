@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
-import { astroRegions, blankOutside } from "../src/astro.ts"
+import { astroRegions, blankOutside, componentName } from "../src/astro.ts"
 import { loadWorkspace } from "../src/workspace.ts"
 
 const astroWorkspace = () =>
@@ -69,6 +69,24 @@ describe("parsing .astro files", () => {
   test("any other syntax error leaves the file unparsed, and says so", async () => {
     const workspace = await astroWorkspace()
     expect(workspace.unparsed.map((file) => file.path)).toEqual(["src/pages/broken.astro"])
+  })
+
+  test("a component's name comes from its file", () => {
+    expect(componentName("src/components/cards/ProjectCard.astro")).toBe("ProjectCard")
+    expect(componentName("src/pages/[slug].astro")).toBe("Slug")
+    expect(componentName("src/pages/work/index.astro")).toBe("Index")
+    expect(componentName("src/pages/not-found.astro")).toBe("NotFound")
+  })
+
+  test("an .astro file's Props is named after the component, at its real line", async () => {
+    const workspace = await astroWorkspace()
+    const props = workspace.units.find(
+      (unit) => unit.file === "src/components/Card.astro" && unit.kind === "interface",
+    )
+    expect(props?.name).toBe("CardProps")
+    expect(props?.location.line).toBe(5)
+    expect(props?.text.startsWith("interface Props")).toBe(true)
+    expect(workspace.units.some((unit) => unit.name === "Props")).toBe(false)
   })
 
   test("an import of an .astro file resolves to it", async () => {

@@ -71,6 +71,19 @@ export const blankOutside = (text: string, regions: ReadonlyArray<Region>): stri
   return out + blank(cursor, text.length)
 }
 
+/**
+ * The name Astro gives a component: its file's, as an identifier.
+ *
+ * Every component declares `interface Props`, and Astro reads it by that name,
+ * so it is never imported elsewhere. Thirty-five units all called `Props` read
+ * to the name rules as one concept spelled thirty-five times.
+ */
+export const componentName = (file: string): string => {
+  const base = (file.split("/").at(-1) ?? file).replace(/\.astro$/, "")
+  const words = base.replace(/[^A-Za-z0-9]+(.)?/g, (_, next: string | undefined) => (next ?? "").toUpperCase())
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 /** A path to an Astro component or page. */
 export const isAstro: Predicate.Predicate<string> = (file) => file.endsWith(".astro")
 
