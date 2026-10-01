@@ -2,7 +2,8 @@ import { describe, expect, test } from "vitest"
 import { Effect } from "effect"
 import { NodeServices } from "@effect/platform-node"
 import { astroRegions, blankOutside, componentName } from "../src/astro.ts"
-import { loadWorkspace } from "../src/workspace.ts"
+import { resolve } from "node:path"
+import { discoverFiles, loadWorkspace } from "../src/workspace.ts"
 
 const astroWorkspace = () =>
   Effect.runPromise(loadWorkspace("tests/fixtures/astro", ["src"]).pipe(Effect.provide(NodeServices.layer)))
@@ -95,4 +96,18 @@ describe("parsing .astro files", () => {
     expect(edge?.resolution).toBe("resolved")
     expect(edge?.to).toBe("src/components/Card.astro")
   })
+})
+
+test("with no paths, .astro files join tsgo's list, within tsconfig and outside .gitignore", async () => {
+  const root = resolve("tests/fixtures/astro")
+  const fromTsgo = [resolve(root, "src/utils/use-card.ts")]
+  const found = await Effect.runPromise(
+    discoverFiles(root, [], fromTsgo).pipe(Effect.provide(NodeServices.layer)),
+  )
+  const relative = found.files.map((file) => file.slice(root.length + 1)).sort()
+  expect(relative).toEqual([
+    "src/components/Card.astro",
+    "src/pages/redirect.astro",
+    "src/utils/use-card.ts",
+  ])
 })

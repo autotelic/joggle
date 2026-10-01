@@ -111,8 +111,11 @@ implementation greps for every other `parseSync` call and `file.text` read in
 
 `tsgo --listFilesOnly` never lists `.astro` files; Astro typechecks them with
 its own tooling. When joggle discovers files through tsgo, it also walks the
-root for `.astro` files, honouring `.gitignore` and the ignored directories as
-the walk already does, and merges them in. Only `.astro` files are taken from
+root for `.astro` files, honouring `.gitignore`, the ignored directories, and
+the root tsconfig's `include` and `exclude`, and merges them in. The tsconfig
+scope matters because tsgo applies it to everything it lists: without it,
+joggle's own self-check read `tests/fixtures/astro`, which its tsconfig
+excludes. Only `.astro` files are taken from
 the walk, so the compiler still decides which TypeScript is in the project.
 
 The walk runs on every no-paths run, not only when a `package.json` lists

@@ -52,6 +52,7 @@
           "src/tsgo.ts",
           "src/source.ts",
           "src/astro.ts",
+          "src/tsconfig-scope.ts",
           "src/judge.ts",
           "src/gitignore.ts",
           "src/fingerprint.ts",

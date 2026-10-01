@@ -11,6 +11,7 @@ import {
 import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
 import { shortHash } from "./state.ts"
 import { blockingErrors, componentName, isAstro, parseInputOf } from "./astro.ts"
+import { tsconfigScope } from "./tsconfig-scope.ts"
 import { looksLikeSource } from "./source.ts"
 import { manifestAt, type PackageManifest } from "./manifest.ts"
 
@@ -1902,12 +1903,20 @@ export const discoverFiles = (
   discovered: ReadonlyArray<string> | undefined,
 ): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   discovered !== undefined
-    ? Effect.succeed({
-        files: discovered,
-        skippedExtensions: [],
-        truncated: false,
-        ignored: 0,
-        ignoredDirectories: 0,
+    ? Effect.gen(function* () {
+        const path = yield* Path.Path
+        const inScope = yield* tsconfigScope(root)
+        const walked = yield* resolveInputs(root, ["."])
+        const astro = walked.files.filter(
+          (file) => isAstro(file) && inScope(path.relative(root, file).split(path.sep).join("/")),
+        )
+        return {
+          files: [...discovered, ...astro].sort(Order.String),
+          skippedExtensions: [],
+          truncated: walked.truncated,
+          ignored: 0,
+          ignoredDirectories: 0,
+        }
       })
     : resolveInputs(root, inputs.length > 0 ? inputs : ["."])
 

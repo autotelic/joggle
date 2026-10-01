@@ -1,6 +1,8 @@
+import type { Predicate } from "effect"
+
 /**
- * Glob to a regular-expression source, shared by the config matcher and the
- * gitignore matcher.
+ * Glob to a regular-expression source, shared by the config matcher, the
+ * gitignore matcher and the tsconfig scope.
  *
  * The two have the same character loop and differ in exactly two ways, so those
  * are options rather than a second implementation:
@@ -50,4 +52,20 @@ export const globSource = (pattern: string, syntax: GlobSyntax): string => {
     }
   }
   return source
+}
+
+const WILDCARD = /[*?]/
+
+/**
+ * A tsconfig `include` or `exclude` entry as a predicate over root-relative paths.
+ *
+ * An entry with no wildcard names a file or a directory, and a directory covers
+ * everything under it, as the compiler reads it. A wildcard entry follows
+ * gitignore's syntax: `src/**\/*` matches `src/a.astro` as well as deeper files.
+ */
+export const tsconfigEntry = (entry: string): Predicate.Predicate<string> => {
+  const pattern = entry.replace(/^\.\//, "").replace(/\/$/, "")
+  if (!WILDCARD.test(pattern)) return (file) => file === pattern || file.startsWith(pattern + "/")
+  const regex = new RegExp("^" + globSource(pattern, { question: true, doubleStarSkipsSlash: true }) + "$")
+  return (file) => regex.test(file)
 }
