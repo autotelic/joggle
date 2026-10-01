@@ -81,6 +81,21 @@ it.effect("writes one shard, and a fresh store replays it", () =>
   }).pipe(Effect.provide(nodeLayer)),
 )
 
+it.effect("concurrent writes all reach disk", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const dir = fresh("joggle-concurrent-")
+    const keys = Array.from({ length: 64 }, (_, index) => index.toString(16).padStart(2, "0") + "0123456789abcd")
+
+    const store = yield* make(fs, path, dir)
+    yield* Effect.forEach(keys, (key) => store.put(key, probability(0.5)), { concurrency: "unbounded", discard: true })
+
+    const reopened = yield* make(fs, path, dir)
+    expect(yield* reopened.size).toBe(keys.length)
+  }).pipe(Effect.provide(nodeLayer)),
+)
+
 it.effect("migrates the legacy single file on the first write", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
