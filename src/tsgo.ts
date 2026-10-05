@@ -3,6 +3,7 @@ import { ChildProcess } from "effect/unstable/process"
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { resolve, sep } from "node:path"
 import { TsgoError } from "./schema.ts"
+import { looksLikeSource } from "./source.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                       */
@@ -138,8 +139,7 @@ const make = (binary: string, path: Path.Path): Interface => {
     const files = new Set<string>()
     for (const raw of result.stdout.split(/\r?\n/)) {
       const file = raw.trim()
-      if (!file.endsWith(".ts") && !file.endsWith(".tsx")) continue
-      if (file.endsWith(".d.ts")) continue
+      if (!looksLikeSource(file)) continue
       if (!underRoot({ cwd, file })) continue
       files.add(path.resolve(file))
     }
