@@ -44,6 +44,16 @@ it.effect("a 5xx on a branch that could be about a row is a candidate, and the m
   }).pipe(Effect.provide(modelStub(allRow)), Effect.provide(NodeServices.layer)),
 )
 
+it.effect("an .astro file's frontmatter is read for the same shape", () =>
+  Effect.gen(function* () {
+    const workspace = yield* loadWorkspace("tests/fixtures/data-error-astro", ["src"])
+    const result = yield* plannedDiagnosticsOf(dataErrorAsOutage, workspace)
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]?.message).toContain("getCrew")
+    expect(result.diagnostics[0]?.location.file).toBe("src/pages/crew.astro")
+  }).pipe(Effect.provide(modelStub(allRow)), Effect.provide(NodeServices.layer)),
+)
+
 it.effect("a branch the model reads as not about a row is dropped, not reported", () =>
   Effect.gen(function* () {
     const workspace = yield* fixture()

@@ -10,6 +10,8 @@ import {
 } from "./imports.ts"
 import { isIgnored, orderRules, rulesAt, type IgnoreRule } from "./gitignore.ts"
 import { shortHash } from "./state.ts"
+import { blockingErrors, componentName, isAstro, parseInputOf } from "./astro.ts"
+import { tsconfigScope } from "./tsconfig-scope.ts"
 import { looksLikeSource } from "./source.ts"
 import { manifestAt, type PackageManifest } from "./manifest.ts"
 
@@ -686,6 +688,7 @@ const langOf = (file: string): Lang => {
     case ".ts":
     case ".mts":
     case ".cts":
+    case ".astro":
       return "ts"
     default:
       return "js"
@@ -1634,6 +1637,19 @@ export interface FileText {
   readonly text: string
 }
 
+/** An `.astro` file's `Props`, named after its component; any other file unchanged. */
+const withComponentProps = (source: SourceFile): SourceFile =>
+  !isAstro(source.path)
+    ? source
+    : {
+        ...source,
+        units: source.units.map((unit) =>
+          unit.name === "Props" && (unit.kind === "interface" || unit.kind === "type")
+            ? { ...unit, name: componentName(source.path) + "Props" }
+            : unit,
+        ),
+      }
+
 /**
  * Parse a file, giving `.js` a second reading as JSX.
  *
@@ -1644,14 +1660,15 @@ export interface FileText {
  */
 const parseSourceFile = ({ file, text }: FileText): ParseOutcome => {
   const lang = langOf(file)
-  const first = parseSync(file, text, { sourceType: "module", lang })
-  if (first.errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: first }) }
+  const first = parseSync(file, parseInputOf({ file, text }), { sourceType: "module", lang })
+  const errors = blockingErrors(file, first.errors)
+  if (errors.length === 0) return { ok: true, file: withComponentProps(sourceFileFrom({ file, text, parsed: first })) }
 
   if (lang === "js") {
     const retry = parseSync(file, text, { sourceType: "module", lang: "jsx" })
     if (retry.errors.length === 0) return { ok: true, file: sourceFileFrom({ file, text, parsed: retry }) }
   }
-  return { ok: false, reason: describeParseErrors(first.errors) }
+  return { ok: false, reason: describeParseErrors(errors) }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1886,12 +1903,20 @@ export const discoverFiles = (
   discovered: ReadonlyArray<string> | undefined,
 ): Effect.Effect<Discovery, WorkspaceError, FileSystem.FileSystem | Path.Path> =>
   discovered !== undefined
-    ? Effect.succeed({
-        files: discovered,
-        skippedExtensions: [],
-        truncated: false,
-        ignored: 0,
-        ignoredDirectories: 0,
+    ? Effect.gen(function* () {
+        const path = yield* Path.Path
+        const inScope = yield* tsconfigScope(root)
+        const walked = yield* resolveInputs(root, ["."])
+        const astro = walked.files.filter(
+          (file) => isAstro(file) && inScope(path.relative(root, file).split(path.sep).join("/")),
+        )
+        return {
+          files: [...discovered, ...astro].sort(Order.String),
+          skippedExtensions: [],
+          truncated: walked.truncated,
+          ignored: 0,
+          ignoredDirectories: 0,
+        }
       })
     : resolveInputs(root, inputs.length > 0 ? inputs : ["."])
 

@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { parseSync } from "oxc-parser"
+import { blockingErrors, isAstro, parseInputOf } from "../astro.ts"
 import { Decision } from "effect/unstable/ai"
 import { Atoms } from "../atoms.ts"
 import { policy } from "../policy.ts"
@@ -189,8 +190,12 @@ const candidatesIn = (workspace: Workspace, scope: Scope): ReadonlyArray<Outage>
     const names = file.facts.callSites.map((site) => site.name.split(".").at(-1) ?? "")
     if (!names.some((name) => STATUS_METHODS.has(name)) && !file.text.includes("statusCode")) continue
 
-    const parsed = parseSync(file.path, file.text)
-    if (parsed.errors.length > 0) continue
+    const parsed = parseSync(
+      file.path,
+      parseInputOf({ file: file.path, text: file.text }),
+      isAstro(file.path) ? { sourceType: "module", lang: "ts" } : undefined,
+    )
+    if (blockingErrors(file.path, parsed.errors).length > 0) continue
 
     // Each function WITH its parent, so an anonymous handler can be named from the
     // call it was handed to -- `fastify.decorate('getComments', async ...)`.
