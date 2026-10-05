@@ -239,9 +239,11 @@ export const make = (fs: FileSystem.FileSystem, path: Path.Path, dir: string): E
 
     const flush = writer.withPermits(1)(
       Effect.gen(function* () {
+        // Taken and cleared in one step: a put that lands while this flush is
+        // writing marks a fresh set, which its own flush then writes.
+        const changed = yield* Ref.getAndSet(dirty, new Set<string>())
         const current = yield* Ref.get(shards)
         const migrate = yield* Ref.get(needsMigration)
-        const changed = yield* Ref.get(dirty)
         const targets = migrate ? [...current.keys()] : [...changed]
         const target = answersDir(path, dir)
         yield* fs.makeDirectory(target, { recursive: true }).pipe(Effect.orElseSucceed(() => undefined))
@@ -260,7 +262,6 @@ export const make = (fs: FileSystem.FileSystem, path: Path.Path, dir: string): E
           yield* fs.remove(single).pipe(Effect.orElseSucceed(() => undefined))
           yield* Ref.set(needsMigration, false)
         }
-        yield* Ref.set(dirty, new Set())
       }),
     )
 
